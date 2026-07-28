@@ -1,3 +1,7 @@
 <resources>
-    <string name="app_name">localfly</string>
+    <string name="app_name">LocalFly</string>
+    <string name="cover_placeholder">Portada del álbum</string>
+    <string name="like_button">Me gusta</string>
+    <string name="dislike_button">No me gusta</string>
+    <string name="download_button">Descargar</string>
 </resources>

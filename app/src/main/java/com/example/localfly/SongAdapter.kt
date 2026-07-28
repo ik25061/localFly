@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.network.Song
 import java.util.Locale
-
+import com.example.localfly.network.HideRequest
 class SongAdapter(
     private val songs: MutableList<Song>,
     private val serverBaseUrl: String,
@@ -28,7 +28,6 @@ class SongAdapter(
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
         val btnDownload: ImageButton = view.findViewById(R.id.btnDownload)
-
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
@@ -42,24 +41,32 @@ class SongAdapter(
         holder.tvTitle.text = toTitleCase(song.title)
         holder.tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
 
+        // Like
         holder.btnLike.setImageResource(
-            if (song.liked) android.R.drawable.btn_star_big_on
-            else android.R.drawable.btn_star_big_off
+            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song, holder.bindingAdapterPosition) }
+
+
+
+        // Dislike
         holder.btnDislike.setOnClickListener { onDislikeClick(song, holder.bindingAdapterPosition) }
 
+        // Download
         val alreadyDownloaded = downloadHelper.isDownloaded(song.id)
         holder.btnDownload.setImageResource(
-            if (alreadyDownloaded) android.R.drawable.stat_sys_download_done
-            else android.R.drawable.stat_sys_download
+            if (alreadyDownloaded) R.drawable.ic_downloaded else R.drawable.ic_download
         )
         holder.btnDownload.setOnClickListener {
             if (!downloadHelper.isDownloaded(song.id)) {
                 onDownloadClick(song)
+            } else {
+                // Opcional: mostrar mensaje de que ya está descargada
+                // Toast.makeText(holder.itemView.context, "Ya descargada", Toast.LENGTH_SHORT).show()
             }
         }
 
+        // Cover
         if (song.hasCover) {
             Glide.with(holder.itemView.context)
                 .load("$serverBaseUrl/cover/${song.id}")
@@ -69,10 +76,8 @@ class SongAdapter(
             holder.ivCover.setImageDrawable(null)
         }
 
+        // Click en el ítem
         holder.itemView.setOnClickListener { onSongClick(song, holder.bindingAdapterPosition) }
-
-
-
     }
 
     override fun getItemCount(): Int = songs.size

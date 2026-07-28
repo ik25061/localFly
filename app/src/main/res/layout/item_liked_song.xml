@@ -1,20 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:padding="10dp"
-    android:background="?attr/selectableItemBackground">
+    android:padding="10dp">
 
     <ImageView
         android:id="@+id/ivCover"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:scaleType="centerCrop"
-        android:background="#333333"
-        android:contentDescription="@string/cover_placeholder" />
+        android:background="#333333" />
 
     <LinearLayout
         android:layout_width="0dp"
@@ -29,7 +26,6 @@
             android:layout_height="wrap_content"
             android:textSize="16sp"
             android:textStyle="bold"
-            android:textColor="#FFFFFF"
             android:maxLines="1"
             android:ellipsize="end" />
 
@@ -44,37 +40,28 @@
 
     </LinearLayout>
 
-    <!-- Botón Like -->
-
     <ImageButton
         android:id="@+id/btnLike"
         android:layout_width="32dp"
         android:layout_height="32dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/btn_star_big_off"
-        android:contentDescription="@string/like_button"
-        app:tint="?android:attr/textColorPrimary" />
+        android:src="@android:drawable/btn_star_big_off" />
 
-    <!-- Botón Dislike -->
     <ImageButton
         android:id="@+id/btnDislike"
         android:layout_width="32dp"
         android:layout_height="32dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        android:contentDescription="@string/dislike_button"
-        app:tint="?android:attr/textColorPrimary" />
+        android:src="@android:drawable/ic_menu_close_clear_cancel" />
 
-    <!-- Botón Download -->
     <ImageButton
         android:id="@+id/btnDownload"
         android:layout_width="32dp"
         android:layout_height="32dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/stat_sys_download"
-        android:contentDescription="@string/download_button"
-        app:tint="?android:attr/textColorPrimary" />
+        android:src="@android:drawable/stat_sys_download" />
+
 
 </LinearLayout>
