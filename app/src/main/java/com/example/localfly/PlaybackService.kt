@@ -93,10 +93,22 @@ class PlaybackService : Service() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
+                    checkAutoDelete()
                     next()
                 }
             }
         })
+    }
+
+    private fun checkAutoDelete() {
+        if (sessionManager.isAutoDeleteEnabled()) {
+            val songId = currentSong?.id ?: return
+            val localPath = queueLocalPaths.getOrNull(currentIndex)
+            if (localPath != null) {
+                // Es una descarga. La eliminamos.
+                DownloadManagerHelper(this).removeDownload(songId)
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder = binder

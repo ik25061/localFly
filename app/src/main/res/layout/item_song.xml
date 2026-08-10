@@ -58,8 +58,14 @@
     </LinearLayout>
 
     <!-- Botones de Acción -->
-
-    <!-- Agregar a la lista de reproduccion -->
+    <ImageButton
+        android:id="@+id/btnPlayNext"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_media_play"
+        android:scaleType="centerInside"
+        app:tint="#AAAAAA" />
 
     <ImageButton
         android:id="@+id/btnPlaylistAdd"
@@ -70,7 +76,6 @@
         android:src="@android:drawable/ic_menu_add"
         android:scaleType="centerInside"
         app:tint="#AAAAAA" />
-
 
     <ImageButton
         android:id="@+id/btnLike"
@@ -89,6 +94,16 @@
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_dislike"
+        android:scaleType="centerInside"
+        app:tint="#AAAAAA" />
+
+    <ImageButton
+        android:id="@+id/btnDelete"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_marginStart="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_delete"
         android:scaleType="centerInside"
         app:tint="#AAAAAA" />
 

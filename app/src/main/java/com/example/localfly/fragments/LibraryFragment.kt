@@ -26,6 +26,11 @@ class LibraryFragment : Fragment() {
     
     private lateinit var tvSongCountInfo: android.widget.TextView
     private lateinit var btnDownloadAll: com.google.android.material.button.MaterialButton
+    
+    private var currentOffset = 0
+    private val limit = 100
+    private var isLoading = false
+    private var hasMore = true
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
     private val serverBaseUrl = ApiConfig.BASE_URL
@@ -70,35 +75,89 @@ class LibraryFragment : Fragment() {
 
         rvSongs.layoutManager = LinearLayoutManager(requireContext())
         rvSongs.adapter = adapter
+        
+        btnDownloadAll.setOnClickListener {
+            val songsToDownload = adapter.currentSongs().filter { !downloadHelper.isDownloaded(it.id) }
+            if (songsToDownload.isEmpty()) {
+                Toast.makeText(requireContext(), "Todas las canciones ya están descargadas", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            
+            Toast.makeText(requireContext(), "Iniciando descarga de ${songsToDownload.size} canciones...", Toast.LENGTH_SHORT).show()
+            viewLifecycleOwner.lifecycleScope.launch {
+                var count = 0
+                for (song in songsToDownload) {
+                    val audioUrl = "$serverBaseUrl/audio/${song.id}"
+                    if (downloadHelper.download(song, audioUrl)) {
+                        count++
+                        adapter.refreshDownloadStates()
+                        btnDownloadAll.text = adapter.currentSongs().count { downloadHelper.isDownloaded(it.id) }.toString()
+                    }
+                }
+                Toast.makeText(requireContext(), "Se descargaron $count canciones", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+                val lastVisibleItem = layoutManager.findLastVisibleItemPosition()
+                val totalItemCount = layoutManager.itemCount
+
+                if (!isLoading && hasMore && lastVisibleItem >= totalItemCount - 5) {
+                    loadLibrary(isNextPage = true)
+                }
+            }
+        })
 
         // Cargar biblioteca
         loadLibrary()
     }
 
-    private fun loadLibrary() {
+    private fun loadLibrary(isNextPage: Boolean = false) {
+        if (isLoading) return
+        
         val userId = sessionManager.getUserId()
         if (userId == null) {
             Toast.makeText(requireContext(), "Usuario no autenticado", Toast.LENGTH_SHORT).show()
             return
         }
 
+        if (isNextPage) {
+            currentOffset += limit
+        } else {
+            currentOffset = 0
+            hasMore = true
+        }
+
+        isLoading = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 if (!isAdded) return@launch
 
                 val response = RetrofitClient.api.getLibrary(
                     userId = userId,
-                    limit = 100,
-                    offset = 0
+                    limit = limit,
+                    offset = currentOffset
                 )
 
                 if (response.isSuccessful && response.body() != null) {
-                    val songs = response.body()!!.songs
-                    adapter.updateSongs(songs)
+                    val body = response.body()!!
+                    val songs = body.songs
+                    
+                    if (isNextPage) {
+                        adapter.addSongs(songs)
+                    } else {
+                        adapter.updateSongs(songs)
+                    }
+                    
+                    hasMore = body.pagination?.hasMore ?: (songs.size >= limit)
                     
                     // Actualizar UI del header
-                    tvSongCountInfo.text = "${songs.size} canciones · Desplázate para cargar más"
-                    btnDownloadAll.text = songs.count { downloadHelper.isDownloaded(it.id) }.toString()
+                    val totalCount = body.pagination?.total ?: adapter.itemCount
+                    tvSongCountInfo.text = "$totalCount canciones · Desplázate para cargar más"
+                    btnDownloadAll.text = adapter.currentSongs().count { downloadHelper.isDownloaded(it.id) }.toString()
                 } else {
                     Toast.makeText(requireContext(), "Error al cargar biblioteca", Toast.LENGTH_SHORT).show()
                 }
@@ -106,6 +165,8 @@ class LibraryFragment : Fragment() {
                 if (isAdded) {
                     Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
+            } finally {
+                isLoading = false
             }
         }
     }

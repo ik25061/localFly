@@ -19,7 +19,10 @@ data class DownloadedSong(
     val id: String,
     val title: String,
     val artist: String?,
-    val filePath: String
+    val filePath: String,
+    val duration: Double? = null,
+    val hasCover: Boolean = false,
+    val fileSize: Long = 0
 )
 
 /**
@@ -103,7 +106,17 @@ class DownloadManagerHelper(context: Context) {
 
                 val current = getDownloadedSongs().toMutableList()
                 current.removeAll { it.id == song.id }
-                current.add(DownloadedSong(song.id, song.title, song.artist, file!!.absolutePath))
+                current.add(
+                    DownloadedSong(
+                        id = song.id,
+                        title = song.title,
+                        artist = song.artist,
+                        filePath = file!!.absolutePath,
+                        duration = song.duration,
+                        hasCover = song.hasCover,
+                        fileSize = file!!.length()
+                    )
+                )
                 prefs.edit().putString("list", gson.toJson(current)).apply()
 
                 true

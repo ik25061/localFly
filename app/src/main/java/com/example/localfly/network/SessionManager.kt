@@ -36,4 +36,10 @@ class SessionManager(context: Context) {
     }
 
     fun isLoggedIn(): Boolean = getToken() != null
+
+    fun setAutoDeleteEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_delete_on_finish", enabled).apply()
+    }
+
+    fun isAutoDeleteEnabled(): Boolean = prefs.getBoolean("auto_delete_on_finish", false)
 }

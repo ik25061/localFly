@@ -84,7 +84,8 @@ class DownloadsActivity : AppCompatActivity() {
         btnNext.setOnClickListener { playbackService?.next() }
 
         adapter = DownloadedSongAdapter(
-            mutableListOf(),
+            items = mutableListOf(),
+            serverBaseUrl = com.example.localfly.network.ApiConfig.BASE_URL,
             onItemClick = { downloaded -> playDownloadedFromQueue(downloaded) },
             onDeleteClick = { downloaded ->
                 downloadHelper.removeDownload(downloaded.id)
@@ -139,9 +140,10 @@ class DownloadsActivity : AppCompatActivity() {
         ivMiniCover.setImageDrawable(null) // sin portada cacheada offline por ahora
 
         btnMiniLike.setImageResource(
-            if (song.liked) android.R.drawable.btn_star_big_on
-            else android.R.drawable.btn_star_big_off
+            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
+        
+        btnMiniDislike.setImageResource(R.drawable.ic_dislike)
 
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(

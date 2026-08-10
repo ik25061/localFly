@@ -106,6 +106,12 @@ class SongAdapter(
         notifyDataSetChanged()
     }
 
+    fun addSongs(newSongs: List<Song>) {
+        val startPos = songs.size
+        songs.addAll(newSongs)
+        notifyItemRangeInserted(startPos, newSongs.size)
+    }
+
     fun currentSongs(): List<Song> = songs.toList()
 
     fun updateSongAt(position: Int, song: Song) {

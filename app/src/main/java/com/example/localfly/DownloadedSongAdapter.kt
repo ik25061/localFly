@@ -4,20 +4,26 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import java.util.Locale
 
 class DownloadedSongAdapter(
     private val items: MutableList<DownloadedSong>,
+    private val serverBaseUrl: String,
     private val onItemClick: (DownloadedSong) -> Unit,
     private val onDeleteClick: (DownloadedSong) -> Unit
 ) : RecyclerView.Adapter<DownloadedSongAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvIndex: TextView = view.findViewById(R.id.tvIndex)
+        val ivCover: ImageView = view.findViewById(R.id.ivCover)
         val tvTitle: TextView = view.findViewById(R.id.tvDownloadedTitle)
         val tvArtist: TextView = view.findViewById(R.id.tvDownloadedArtist)
         val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
+        val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -28,10 +34,31 @@ class DownloadedSongAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
+        holder.tvIndex.text = (position + 1).toString()
         holder.tvTitle.text = toTitleCase(item.title)
         holder.tvArtist.text = toTitleCase(item.artist) ?: "Artista desconocido"
+        holder.tvDuration.text = formatDuration(item.duration)
+
+        if (item.hasCover) {
+            Glide.with(holder.itemView.context)
+                .load("$serverBaseUrl/cover/${item.id}")
+                .placeholder(R.drawable.ic_music_placeholder)
+                .centerCrop()
+                .into(holder.ivCover)
+        } else {
+            holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+        }
+
         holder.itemView.setOnClickListener { onItemClick(item) }
         holder.btnDelete.setOnClickListener { onDeleteClick(item) }
+    }
+
+    private fun formatDuration(durationSeconds: Double?): String {
+        if (durationSeconds == null) return "--:--"
+        val totalSeconds = durationSeconds.toInt()
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
 
     override fun getItemCount(): Int = items.size

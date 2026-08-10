@@ -13,12 +13,19 @@ import com.example.localfly.DownloadedSong
 import com.example.localfly.DownloadedSongAdapter
 import com.example.localfly.MainActivity
 import com.example.localfly.R
+import com.example.localfly.network.SessionManager
 
 class DownloadsFragment : Fragment() {
 
     private lateinit var rvDownloads: RecyclerView
     private lateinit var tvEmpty: TextView
+    private lateinit var tvDownloadCountHeader: TextView
+    private lateinit var tvStorageInfo: TextView
+    private lateinit var swAutoDelete: com.google.android.material.materialswitch.MaterialSwitch
+    private lateinit var btnBack: android.widget.ImageButton
+    
     private lateinit var downloadHelper: DownloadManagerHelper
+    private lateinit var sessionManager: SessionManager
     private lateinit var adapter: DownloadedSongAdapter
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -29,11 +36,18 @@ class DownloadsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         downloadHelper = DownloadManagerHelper(requireContext())
+        sessionManager = SessionManager(requireContext())
+        
         rvDownloads = view.findViewById(R.id.rvDownloads)
         tvEmpty = view.findViewById(R.id.tvEmptyDownloads)
+        tvDownloadCountHeader = view.findViewById(R.id.tvDownloadCountHeader)
+        tvStorageInfo = view.findViewById(R.id.tvStorageInfo)
+        swAutoDelete = view.findViewById(R.id.swAutoDelete)
+        btnBack = view.findViewById(R.id.btnBack)
 
         adapter = DownloadedSongAdapter(
-            mutableListOf(),
+            items = mutableListOf(),
+            serverBaseUrl = com.example.localfly.network.ApiConfig.BASE_URL,
             onItemClick = { downloaded -> playDownloaded(downloaded) },
             onDeleteClick = { downloaded ->
                 downloadHelper.removeDownload(downloaded.id)
@@ -43,12 +57,28 @@ class DownloadsFragment : Fragment() {
         rvDownloads.layoutManager = LinearLayoutManager(requireContext())
         rvDownloads.adapter = adapter
 
+        btnBack.setOnClickListener {
+            requireActivity().onBackPressedDispatcher.onBackPressed()
+        }
+        
+        swAutoDelete.isChecked = sessionManager.isAutoDeleteEnabled()
+        swAutoDelete.setOnCheckedChangeListener { _, isChecked ->
+            sessionManager.setAutoDeleteEnabled(isChecked)
+        }
+
         loadDownloads()
     }
 
     private fun loadDownloads() {
         val items = downloadHelper.getDownloadedSongs()
         adapter.updateItems(items)
+        
+        val totalSongs = items.size
+        val totalSizeMb = items.sumOf { it.fileSize } / (1024 * 1024)
+        
+        tvDownloadCountHeader.text = "$totalSongs canciones descargadas"
+        tvStorageInfo.text = "$totalSizeMb MB - $totalSongs canciones"
+        
         tvEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         rvDownloads.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
     }
