@@ -13,9 +13,13 @@ import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.Song
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 class NowPlayingActivity : AppCompatActivity() {
@@ -36,6 +40,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnNext: ImageButton
     private lateinit var btnShuffle: ImageButton
     private lateinit var btnRepeat: ImageButton
+    private lateinit var btnLyrics: ImageButton
 
     private var playbackService: PlaybackService? = null
     private var isBound = false
@@ -81,6 +86,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.btnFullNext)
         btnShuffle = findViewById(R.id.btnShuffle)
         btnRepeat = findViewById(R.id.btnRepeat)
+        btnLyrics = findViewById(R.id.btnLyrics)
 
         findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
 
@@ -88,6 +94,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnLike.setOnClickListener { playbackService?.toggleLike() }
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
+        btnLyrics.setOnClickListener { showLyrics() }
 
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
@@ -103,6 +110,60 @@ class NowPlayingActivity : AppCompatActivity() {
                 playbackService?.seekTo(seekBar?.progress?.toLong() ?: 0L)
             }
         })
+    }
+
+    private fun showLyrics() {
+        val song = playbackService?.currentSong ?: return
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(R.layout.dialog_lyrics)
+        
+        val tvContent = dialog.findViewById<TextView>(R.id.tvLyricsContent)
+        val btnClose = dialog.findViewById<ImageButton>(R.id.btnCloseLyrics)
+        
+        btnClose.setOnClickListener { dialog.dismiss() }
+        
+        lifecycleScope.launch {
+            try {
+                val lyrics = fetchLyrics(song)
+                tvContent.text = lyrics ?: "No hay letra disponible para esta canción"
+            } catch (e: Exception) {
+                tvContent.text = "Error al cargar la letra"
+            }
+        }
+        
+        dialog.show()
+    }
+
+    private suspend fun fetchLyrics(song: Song): String? = withContext(Dispatchers.IO) {
+        val encodedTitle = java.net.URLEncoder.encode(song.title, "UTF-8").replace("+", "%20")
+        val lyricsUrl = "$serverBaseUrl/resources/$encodedTitle.lrc"
+        
+        val client = okhttp3.OkHttpClient()
+        val request = okhttp3.Request.Builder().url(lyricsUrl).build()
+        
+        try {
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val rawLyrics = response.body?.string() ?: return@withContext null
+                return@withContext parseLrc(rawLyrics)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun parseLrc(lrc: String): String {
+        val lines = lrc.split("\n")
+        val parsed = StringBuilder()
+        val timestampRegex = Regex("\\[\\d{2}:\\d{2}\\.\\d{2}\\]")
+        
+        for (line in lines) {
+            val cleanLine = line.replace(timestampRegex, "").trim()
+            if (cleanLine.isNotEmpty()) {
+                parsed.append(cleanLine).append("\n\n")
+            }
+        }
+        return parsed.toString().trim()
     }
 
     private fun refreshUi() {

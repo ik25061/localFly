@@ -373,7 +373,7 @@ class PlaybackService : Service() {
     }
 
     @UnstableApi
-    private fun buildNotification(): Notification {
+    private fun buildNotification(largeIcon: android.graphics.Bitmap? = null): Notification {
         val song = currentSong
         val isPlaying = player?.isPlaying == true
 
@@ -385,7 +385,7 @@ class PlaybackService : Service() {
         )
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_sparkles) // Icono de la app en la barra
+            .setSmallIcon(R.drawable.ic_sparkles)
             .setContentTitle(song?.title ?: "localFly")
             .setContentText(song?.artist ?: "Música para tus oídos")
             .setContentIntent(contentIntent)
@@ -394,45 +394,48 @@ class PlaybackService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_MAX)
 
-        // Botón Like
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        // Action 0: Like
         builder.addAction(
             if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off,
             "Me gusta",
             pendingIntentFor(ACTION_LIKE)
         )
 
-        // Botón Anterior
+        // Action 1: Anterior
         builder.addAction(
             android.R.drawable.ic_media_previous,
             "Anterior",
             pendingIntentFor(ACTION_PREV)
         )
 
-        // Botón Play/Pausa
+        // Action 2: Play/Pausa
         builder.addAction(
             if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
             if (isPlaying) "Pausar" else "Reproducir",
             pendingIntentFor(ACTION_PLAY_PAUSE)
         )
 
-        // Botón Siguiente
+        // Action 3: Siguiente
         builder.addAction(
             android.R.drawable.ic_media_next,
             "Siguiente",
             pendingIntentFor(ACTION_NEXT)
         )
 
-        // Botón No me gusta (Ocultar)
+        // Action 4: No me gusta
         builder.addAction(
             R.drawable.ic_dislike,
             "No me gusta",
             pendingIntentFor(ACTION_DISLIKE)
         )
 
-        // Estilo Media
         builder.setStyle(
             MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente
+                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente (Standard compact)
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 
@@ -448,10 +451,9 @@ class PlaybackService : Service() {
                 ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            val notification = buildNotification()
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
-
-            // Cargar portada en background y actualizar si existe
+            // First show without image
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+            // Then load image and update
             loadLargeIcon()
         }
     }
@@ -461,7 +463,8 @@ class PlaybackService : Service() {
         val song = currentSong ?: return
         serviceScope.launch {
             val coverUrl = if (!song.album.isNullOrBlank()) {
-                "$serverBaseUrl/resources/album - ${song.album}.jpg"
+                val encodedAlbum = java.net.URLEncoder.encode(song.album, "UTF-8").replace("+", "%20")
+                "$serverBaseUrl/resources/album - $encodedAlbum.jpg"
             } else {
                 "$serverBaseUrl/cover/${song.id}"
             }
@@ -471,14 +474,17 @@ class PlaybackService : Service() {
                     Glide.with(this@PlaybackService)
                         .asBitmap()
                         .load(coverUrl)
+                        .placeholder(R.drawable.ic_music_placeholder)
+                        .error(
+                            Glide.with(this@PlaybackService)
+                                .asBitmap()
+                                .load("$serverBaseUrl/cover/${song.id}")
+                                .submit(256, 256)
+                                .get()
+                        )
                         .submit(256, 256)
                         .get()
                 }
-
-                val notification = buildNotification()
-                val updatedNotification = NotificationCompat.Builder(this@PlaybackService, notification)
-                    .setLargeIcon(bitmap)
-                    .build()
 
                 val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                         ActivityCompat.checkSelfPermission(
@@ -487,10 +493,26 @@ class PlaybackService : Service() {
                         ) == PackageManager.PERMISSION_GRANTED
 
                 if (hasPermission) {
-                    NotificationManagerCompat.from(this@PlaybackService).notify(NOTIFICATION_ID, updatedNotification)
+                    NotificationManagerCompat.from(this@PlaybackService).notify(
+                        NOTIFICATION_ID, 
+                        buildNotification(bitmap)
+                    )
                 }
             } catch (e: Exception) {
-                // Fallback silencioso
+                // Fallback a la imagen por ID si falla el formato por nombre
+                try {
+                    val fallbackBitmap = withContext(Dispatchers.IO) {
+                        Glide.with(this@PlaybackService)
+                            .asBitmap()
+                            .load("$serverBaseUrl/cover/${song.id}")
+                            .submit(256, 256)
+                            .get()
+                    }
+                    NotificationManagerCompat.from(this@PlaybackService).notify(
+                        NOTIFICATION_ID, 
+                        buildNotification(fallbackBitmap)
+                    )
+                } catch (e2: Exception) {}
             }
         }
     }
