@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
     private var isBound = false
 
     // Base URL del servidor (debe coincidir con RetrofitClient)
-    private val serverBaseUrl = "http://127.0.1.1:5002"
+    private val serverBaseUrl = "http://127.0.0.1:5002"
 
     // ===== SERVICE CONNECTION =====
     private val connection = object : ServiceConnection {

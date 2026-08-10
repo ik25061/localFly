@@ -25,7 +25,7 @@ class LibraryFragment : Fragment() {
     private lateinit var sessionManager: SessionManager
 
     // Base URL del servidor (debe coincidir con RetrofitClient)
-    private val serverBaseUrl = "http://127.0.1.1:5002"
+    private val serverBaseUrl = "http://127.0.0.1:5002"
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_library, container, false)

@@ -47,7 +47,7 @@
         android:id="@+id/btnMiniLike"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:src="@android:drawable/btn_star_big_off"
+        android:src="@drawable/ic_like_off"
         android:background="@null" />
 
     <ImageButton

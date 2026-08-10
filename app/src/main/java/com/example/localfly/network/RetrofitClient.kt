@@ -17,7 +17,7 @@ object RetrofitClient {
     // - Si pruebas en un TELÉFONO FÍSICO conectado a la misma red WiFi
     //   que tu servidor: usa la IP local de tu PC, ej "http://192.168.1.50:5002/"
     //   (mira tu IP con `ipconfig` en Windows o `ip a` en Linux)
-    private const val BASE_URL = "http://127.0.1.1:5002/"
+    private const val BASE_URL = "http://127.0.0.1:5002/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
