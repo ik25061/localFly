@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.network.Song
 import java.util.Locale
-import com.example.localfly.network.HideRequest
+
 class SongAdapter(
     private val songs: MutableList<Song>,
     private val serverBaseUrl: String,
@@ -21,7 +21,8 @@ class SongAdapter(
     private val onDownloadClick: (Song) -> Unit,
     private val onDeleteClick: ((Song, Int) -> Unit)? = null,
     private val onPlayNextClick: ((Song) -> Unit)? = null,
-    private val onPlaylistAddClick: ((Song) -> Unit)? = null
+    private val onPlaylistAddClick: ((Song) -> Unit)? = null,
+    private var playingSongId: String? = null
 ) : RecyclerView.Adapter<SongAdapter.SongViewHolder>() {
 
     class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -47,46 +48,50 @@ class SongAdapter(
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
         val song = songs[position]
         holder.tvIndex.text = (position + 1).toString()
-        holder.tvTitle.text = toTitleCase(song.title)
-        holder.tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
+        
+        // Highlight current song
+        if (song.id == playingSongId) {
+            holder.tvIndex.setTextColor(android.graphics.Color.parseColor("#1DB954"))
+            holder.tvTitle.setTextColor(android.graphics.Color.parseColor("#1DB954"))
+        } else {
+            holder.tvIndex.setTextColor(android.graphics.Color.parseColor("#888888"))
+            holder.tvTitle.setTextColor(android.graphics.Color.parseColor("#FFFFFF"))
+        }
+
+        holder.tvTitle.text = song.title
+        holder.tvArtist.text = song.artist ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(song.duration)
 
-        // Like
+        // Actions
         holder.btnLike.setImageResource(
             if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song, holder.bindingAdapterPosition) }
-
-        // Dislike
         holder.btnDislike.setOnClickListener { onDislikeClick(song, holder.bindingAdapterPosition) }
-
-        // Download
+        
         holder.btnDownload.setImageResource(
             if (downloadHelper.isDownloaded(song.id)) R.drawable.ic_downloaded else R.drawable.ic_download
         )
         holder.btnDownload.setOnClickListener { onDownloadClick(song) }
 
-        // Delete
+        holder.btnPlayNext.setOnClickListener { onPlayNextClick?.invoke(song) }
+        holder.btnPlaylistAdd.setOnClickListener { onPlaylistAddClick?.invoke(song) }
         holder.btnDelete.setOnClickListener { onDeleteClick?.invoke(song, holder.bindingAdapterPosition) }
 
-        // Play Next
-        holder.btnPlayNext.setOnClickListener { onPlayNextClick?.invoke(song) }
-
-        // Add to Playlist
-        holder.btnPlaylistAdd.setOnClickListener { onPlaylistAddClick?.invoke(song) }
-
-        // Cover
-        if (song.hasCover) {
-            Glide.with(holder.itemView.context)
-                .load("$serverBaseUrl/cover/${song.id}")
-                .placeholder(R.drawable.ic_music_placeholder)
-                .centerCrop()
-                .into(holder.ivCover)
+        // Cover Loading based on new naming convention
+        val coverUrl = if (!song.album.isNullOrBlank()) {
+            "$serverBaseUrl/resources/album - ${song.album}.jpg"
         } else {
-            holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+            "$serverBaseUrl/cover/${song.id}"
         }
 
-        // Click en el ítem
+        Glide.with(holder.itemView.context)
+            .load(coverUrl)
+            .placeholder(R.drawable.ic_music_placeholder)
+            .error(R.drawable.ic_music_placeholder)
+            .centerCrop()
+            .into(holder.ivCover)
+
         holder.itemView.setOnClickListener { onSongClick(song, holder.bindingAdapterPosition) }
     }
 
@@ -112,6 +117,11 @@ class SongAdapter(
         notifyItemRangeInserted(startPos, newSongs.size)
     }
 
+    fun setPlayingSongId(id: String?) {
+        playingSongId = id
+        notifyDataSetChanged()
+    }
+
     fun currentSongs(): List<Song> = songs.toList()
 
     fun updateSongAt(position: Int, song: Song) {
@@ -128,15 +138,5 @@ class SongAdapter(
 
     fun refreshDownloadStates() {
         notifyDataSetChanged()
-    }
-
-    private fun toTitleCase(text: String?): String? {
-        if (text.isNullOrBlank()) return text
-        return text.lowercase(Locale.getDefault())
-            .split(" ")
-            .joinToString(" ") { word ->
-                if (word.isEmpty()) word
-                else word.replaceFirstChar { it.uppercase(Locale.getDefault()) }
-            }
     }
 }

@@ -9,6 +9,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.localfly.DownloadManagerHelper
+import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
@@ -80,14 +81,26 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupAdapters() {
+        val activity = requireActivity() as? MainActivity
+
         // Canciones que me gustan
         likedAdapter = LikedSongsAdapter(
             mutableListOf(),
             downloadHelper,
             onLikeClick = { song -> toggleLike(song) },
             onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> playSong(song) },
-            onDownloadClick = { song -> toggleDownload(song) }
+            onItemClick = { song -> 
+                activity?.playbackService?.playSong(song)
+            },
+            onDownloadClick = { song -> toggleDownload(song) },
+            onPlayNextClick = { song ->
+                activity?.playbackService?.playNext(song)
+                Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
+            },
+            onAddToQueueClick = { song ->
+                activity?.playbackService?.addToQueue(song)
+                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+            }
         )
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
@@ -130,8 +143,18 @@ class HomeFragment : Fragment() {
             downloadHelper,
             onLikeClick = { song -> toggleLike(song) },
             onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> playSong(song) },
-            onDownloadClick = { song -> toggleDownload(song) }
+            onItemClick = { song -> 
+                activity?.playbackService?.playSong(song)
+            },
+            onDownloadClick = { song -> toggleDownload(song) },
+            onPlayNextClick = { song ->
+                activity?.playbackService?.playNext(song)
+                Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
+            },
+            onAddToQueueClick = { song ->
+                activity?.playbackService?.addToQueue(song)
+                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+            }
         )
         binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
         binding.rvRecommendations.adapter = recommendationsAdapter
@@ -214,11 +237,6 @@ class HomeFragment : Fragment() {
         Toast.makeText(requireContext(), "Ocultar: ${song.title}", Toast.LENGTH_SHORT).show()
     }
 
-    private fun playSong(song: Song) {
-        // Iniciar reproducción (usar PlaybackService)
-        Toast.makeText(requireContext(), "Reproducir: ${song.title}", Toast.LENGTH_SHORT).show()
-    }
-
     /** Descarga la canción si no está descargada; si ya lo está, la elimina. */
     private fun toggleDownload(song: Song) {
         if (downloadHelper.isDownloaded(song.id)) {
@@ -253,8 +271,18 @@ class HomeFragment : Fragment() {
     }
 
     private fun openCollection(item: Any) {
-        // Abrir vista de colección (álbum, artista, etc.)
-        Toast.makeText(requireContext(), "Abrir colección: $item", Toast.LENGTH_SHORT).show()
+        when (item) {
+            is com.example.localfly.network.Album -> {
+                val fragment = AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
+                parentFragmentManager.beginTransaction()
+                    .replace(R.id.container, fragment)
+                    .addToBackStack(null)
+                    .commit()
+            }
+            else -> {
+                Toast.makeText(requireContext(), "Abrir colección: $item", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     override fun onDestroyView() {

@@ -65,4 +65,10 @@ interface ApiService {
         @Query("offset") offset: Int = 0
     ): Response<LikedSongsResponse>
 
+    @GET("api/albums/{id}/songs")
+    suspend fun getAlbumSongs(
+        @Path("id") albumId: String,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
 }

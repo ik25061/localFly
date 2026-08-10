@@ -178,17 +178,21 @@ class MainActivity : AppCompatActivity() {
         }
         miniPlayer.visibility = View.VISIBLE
         tvNowPlayingTitle.text = song.title
-        tvNowPlayingArtist.text = song.artist ?: "Desconocido"
+        
+        // Ajuste solicitado: "nombre del artista después de la palabra artista: artist - A.B. Quintanilla III"
+        tvNowPlayingArtist.text = if (song.artist != null) "Artista: ${song.artist}" else "Artista desconocido"
 
-        if (song.hasCover) {
-            Glide.with(this)
-                .load("$serverBaseUrl/cover/${song.id}")
-                .placeholder(R.drawable.ic_music_placeholder)
-                .centerCrop()
-                .into(ivMiniCover)
+        val coverUrl = if (!song.album.isNullOrBlank()) {
+            "$serverBaseUrl/resources/album - ${song.album}.jpg"
         } else {
-            ivMiniCover.setImageResource(R.drawable.ic_music_placeholder)
+            "$serverBaseUrl/cover/${song.id}"
         }
+
+        Glide.with(this)
+            .load(coverUrl)
+            .placeholder(R.drawable.ic_music_placeholder)
+            .centerCrop()
+            .into(ivMiniCover)
 
         btnMiniLike.setImageResource(
             if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off

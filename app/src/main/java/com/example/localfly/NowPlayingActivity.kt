@@ -23,7 +23,8 @@ class NowPlayingActivity : AppCompatActivity() {
     // Debe coincidir con la URL base de RetrofitClient/ApiConfig (sin la barra final)
     private val serverBaseUrl = ApiConfig.BASE_URL
 
-    private lateinit var ivCover: ImageView
+    private lateinit var ivCircularImage: ImageView
+    private lateinit var ivBlurredBackground: ImageView
     private lateinit var tvTitle: TextView
     private lateinit var tvArtist: TextView
     private lateinit var seekBar: SeekBar
@@ -31,9 +32,10 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var tvTotalTime: TextView
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnLike: ImageButton
-    private lateinit var btnDislike: ImageButton
     private lateinit var btnPrev: ImageButton
     private lateinit var btnNext: ImageButton
+    private lateinit var btnShuffle: ImageButton
+    private lateinit var btnRepeat: ImageButton
 
     private var playbackService: PlaybackService? = null
     private var isBound = false
@@ -66,7 +68,8 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_now_playing)
 
-        ivCover = findViewById(R.id.ivFullCover)
+        ivCircularImage = findViewById(R.id.ivCircularImage)
+        ivBlurredBackground = findViewById(R.id.ivBlurredBackground)
         tvTitle = findViewById(R.id.tvFullTitle)
         tvArtist = findViewById(R.id.tvFullArtist)
         seekBar = findViewById(R.id.seekBarProgress)
@@ -74,18 +77,15 @@ class NowPlayingActivity : AppCompatActivity() {
         tvTotalTime = findViewById(R.id.tvTotalTime)
         btnPlayPause = findViewById(R.id.btnFullPlayPause)
         btnLike = findViewById(R.id.btnFullLike)
-        btnDislike = findViewById(R.id.btnFullDislike)
         btnPrev = findViewById(R.id.btnFullPrev)
         btnNext = findViewById(R.id.btnFullNext)
+        btnShuffle = findViewById(R.id.btnShuffle)
+        btnRepeat = findViewById(R.id.btnRepeat)
 
         findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
 
         btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
         btnLike.setOnClickListener { playbackService?.toggleLike() }
-        btnDislike.setOnClickListener {
-            playbackService?.dislikeCurrentSong()
-            if (playbackService?.currentSong == null) finish()
-        }
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
 
@@ -111,18 +111,32 @@ class NowPlayingActivity : AppCompatActivity() {
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
 
-        if (song.hasCover) {
-            Glide.with(this)
-                .load("$serverBaseUrl/cover/${song.id}")
-                .centerCrop()
-                .into(ivCover)
-        } else {
-            ivCover.setImageDrawable(null)
-        }
+        // Convención de nombres solicitada
+        val artistImageUrl = "$serverBaseUrl/resources/artist - ${song.artist}.jpg"
+        val albumImageUrl = "$serverBaseUrl/resources/album - ${song.album}.jpg"
+
+        // Fondo difuminado (siempre el álbum)
+        Glide.with(this)
+            .load(albumImageUrl)
+            .placeholder(R.drawable.ic_music_placeholder)
+            .centerCrop()
+            .override(100, 100) // Para mejorar rendimiento del blur si fuera local, pero Glide lo maneja
+            .into(ivBlurredBackground)
+
+        // Imagen circular (Artista si tiene, sino Álbum)
+        Glide.with(this)
+            .load(artistImageUrl)
+            .placeholder(R.drawable.ic_music_placeholder)
+            .error(
+                Glide.with(this)
+                    .load(albumImageUrl)
+                    .centerCrop()
+            )
+            .centerCrop()
+            .into(ivCircularImage)
 
         btnLike.setImageResource(
-            if (song.liked) android.R.drawable.btn_star_big_on
-            else android.R.drawable.btn_star_big_off
+            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
 
         val isPlaying = playbackService?.player?.isPlaying == true

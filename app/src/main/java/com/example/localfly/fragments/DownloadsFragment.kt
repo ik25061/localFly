@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -23,6 +24,7 @@ class DownloadsFragment : Fragment() {
     private lateinit var tvStorageInfo: TextView
     private lateinit var swAutoDelete: com.google.android.material.materialswitch.MaterialSwitch
     private lateinit var btnBack: android.widget.ImageButton
+    private lateinit var ivInfo: android.widget.ImageView
     
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
@@ -44,6 +46,7 @@ class DownloadsFragment : Fragment() {
         tvStorageInfo = view.findViewById(R.id.tvStorageInfo)
         swAutoDelete = view.findViewById(R.id.swAutoDelete)
         btnBack = view.findViewById(R.id.btnBack)
+        ivInfo = view.findViewById(R.id.ivInfo)
 
         adapter = DownloadedSongAdapter(
             items = mutableListOf(),
@@ -64,6 +67,10 @@ class DownloadsFragment : Fragment() {
         swAutoDelete.isChecked = sessionManager.isAutoDeleteEnabled()
         swAutoDelete.setOnCheckedChangeListener { _, isChecked ->
             sessionManager.setAutoDeleteEnabled(isChecked)
+        }
+
+        ivInfo.setOnClickListener {
+            Toast.makeText(requireContext(), "Si el toggle está activo la canción se eliminará después de reproducir", Toast.LENGTH_LONG).show()
         }
 
         loadDownloads()

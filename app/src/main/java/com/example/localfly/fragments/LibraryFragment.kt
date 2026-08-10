@@ -26,11 +26,15 @@ class LibraryFragment : Fragment() {
     
     private lateinit var tvSongCountInfo: android.widget.TextView
     private lateinit var btnDownloadAll: com.google.android.material.button.MaterialButton
+    private lateinit var etSearch: android.widget.EditText
     
     private var currentOffset = 0
     private val limit = 100
     private var isLoading = false
     private var hasMore = true
+
+    // Lista completa para búsqueda local si se desea, o para el contador
+    private var fullSongsList: MutableList<Song> = mutableListOf()
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
     private val serverBaseUrl = ApiConfig.BASE_URL
@@ -48,6 +52,7 @@ class LibraryFragment : Fragment() {
         rvSongs = view.findViewById(R.id.rvLibrarySongs)
         tvSongCountInfo = view.findViewById(R.id.tvSongCountInfo)
         btnDownloadAll = view.findViewById(R.id.btnDownloadAll)
+        etSearch = view.findViewById(R.id.etSearch)
 
         // Inicializar adaptador
         adapter = SongAdapter(
@@ -77,26 +82,41 @@ class LibraryFragment : Fragment() {
         rvSongs.adapter = adapter
         
         btnDownloadAll.setOnClickListener {
-            val songsToDownload = adapter.currentSongs().filter { !downloadHelper.isDownloaded(it.id) }
+            val songsToDownload = fullSongsList.filter { !downloadHelper.isDownloaded(it.id) }
             if (songsToDownload.isEmpty()) {
                 Toast.makeText(requireContext(), "Todas las canciones ya están descargadas", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             
             Toast.makeText(requireContext(), "Iniciando descarga de ${songsToDownload.size} canciones...", Toast.LENGTH_SHORT).show()
-            viewLifecycleOwner.lifecycleScope.launch {
+            
+            // Usamos el scope de la actividad para que persista al cambiar de fragmento
+            activity?.lifecycleScope?.launch {
                 var count = 0
                 for (song in songsToDownload) {
                     val audioUrl = "$serverBaseUrl/audio/${song.id}"
                     if (downloadHelper.download(song, audioUrl)) {
                         count++
-                        adapter.refreshDownloadStates()
-                        btnDownloadAll.text = adapter.currentSongs().count { downloadHelper.isDownloaded(it.id) }.toString()
+                        // Si el fragmento sigue visible, refrescamos el contador y la lista
+                        if (isAdded && !isDetached) {
+                            adapter.refreshDownloadStates()
+                            updateDownloadAllButton()
+                        }
                     }
                 }
-                Toast.makeText(requireContext(), "Se descargaron $count canciones", Toast.LENGTH_SHORT).show()
+                if (isAdded && !isDetached) {
+                    Toast.makeText(requireContext(), "Se descargaron $count canciones", Toast.LENGTH_SHORT).show()
+                }
             }
         }
+
+        etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filterSongs(s.toString())
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
 
         rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -105,7 +125,8 @@ class LibraryFragment : Fragment() {
                 val lastVisibleItem = layoutManager.findLastVisibleItemPosition()
                 val totalItemCount = layoutManager.itemCount
 
-                if (!isLoading && hasMore && lastVisibleItem >= totalItemCount - 5) {
+                // Solo cargamos más si no estamos filtrando por búsqueda
+                if (etSearch.text.isNullOrBlank() && !isLoading && hasMore && lastVisibleItem >= totalItemCount - 5) {
                     loadLibrary(isNextPage = true)
                 }
             }
@@ -113,6 +134,24 @@ class LibraryFragment : Fragment() {
 
         // Cargar biblioteca
         loadLibrary()
+    }
+
+    private fun filterSongs(query: String) {
+        if (query.isEmpty()) {
+            adapter.updateSongs(fullSongsList)
+        } else {
+            val filtered = fullSongsList.filter { 
+                it.title.contains(query, ignoreCase = true) || 
+                (it.artist?.contains(query, ignoreCase = true) == true)
+            }
+            adapter.updateSongs(filtered)
+        }
+    }
+
+    private fun updateDownloadAllButton() {
+        val pendingCount = fullSongsList.count { !downloadHelper.isDownloaded(it.id) }
+        btnDownloadAll.text = pendingCount.toString()
+        // Si no hay nada pendiente, ocultamos o cambiamos icono? El usuario dijo "cuantas canciones puedo descargar"
     }
 
     private fun loadLibrary(isNextPage: Boolean = false) {
@@ -129,6 +168,7 @@ class LibraryFragment : Fragment() {
         } else {
             currentOffset = 0
             hasMore = true
+            fullSongsList.clear()
         }
 
         isLoading = true
@@ -146,6 +186,8 @@ class LibraryFragment : Fragment() {
                     val body = response.body()!!
                     val songs = body.songs
                     
+                    fullSongsList.addAll(songs)
+                    
                     if (isNextPage) {
                         adapter.addSongs(songs)
                     } else {
@@ -156,8 +198,8 @@ class LibraryFragment : Fragment() {
                     
                     // Actualizar UI del header
                     val totalCount = body.pagination?.total ?: adapter.itemCount
-                    tvSongCountInfo.text = "$totalCount canciones · Desplázate para cargar más"
-                    btnDownloadAll.text = adapter.currentSongs().count { downloadHelper.isDownloaded(it.id) }.toString()
+                    tvSongCountInfo.text = "$totalCount canciones"
+                    updateDownloadAllButton()
                 } else {
                     Toast.makeText(requireContext(), "Error al cargar biblioteca", Toast.LENGTH_SHORT).show()
                 }

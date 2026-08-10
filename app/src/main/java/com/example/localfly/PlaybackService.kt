@@ -159,7 +159,37 @@ class PlaybackService : Service() {
         val mutablePaths = queueLocalPaths.toMutableList()
         val insertIndex = currentIndex + 1
         mutableQueue.add(insertIndex, song)
-        mutablePaths.add(insertIndex, null) // Por ahora no sabemos la ruta local
+        mutablePaths.add(insertIndex, null)
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        onStateChanged?.invoke()
+    }
+
+    /** Añade una canción al final de la cola actual */
+    fun addToQueue(song: Song) {
+        if (queue.isEmpty()) {
+            playSong(song)
+            return
+        }
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        mutableQueue.add(song)
+        mutablePaths.add(null)
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        onStateChanged?.invoke()
+    }
+
+    /** Añade una lista de canciones al final de la cola actual */
+    fun addListToQueue(songs: List<Song>) {
+        if (queue.isEmpty()) {
+            setQueueAndPlay(songs, 0)
+            return
+        }
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        mutableQueue.addAll(songs)
+        mutablePaths.addAll(List(songs.size) { null })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         onStateChanged?.invoke()

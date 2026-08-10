@@ -60,8 +60,8 @@
     <!-- Botones de Acción -->
     <ImageButton
         android:id="@+id/btnPlayNext"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_media_play"
         android:scaleType="centerInside"
@@ -69,8 +69,8 @@
 
     <ImageButton
         android:id="@+id/btnPlaylistAdd"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_add"
@@ -79,8 +79,8 @@
 
     <ImageButton
         android:id="@+id/btnLike"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_like_off"
@@ -89,8 +89,8 @@
 
     <ImageButton
         android:id="@+id/btnDislike"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_dislike"
@@ -99,18 +99,18 @@
 
     <ImageButton
         android:id="@+id/btnDelete"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_delete"
         android:scaleType="centerInside"
         app:tint="#AAAAAA" />
 
-    <ImageButton
+     <ImageButton
         android:id="@+id/btnDownload"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_download"

@@ -1,62 +1,69 @@
-# Plan de Mejora: Iconos, Descargas Masivas y Paginación
+# Plan de Mejora Visual, Funcional y de Metadatos
 
-Este plan detalla las correcciones para los iconos de "Me gusta", la implementación de descargas masivas en la biblioteca, el sistema de auto-eliminación en descargas y la paginación de la biblioteca.
+Este plan aborda la actualización de la tipografía, la mejora de la lógica de descargas, la habilitación de la búsqueda en la biblioteca y la renovación visual de la pantalla "Reproduciendo ahora" según los nuevos requerimientos.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> El sistema de auto-eliminación de descargas se activará globalmente mediante un toggle en la pantalla de descargas. Se guardará en preferencias para que el `PlaybackService` sepa cuándo borrar el archivo al finalizar la reproducción.
+> Se implementará una nueva lógica de nombres de archivos para portadas y letras basada en el formato solicitado (`artist - [Nombre].jpg`, `album - [Nombre].jpg`, `[Titulo]_[Indice].lrc`). Esto asume que el servidor soporta estos recursos bajo la URL base.
 
 ## Proposed Changes
 
-### 1. Unificación de Iconos de Like
-Se reemplazarán las estrellas por defecto de Android por los iconos `ic_like_on` e `ic_like_off` en toda la aplicación.
+### 1. Tipografía y Estilo Global
+*   Actualizar el tema principal para usar una fuente más delgada (`sans-serif-light`) y moderna.
 
-#### [MODIFY] [MainActivity.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/MainActivity.kt)
-* Actualizar `refreshMiniPlayer` para usar `ic_like_on` e `ic_like_off`.
-
-#### [MODIFY] [PlaybackService.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/PlaybackService.kt)
-* Actualizar `buildNotification` para usar los iconos personalizados si es posible (dependiendo de la compatibilidad de vectores en notificaciones).
+#### [MODIFY] [themes.xml](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/res/values/themes.xml)
+*   Añadir `android:fontFamily="sans-serif-light"` al estilo base.
 
 ---
 
-### 2. Biblioteca: Descarga Masiva y Paginación
+### 2. Biblioteca: Búsqueda y Descargas Mejoradas
+*   Añadir un campo de texto funcional para filtrar canciones.
+*   Corregir el contador de `btnDownloadAll` para mostrar "canciones pendientes" y asegurar que la descarga continúe en segundo plano.
 
 #### [MODIFY] [fragment_library.xml](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/res/layout/fragment_library.xml)
-* Asegurar que el botón `btnDownloadAll` sea funcional y estéticamente correcto.
+*   Integrar un `EditText` dentro de la barra de búsqueda.
 
 #### [MODIFY] [LibraryFragment.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/fragments/LibraryFragment.kt)
-* Implementar `loadMoreLibrary()` al llegar al final del RecyclerView (offset de 100 en 100).
-* Implementar la lógica de `btnDownloadAll`: recorrer la lista actual y descargar las que falten.
-* Actualizar dinámicamente el contador del botón verde.
+*   Implementar filtrado en tiempo real con `TextWatcher`.
+*   Cambiar el alcance de la corrutina de descarga a `activity?.lifecycleScope` para persistencia entre pestañas.
+*   Actualizar contador de descargas pendientes.
 
 ---
 
-### 3. Pantalla de Descargas y Auto-eliminación
-
-#### [MODIFY] [fragment_downloads.xml](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/res/layout/fragment_downloads.xml)
-* Rediseñar el header para incluir:
-    * Botón de retroceso.
-    * Contador de canciones bajo el título.
-    * Barra de herramientas con el **Toggle de Auto-eliminación**.
-    * Información de espacio ocupado (estimado).
+### 3. Descargas: Información y Utilidades
+*   Habilitar el icono de información para explicar el funcionamiento del toggle.
 
 #### [MODIFY] [DownloadsFragment.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/fragments/DownloadsFragment.kt)
-* Gestionar el estado del Toggle y guardarlo en `SharedPreferences`.
+*   Añadir listener a `ivInfo` para mostrar el mensaje: "Si el toggle está activo, la canción se eliminará después de reproducir".
 
-#### [MODIFY] [SessionManager.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/network/SessionManager.kt)
-* Añadir métodos para guardar/leer la preferencia `AUTO_DELETE_ON_FINISH`.
+---
 
-#### [MODIFY] [PlaybackService.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/PlaybackService.kt)
-* En el listener `onPlaybackStateChanged`, cuando el estado sea `STATE_ENDED`, verificar la preferencia. Si es true, llamar a `DownloadManagerHelper.removeDownload(currentSongId)`.
+### 4. Reproductor: Nueva Experiencia Visual y Metadatos
+*   Rediseñar la vista "Reproduciendo ahora" con fondo difuminado y círculo de artista.
+*   Ajustar la carga de recursos según la nueva convención de nombres.
+
+#### [MODIFY] [activity_now_playing.xml](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/res/layout/activity_now_playing.xml)
+*   Cambiar a `ConstraintLayout`.
+*   Añadir `ivBackground` (fondo difuminado).
+*   Añadir `ivArtistCircle` (imagen circular del artista).
+
+#### [MODIFY] [NowPlayingActivity.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/NowPlayingActivity.kt)
+*   Lógica para cargar imagen de artista (`artist - [Name].jpg`) en el círculo.
+*   Lógica para cargar imagen de álbum (`album - [Name].jpg`) en el fondo con efecto blur.
+*   Soporte para letras `.lrc` (preparar UI para mostrar texto si es posible).
+
+#### [MODIFY] [SongAdapter.kt](file:///C:/Users/wolf/StudioProjects/localFly/app/src/main/java/com/example/localfly/SongAdapter.kt)
+*   Actualizar la carga de portadas para seguir el formato `album - [Nombre].jpg` si se requiere.
 
 ## Verification Plan
 
 ### Automated Tests
-* N/A (Cambios principalmente de UI y lógica de flujo).
+* N/A
 
 ### Manual Verification
-1. **Likes:** Comprobar que en la biblioteca y mini player se vea el corazón (`ic_like_on`) al dar like.
-2. **Descarga Masiva:** Pulsar el botón verde de la biblioteca y verificar que se inician las descargas de todas las canciones visibles.
-3. **Paginación:** Hacer scroll hasta abajo en la biblioteca y verificar que cargan más canciones después de la 100.
-4. **Auto-eliminación:** Activar el toggle en Descargas, escuchar una canción descargada hasta el final, y verificar que desaparece de la lista de descargas y del almacenamiento.
+1.  **Tipografía:** Verificar que el texto en toda la app se vea más delgado y limpio.
+2.  **Búsqueda:** Escribir en la barra de búsqueda de la biblioteca y comprobar que la lista se filtra instantáneamente.
+3.  **Descargas:** Iniciar una descarga masiva, cambiar a la pestaña de "Inicio" y volver a "Biblioteca" para comprobar que el contador sigue avanzando.
+4.  **Información:** Pulsar el icono `(i)` en descargas y ver el mensaje explicativo.
+5.  **Reproductor:** Abrir una canción y verificar el fondo difuminado y la foto del artista en el círculo central.
