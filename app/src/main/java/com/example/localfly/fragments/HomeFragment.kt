@@ -55,6 +55,12 @@ class HomeFragment : Fragment() {
         loadData()
 
         // Listeners "Ver todo"
+        binding.tvSeeAllLiked.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, LikedSongsFragment())
+                .addToBackStack(null)
+                .commit()
+        }
         binding.tvSeeAllAlbums.setOnClickListener {
             openSeeAll(CollectionListFragment.Type.ALBUM)
         }
@@ -213,19 +219,16 @@ class HomeFragment : Fragment() {
                     yearAdapter.updateItems(yearsResp.body()!!.items)
                 }
 
-                // 6. Recomendaciones (simuladas)
-                val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 100, offset = 0)
-                if (libraryResp.isSuccessful && libraryResp.body() != null) {
-                    val allSongs = libraryResp.body()!!.songs
-                    val unliked = allSongs.filter { !it.liked }
-                    val shuffled = unliked.shuffled().take(10)
-                    recommendationsAdapter.updateSongs(shuffled)
+                // 6. Recomendaciones con IA
+                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
+                val recommendations = aiManager.getRecommendations()
+                if (isAdded) {
+                    recommendationsAdapter.updateSongs(recommendations)
                 }
 
-                // 7. Resumen mensual (placeholder)
+                // 7. Resumen mensual
                 if (isAdded) {
-                    val count = libraryResp.body()?.songs?.size ?: 0
-                    binding.tvMonthlySummary.text = "Este mes has escuchado $count canciones."
+                    binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
                 }
 
             } catch (e: Exception) {

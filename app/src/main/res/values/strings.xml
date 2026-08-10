@@ -5,4 +5,11 @@
     <string name="dislike_button">No me gusta</string>
     <string name="download_button">Descargar</string>
     <string name="song_menu">Opciones de la canción</string>
+    <!-- Notificación de reproducción -->
+    <string name="notification_like">Me gusta</string>
+    <string name="notification_previous">Anterior</string>
+    <string name="notification_play">Reproducir</string>
+    <string name="notification_pause">Pausar</string>
+    <string name="notification_next">Siguiente</string>
+    <string name="notification_dislike">No me gusta</string>
 </resources>

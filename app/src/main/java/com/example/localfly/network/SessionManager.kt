@@ -98,4 +98,19 @@ class SessionManager(context: Context) {
         pending.remove(songId)
         savePendingDislikes(pending)
     }
+
+    fun saveFavoriteArtists(artistIds: Set<String>) {
+        val json = com.google.gson.Gson().toJson(artistIds)
+        prefs.edit().putString("favorite_artists", json).apply()
+    }
+
+    fun getFavoriteArtists(): Set<String> {
+        val json = prefs.getString("favorite_artists", "[]") ?: "[]"
+        val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type)
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
 }

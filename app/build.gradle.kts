@@ -64,5 +64,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
     implementation("androidx.media:media:1.7.0")
-    // Nota: com.google.android.material ya está incluido en libs.material, no lo dupliques
+    
+    // Google AI (Gemini) SDK
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
 }

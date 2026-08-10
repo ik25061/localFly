@@ -7,15 +7,19 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.view.View
+import android.widget.RemoteViews
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -282,11 +286,23 @@ class PlaybackService : Service() {
         val localPath = queueLocalPaths.getOrNull(currentIndex)
         currentSong = song
 
-        val mediaItem = if (localPath != null) {
-            MediaItem.fromUri(Uri.fromFile(File(localPath)))
-        } else {
-            MediaItem.fromUri("$serverBaseUrl/audio/${song.id}")
+        // Metadatos de la canción para que la tarjeta de medios del sistema,
+        // el panel rápido y la pantalla de bloqueo muestren la información.
+        val metaBuilder = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setAlbumTitle(song.album)
+        if (localPath == null) {
+            metaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${song.id}"))
         }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(
+                if (localPath != null) Uri.fromFile(File(localPath))
+                else Uri.parse("$serverBaseUrl/audio/${song.id}")
+            )
+            .setMediaMetadata(metaBuilder.build())
+            .build()
 
         player?.setMediaItem(mediaItem)
         player?.prepare()
@@ -373,7 +389,7 @@ class PlaybackService : Service() {
     }
 
     @UnstableApi
-    private fun buildNotification(largeIcon: android.graphics.Bitmap? = null): Notification {
+    private fun buildNotification(largeIcon: Bitmap? = null): Notification {
         val song = currentSong
         val isPlaying = player?.isPlaying == true
 
@@ -439,7 +455,75 @@ class PlaybackService : Service() {
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 
+        // Vista personalizada: carátula del álbum como fondo + botones
+        // like, anterior, reproducir/pausar, siguiente y no me gusta.
+        builder.setCustomContentView(buildNotificationSmallView(song, isPlaying, largeIcon))
+        builder.setCustomBigContentView(buildNotificationBigView(song, isPlaying, largeIcon))
+
         return builder.build()
+    }
+
+    /** Construye la vista compacta (plegada) de la notificación. */
+    private fun buildNotificationSmallView(song: Song?, isPlaying: Boolean, art: Bitmap?): RemoteViews {
+        val rv = RemoteViews(packageName, R.layout.notification_small)
+        rv.setTextViewText(R.id.tv_title, song?.title ?: "localFly")
+        rv.setTextViewText(R.id.tv_artist, song?.artist ?: "Música para tus oídos")
+        applyAlbumArt(rv, art)
+
+        bindMediaButton(rv, R.id.btn_like, if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off, "Me gusta", ACTION_LIKE)
+        bindMediaButton(rv, R.id.btn_prev, R.drawable.ic_prev, "Anterior", ACTION_PREV, enabled = hasPrev())
+        bindMediaButton(rv, R.id.btn_play, if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, if (isPlaying) "Pausar" else "Reproducir", ACTION_PLAY_PAUSE)
+        bindMediaButton(rv, R.id.btn_next, R.drawable.ic_next, "Siguiente", ACTION_NEXT, enabled = hasNext())
+        bindMediaButton(rv, R.id.btn_dislike, R.drawable.ic_dislike, "No me gusta", ACTION_DISLIKE)
+        return rv
+    }
+
+    /** Construye la vista expandida de la notificación. */
+    private fun buildNotificationBigView(song: Song?, isPlaying: Boolean, art: Bitmap?): RemoteViews {
+        val rv = RemoteViews(packageName, R.layout.notification_big)
+        rv.setTextViewText(R.id.tv_title, song?.title ?: "localFly")
+        rv.setTextViewText(R.id.tv_artist, song?.artist ?: "Música para tus oídos")
+
+        val album = song?.album
+        if (album.isNullOrBlank()) {
+            rv.setViewVisibility(R.id.tv_album, View.GONE)
+        } else {
+            rv.setTextViewText(R.id.tv_album, album)
+            rv.setViewVisibility(R.id.tv_album, View.VISIBLE)
+        }
+        applyAlbumArt(rv, art)
+
+        bindMediaButton(rv, R.id.btn_like, if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off, "Me gusta", ACTION_LIKE)
+        bindMediaButton(rv, R.id.btn_prev, R.drawable.ic_prev, "Anterior", ACTION_PREV, enabled = hasPrev())
+        bindMediaButton(rv, R.id.btn_play, if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, if (isPlaying) "Pausar" else "Reproducir", ACTION_PLAY_PAUSE)
+        bindMediaButton(rv, R.id.btn_next, R.drawable.ic_next, "Siguiente", ACTION_NEXT, enabled = hasNext())
+        bindMediaButton(rv, R.id.btn_dislike, R.drawable.ic_dislike, "No me gusta", ACTION_DISLIKE)
+        return rv
+    }
+
+    /** Pone la carátula como fondo o un color oscuro si aún no se ha cargado. */
+    private fun applyAlbumArt(rv: RemoteViews, art: Bitmap?) {
+        if (art != null) {
+            rv.setImageViewBitmap(R.id.album_background, art)
+        } else {
+            rv.setInt(R.id.album_background, "setBackgroundColor", 0xFF1B1B1E.toInt())
+        }
+    }
+
+    /** Conecta un botón de la notificación con su acción del servicio. */
+    private fun bindMediaButton(
+        rv: RemoteViews,
+        viewId: Int,
+        iconRes: Int,
+        label: String,
+        action: String,
+        enabled: Boolean = true
+    ) {
+        rv.setImageViewResource(viewId, iconRes)
+        rv.setContentDescription(viewId, label)
+        rv.setOnClickPendingIntent(viewId, pendingIntentFor(action))
+        rv.setBoolean(viewId, "setEnabled", enabled)
+        rv.setFloat(viewId, "setAlpha", if (enabled) 1f else 0.35f)
     }
 
     @UnstableApi
