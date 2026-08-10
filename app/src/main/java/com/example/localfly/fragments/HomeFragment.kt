@@ -54,19 +54,27 @@ class HomeFragment : Fragment() {
         setupAdapters()
         loadData()
 
-        // Listeners "Ver todo" (por ahora solo toast)
+        // Listeners "Ver todo"
         binding.tvSeeAllAlbums.setOnClickListener {
-            Toast.makeText(requireContext(), "Ver todos los álbumes", Toast.LENGTH_SHORT).show()
+            openSeeAll(CollectionListFragment.Type.ALBUM)
         }
         binding.tvSeeAllArtists.setOnClickListener {
-            Toast.makeText(requireContext(), "Ver todos los artistas", Toast.LENGTH_SHORT).show()
+            openSeeAll(CollectionListFragment.Type.ARTIST)
         }
         binding.tvSeeAllGenres.setOnClickListener {
-            Toast.makeText(requireContext(), "Ver todos los géneros", Toast.LENGTH_SHORT).show()
+            openSeeAll(CollectionListFragment.Type.GENRE)
         }
         binding.tvSeeAllYears.setOnClickListener {
-            Toast.makeText(requireContext(), "Ver todos los años", Toast.LENGTH_SHORT).show()
+            openSeeAll(CollectionListFragment.Type.YEAR)
         }
+    }
+
+    private fun openSeeAll(type: CollectionListFragment.Type) {
+        val fragment = CollectionListFragment.newInstance(type)
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     private fun setupGreeting() {
@@ -271,17 +279,27 @@ class HomeFragment : Fragment() {
     }
 
     private fun openCollection(item: Any) {
-        when (item) {
+        val fragment = when (item) {
             is com.example.localfly.network.Album -> {
-                val fragment = AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
-                parentFragmentManager.beginTransaction()
-                    .replace(R.id.container, fragment)
-                    .addToBackStack(null)
-                    .commit()
+                AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             }
-            else -> {
-                Toast.makeText(requireContext(), "Abrir colección: $item", Toast.LENGTH_SHORT).show()
+            is com.example.localfly.network.Artist -> {
+                CollectionDetailFragment.newInstance(item.id, item.name, "ARTIST", item.coverId)
             }
+            is com.example.localfly.network.Genre -> {
+                CollectionDetailFragment.newInstance(item.id, item.name, "GENRE", item.coverId)
+            }
+            is com.example.localfly.network.Year -> {
+                CollectionDetailFragment.newInstance(item.year.toString(), item.year.toString(), "YEAR", item.coverId)
+            }
+            else -> null
+        }
+
+        fragment?.let {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, it)
+                .addToBackStack(null)
+                .commit()
         }
     }
 

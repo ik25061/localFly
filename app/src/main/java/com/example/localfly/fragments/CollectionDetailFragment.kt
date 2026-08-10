@@ -20,13 +20,14 @@ import com.example.localfly.SongAdapter
 import com.example.localfly.network.*
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
+import java.net.URLEncoder
 import java.util.Locale
 
-class AlbumDetailFragment : Fragment() {
+class CollectionDetailFragment : Fragment() {
 
-    private var albumId: String? = null
-    private var albumName: String? = null
-    private var artistName: String? = null
+    private var itemId: String? = null
+    private var itemName: String? = null
+    private var itemType: String? = null
     private var coverId: String? = null
 
     private lateinit var rvSongs: RecyclerView
@@ -36,6 +37,7 @@ class AlbumDetailFragment : Fragment() {
 
     private lateinit var ivCover: ImageView
     private lateinit var tvName: TextView
+    private lateinit var tvType: TextView
     private lateinit var tvInfo: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnDownload: MaterialButton
@@ -45,15 +47,15 @@ class AlbumDetailFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
-            albumId = it.getString(ARG_ALBUM_ID)
-            albumName = it.getString(ARG_ALBUM_NAME)
-            artistName = it.getString(ARG_ARTIST_NAME)
+            itemId = it.getString(ARG_ID)
+            itemName = it.getString(ARG_NAME)
+            itemType = it.getString(ARG_TYPE)
             coverId = it.getString(ARG_COVER_ID)
         }
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        return inflater.inflate(R.layout.fragment_album_detail, container, false)
+        return inflater.inflate(R.layout.fragment_collection_detail, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -61,25 +63,34 @@ class AlbumDetailFragment : Fragment() {
         downloadHelper = DownloadManagerHelper(requireContext())
         sessionManager = SessionManager(requireContext())
 
-        ivCover = view.findViewById(R.id.ivAlbumCover)
-        tvName = view.findViewById(R.id.tvAlbumName)
-        tvInfo = view.findViewById(R.id.tvAlbumInfo)
-        btnPlay = view.findViewById(R.id.btnPlayAlbum)
-        btnDownload = view.findViewById(R.id.btnDownloadAlbum)
-        rvSongs = view.findViewById(R.id.rvAlbumSongs)
+        ivCover = view.findViewById(R.id.ivCollectionCover)
+        tvName = view.findViewById(R.id.tvCollectionName)
+        tvType = view.findViewById(R.id.tvCollectionType)
+        tvInfo = view.findViewById(R.id.tvCollectionInfo)
+        btnPlay = view.findViewById(R.id.btnPlayCollection)
+        btnDownload = view.findViewById(R.id.btnDownloadCollection)
+        rvSongs = view.findViewById(R.id.rvCollectionSongs)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
             parentFragmentManager.popBackStack()
         }
 
-        tvName.text = albumName
+        tvName.text = itemName
+        tvType.text = when (itemType) {
+            "ARTIST" -> "ARTISTA"
+            "GENRE" -> "GÉNERO"
+            "YEAR" -> "AÑO"
+            else -> "COLECCIÓN"
+        }
         
         val serverBaseUrl = ApiConfig.BASE_URL
-        val coverUrl = if (!albumName.isNullOrBlank()) {
-            val encoded = java.net.URLEncoder.encode("album - $albumName.jpg", "UTF-8").replace("+", "%20")
-            "$serverBaseUrl/resources/$encoded"
-        } else {
-            "$serverBaseUrl/cover/$coverId"
+        val coverUrl = when (itemType) {
+            "ARTIST" -> {
+                val encoded = java.net.URLEncoder.encode("artist - $itemName.jpg", "UTF-8").replace("+", "%20")
+                "$serverBaseUrl/resources/$encoded"
+            }
+            "YEAR", "GENRE" -> "$serverBaseUrl/cover/$coverId"
+            else -> "$serverBaseUrl/cover/$coverId"
         }
 
         Glide.with(this)
@@ -94,12 +105,12 @@ class AlbumDetailFragment : Fragment() {
             songs = mutableListOf(),
             serverBaseUrl = serverBaseUrl,
             downloadHelper = downloadHelper,
-            onSongClick = { song, position ->
+            onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity
                 activity?.playbackService?.setQueueAndPlay(currentSongs, position)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
-            onDislikeClick = { song, position -> /* No op for album view maybe? */ },
+            onDislikeClick = { _, _ -> },
             onDownloadClick = { song -> toggleDownload(song) },
             onPlayNextClick = { song ->
                 val activity = requireActivity() as? MainActivity
@@ -130,7 +141,7 @@ class AlbumDetailFragment : Fragment() {
                 return@setOnClickListener
             }
 
-            Toast.makeText(requireContext(), "Descargando álbum...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Descargando...", Toast.LENGTH_SHORT).show()
             activity?.lifecycleScope?.launch {
                 for (song in songsToDownload) {
                     val success = downloadHelper.download(song, "$serverBaseUrl/audio/${song.id}")
@@ -142,14 +153,19 @@ class AlbumDetailFragment : Fragment() {
             }
         }
 
-        loadAlbumSongs()
+        loadSongs()
     }
 
-    private fun loadAlbumSongs() {
-        val id = albumId ?: return
+    private fun loadSongs() {
+        val id = itemId ?: return
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val response = RetrofitClient.api.getAlbumSongs(id, sessionManager.getUserId())
+                val response = when (itemType) {
+                    "ARTIST" -> RetrofitClient.api.getArtistSongs(id, sessionManager.getUserId())
+                    "GENRE" -> RetrofitClient.api.getGenreSongs(id, sessionManager.getUserId())
+                    "YEAR" -> RetrofitClient.api.getYearSongs(id.toInt(), sessionManager.getUserId())
+                    else -> return@launch
+                }
                 if (response.isSuccessful && response.body() != null) {
                     currentSongs = response.body()!!.songs
                     adapter.updateSongs(currentSongs)
@@ -177,9 +193,7 @@ class AlbumDetailFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
-            } catch (e: Exception) {
-                // local feedback only
-            }
+            } catch (e: Exception) {}
         }
     }
 
@@ -197,17 +211,17 @@ class AlbumDetailFragment : Fragment() {
     }
 
     companion object {
-        private const val ARG_ALBUM_ID = "album_id"
-        private const val ARG_ALBUM_NAME = "album_name"
-        private const val ARG_ARTIST_NAME = "artist_name"
+        private const val ARG_ID = "item_id"
+        private const val ARG_NAME = "item_name"
+        private const val ARG_TYPE = "item_type"
         private const val ARG_COVER_ID = "cover_id"
 
-        fun newInstance(id: String, name: String, artist: String?, coverId: String?) =
-            AlbumDetailFragment().apply {
+        fun newInstance(id: String, name: String, type: String, coverId: String?) =
+            CollectionDetailFragment().apply {
                 arguments = Bundle().apply {
-                    putString(ARG_ALBUM_ID, id)
-                    putString(ARG_ALBUM_NAME, name)
-                    putString(ARG_ARTIST_NAME, artist)
+                    putString(ARG_ID, id)
+                    putString(ARG_NAME, name)
+                    putString(ARG_TYPE, type)
                     putString(ARG_COVER_ID, coverId)
                 }
             }

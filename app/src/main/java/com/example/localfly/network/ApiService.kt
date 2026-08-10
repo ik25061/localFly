@@ -71,4 +71,22 @@ interface ApiService {
         @Query("userId") userId: String?
     ): Response<LibraryResponse>
 
+    @GET("api/artists/{id}/songs")
+    suspend fun getArtistSongs(
+        @Path("id") artistId: String,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
+    @GET("api/genres/{id}/songs")
+    suspend fun getGenreSongs(
+        @Path("id") genreId: String,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
+    @GET("api/years/{year}/songs")
+    suspend fun getYearSongs(
+        @Path("year") year: Int,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
 }

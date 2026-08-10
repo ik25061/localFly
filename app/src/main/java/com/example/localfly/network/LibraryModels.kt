@@ -1,5 +1,7 @@
 package com.example.localfly.network
 
+import com.google.gson.annotations.SerializedName
+
 data class Song(
     val id: String,
     val title: String,
@@ -20,6 +22,7 @@ data class Pagination(
     val offset: Int,
     val limit: Int,
     val total: Int,
+    @SerializedName("hasMore")
     val hasMore: Boolean
 )
 
@@ -32,42 +35,41 @@ data class HideRequest(
     val userId: String?
 )
 
-
-
-
-// Para respuestas paginadas de estos endpoints
-data class PaginatedResponse<T>(
-    val items: List<T>,
-    val pagination: Pagination
-)
-
 // --- Nuevos modelos para álbumes, artistas, géneros y años ---
 
 data class Album(
     val id: String,
     val name: String,
     val artist: String?,
+    @SerializedName("cover_id")
     val coverId: String?,
+    @SerializedName("song_count")
     val songCount: Int
 )
 
 data class Artist(
     val id: String,
     val name: String,
+    @SerializedName("cover_id")
     val coverId: String?,
+    @SerializedName("song_count")
     val songCount: Int
 )
 
 data class Genre(
     val id: String,
     val name: String,
+    @SerializedName("cover_id")
     val coverId: String?,
+    @SerializedName("song_count")
     val songCount: Int
 )
 
 data class Year(
     val year: Int,
+    @SerializedName("cover_id")
     val coverId: String?,
+    @SerializedName("song_count")
     val songCount: Int
 )
 
