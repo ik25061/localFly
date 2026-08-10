@@ -66,29 +66,68 @@ class DownloadManagerHelper(context: Context) {
     /**
      * Descarga el audio de la canción. Debe llamarse desde una corrutina
      * (usa Dispatchers.IO internamente, así que no bloquea la interfaz).
+     *
+     * Devuelve `true` solo si el archivo se descargó y guardó correctamente.
+     * Si el servidor responde con error o con un cuerpo vacío/corrupto,
+     * devuelve `false` y no deja ningún archivo a medias ni lo registra
+     * como descargado.
      */
     suspend fun download(song: Song, audioUrl: String): Boolean = withContext(Dispatchers.IO) {
+        var file: File? = null
         try {
-            val request = Request.Builder().url(audioUrl).build()
-            val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext false
+            // .use() cierra siempre la respuesta (y su body), evitando fugas
+            // de conexión cuando se hacen varias descargas.
+            httpClient.newCall(Request.Builder().url(audioUrl).build()).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false
 
-            val file = File(downloadsDir(), "${song.id}.mp3")
-            response.body?.byteStream()?.use { input ->
-                FileOutputStream(file).use { output ->
-                    input.copyTo(output)
+                val body = response.body ?: return@withContext false
+
+                // El servidor sirve tanto MP3 como M4A; guardamos con la
+                // extensión real según el Content-Type para que ExoPlayer
+                // lo reconozca siempre sin problemas.
+                val ext = extensionFor(body.contentType()?.subtype)
+                file = File(downloadsDir(), "${song.id}.$ext")
+
+                body.byteStream().use { input ->
+                    FileOutputStream(file!!).use { output ->
+                        input.copyTo(output)
+                    }
                 }
+
+                // Un audio correcto nunca debe tener 0 bytes; si lo tiene,
+                // borramos el archivo y tratamos la descarga como fallida.
+                if (file!!.length() <= 0L) {
+                    file!!.delete()
+                    return@withContext false
+                }
+
+                val current = getDownloadedSongs().toMutableList()
+                current.removeAll { it.id == song.id }
+                current.add(DownloadedSong(song.id, song.title, song.artist, file!!.absolutePath))
+                prefs.edit().putString("list", gson.toJson(current)).apply()
+
+                true
             }
-
-            val current = getDownloadedSongs().toMutableList()
-            current.removeAll { it.id == song.id }
-            current.add(DownloadedSong(song.id, song.title, song.artist, file.absolutePath))
-            prefs.edit().putString("list", gson.toJson(current)).apply()
-
-            true
         } catch (e: Exception) {
+            // Si algo falla a mitad de la escritura, no dejar un archivo
+            // a medias que luego no se pueda reproducir.
+            try {
+                file?.delete()
+            } catch (_: Exception) {
+            }
             false
         }
+    }
+
+    /** Traduce el Content-Type del servidor a una extensión de archivo. */
+    private fun extensionFor(subtype: String?): String = when (subtype?.trim()?.lowercase()) {
+        "mp3", "mpeg", "mpga" -> "mp3"
+        "mp4", "m4a", "x-m4a", "x-mp4", "aac" -> "m4a"
+        "flac", "x-flac" -> "flac"
+        "ogg", "opus" -> "ogg"
+        "wav", "wave", "x-wav", "vnd.wave" -> "wav"
+        "webm" -> "webm"
+        else -> "mp3"
     }
 
     fun removeDownload(songId: String) {

@@ -14,13 +14,14 @@ import android.widget.SeekBar
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
+import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.Song
 import java.util.Locale
 
 class NowPlayingActivity : AppCompatActivity() {
 
-    // Debe coincidir con la BASE_URL de RetrofitClient (sin la barra final)
-    private val serverBaseUrl = "http://127.0.0.1:5002"
+    // Debe coincidir con la URL base de RetrofitClient/ApiConfig (sin la barra final)
+    private val serverBaseUrl = ApiConfig.BASE_URL
 
     private lateinit var ivCover: ImageView
     private lateinit var tvTitle: TextView

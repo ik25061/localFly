@@ -18,16 +18,24 @@ class SongAdapter(
     private val onSongClick: (Song, Int) -> Unit,
     private val onLikeClick: (Song, Int) -> Unit,
     private val onDislikeClick: (Song, Int) -> Unit,
-    private val onDownloadClick: (Song) -> Unit
+    private val onDownloadClick: (Song) -> Unit,
+    private val onDeleteClick: ((Song, Int) -> Unit)? = null,
+    private val onPlayNextClick: ((Song) -> Unit)? = null,
+    private val onPlaylistAddClick: ((Song) -> Unit)? = null
 ) : RecyclerView.Adapter<SongAdapter.SongViewHolder>() {
 
     class SongViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val tvIndex: TextView = view.findViewById(R.id.tvSongIndex)
         val ivCover: ImageView = view.findViewById(R.id.ivCover)
         val tvTitle: TextView = view.findViewById(R.id.tvSongTitle)
         val tvArtist: TextView = view.findViewById(R.id.tvSongArtist)
+        val btnPlayNext: ImageButton = view.findViewById(R.id.btnPlayNext)
+        val btnPlaylistAdd: ImageButton = view.findViewById(R.id.btnPlaylistAdd)
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
+        val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
         val btnDownload: ImageButton = view.findViewById(R.id.btnDownload)
+        val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
@@ -38,8 +46,10 @@ class SongAdapter(
 
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
         val song = songs[position]
+        holder.tvIndex.text = (position + 1).toString()
         holder.tvTitle.text = toTitleCase(song.title)
         holder.tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
+        holder.tvDuration.text = formatDuration(song.duration)
 
         // Like
         holder.btnLike.setImageResource(
@@ -47,37 +57,45 @@ class SongAdapter(
         )
         holder.btnLike.setOnClickListener { onLikeClick(song, holder.bindingAdapterPosition) }
 
-
-
         // Dislike
         holder.btnDislike.setOnClickListener { onDislikeClick(song, holder.bindingAdapterPosition) }
 
         // Download
-        val alreadyDownloaded = downloadHelper.isDownloaded(song.id)
         holder.btnDownload.setImageResource(
-            if (alreadyDownloaded) R.drawable.ic_downloaded else R.drawable.ic_download
+            if (downloadHelper.isDownloaded(song.id)) R.drawable.ic_downloaded else R.drawable.ic_download
         )
-        holder.btnDownload.setOnClickListener {
-            if (!downloadHelper.isDownloaded(song.id)) {
-                onDownloadClick(song)
-            } else {
-                // Opcional: mostrar mensaje de que ya está descargada
-                // Toast.makeText(holder.itemView.context, "Ya descargada", Toast.LENGTH_SHORT).show()
-            }
-        }
+        holder.btnDownload.setOnClickListener { onDownloadClick(song) }
+
+        // Delete
+        holder.btnDelete.setOnClickListener { onDeleteClick?.invoke(song, holder.bindingAdapterPosition) }
+
+        // Play Next
+        holder.btnPlayNext.setOnClickListener { onPlayNextClick?.invoke(song) }
+
+        // Add to Playlist
+        holder.btnPlaylistAdd.setOnClickListener { onPlaylistAddClick?.invoke(song) }
 
         // Cover
         if (song.hasCover) {
             Glide.with(holder.itemView.context)
                 .load("$serverBaseUrl/cover/${song.id}")
+                .placeholder(R.drawable.ic_music_placeholder)
                 .centerCrop()
                 .into(holder.ivCover)
         } else {
-            holder.ivCover.setImageDrawable(null)
+            holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
         }
 
         // Click en el ítem
         holder.itemView.setOnClickListener { onSongClick(song, holder.bindingAdapterPosition) }
+    }
+
+    private fun formatDuration(durationSeconds: Double?): String {
+        if (durationSeconds == null) return "--:--"
+        val totalSeconds = durationSeconds.toInt()
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
 
     override fun getItemCount(): Int = songs.size

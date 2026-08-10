@@ -6,14 +6,17 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
 import com.example.localfly.network.Song
 
 class LikedSongsAdapter(
     private var songs: MutableList<Song>,
+    private val downloadHelper: DownloadManagerHelper,
     private val onLikeClick: (Song) -> Unit,
     private val onDislikeClick: (Song) -> Unit,
-    private val onItemClick: (Song) -> Unit
+    private val onItemClick: (Song) -> Unit,
+    private val onDownloadClick: (Song) -> Unit
 ) : RecyclerView.Adapter<LikedSongsAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -21,6 +24,7 @@ class LikedSongsAdapter(
         val tvArtist: TextView = view.findViewById(R.id.tvSongArtist)
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
+        val btnDownload: ImageButton = view.findViewById(R.id.btnDownload)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -39,6 +43,10 @@ class LikedSongsAdapter(
         )
         holder.btnLike.setOnClickListener { onLikeClick(song) }
         holder.btnDislike.setOnClickListener { onDislikeClick(song) }
+        holder.btnDownload.setImageResource(
+            if (downloadHelper.isDownloaded(song.id)) R.drawable.ic_downloaded else R.drawable.ic_download
+        )
+        holder.btnDownload.setOnClickListener { onDownloadClick(song) }
         holder.itemView.setOnClickListener { onItemClick(song) }
     }
 
@@ -47,6 +55,11 @@ class LikedSongsAdapter(
     fun updateSongs(newSongs: List<Song>) {
         songs.clear()
         songs.addAll(newSongs)
+        notifyDataSetChanged()
+    }
+
+    /** Refresca los iconos de descarga tras descargar/borrar una canción. */
+    fun refreshDownloadStates() {
         notifyDataSetChanged()
     }
 }

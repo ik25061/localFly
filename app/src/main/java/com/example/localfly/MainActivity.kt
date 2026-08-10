@@ -39,15 +39,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnMiniLike: ImageButton
     private lateinit var btnMiniDislike: ImageButton
-    private lateinit var btnPrev: ImageButton
+    private var btnPrev: ImageButton? = null
     private lateinit var btnNext: ImageButton
 
     var playbackService: PlaybackService? = null
         private set
     private var isBound = false
 
-    // Base URL del servidor (debe coincidir con RetrofitClient)
-    private val serverBaseUrl = "http://127.0.0.1:5002"
+    // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
+    private val serverBaseUrl = ApiConfig.BASE_URL
 
     // ===== SERVICE CONNECTION =====
     private val connection = object : ServiceConnection {
@@ -100,7 +100,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
         btnMiniLike.setOnClickListener { playbackService?.toggleLike() }
         btnMiniDislike.setOnClickListener { playbackService?.dislikeCurrentSong() }
-        btnPrev.setOnClickListener { playbackService?.prev() }
+        btnPrev?.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
 
         // ===== CONFIGURAR ADAPTADOR =====
@@ -115,7 +115,10 @@ class MainActivity : AppCompatActivity() {
             },
             onLikeClick = { song, position -> toggleLikeInLibrary(song, position) },
             onDislikeClick = { song, position -> hideSongInLibrary(song, position) },
-            onDownloadClick = { song -> downloadSong(song) }
+            onDownloadClick = { song -> toggleDownload(song) },
+            onDeleteClick = { song, position -> hideSongInLibrary(song, position) },
+            onPlayNextClick = { song -> playbackService?.playNext(song) },
+            onPlaylistAddClick = { song -> /* logic here */ }
         )
 
         // Aquí debes asignar el adaptador a tu RecyclerView (rvSongs)
@@ -180,16 +183,18 @@ class MainActivity : AppCompatActivity() {
         if (song.hasCover) {
             Glide.with(this)
                 .load("$serverBaseUrl/cover/${song.id}")
+                .placeholder(R.drawable.ic_music_placeholder)
                 .centerCrop()
                 .into(ivMiniCover)
         } else {
-            ivMiniCover.setImageDrawable(null)
+            ivMiniCover.setImageResource(R.drawable.ic_music_placeholder)
         }
 
         btnMiniLike.setImageResource(
-            if (song.liked) android.R.drawable.btn_star_big_on
-            else android.R.drawable.btn_star_big_off
+            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
+        
+        btnMiniDislike.setImageResource(R.drawable.ic_dislike)
 
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(
@@ -197,22 +202,28 @@ class MainActivity : AppCompatActivity() {
             else android.R.drawable.ic_media_play
         )
 
-        btnPrev.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
+        btnPrev?.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
     }
 
     // ===== DESCARGA =====
-    private fun downloadSong(song: Song) {
-        Toast.makeText(this, "Descargando \"${song.title}\"...", Toast.LENGTH_SHORT).show()
-        lifecycleScope.launch {
-            val audioUrl = "$serverBaseUrl/audio/${song.id}"
-            val success = downloadHelper.download(song, audioUrl)
-            if (success) {
-                Toast.makeText(this@MainActivity, "Descarga completa", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this@MainActivity, "Error al descargar", Toast.LENGTH_SHORT).show()
-            }
+    private fun toggleDownload(song: Song) {
+        if (downloadHelper.isDownloaded(song.id)) {
+            downloadHelper.removeDownload(song.id)
+            Toast.makeText(this, "Descarga eliminada", Toast.LENGTH_SHORT).show()
             adapter.refreshDownloadStates()
+        } else {
+            Toast.makeText(this, "Descargando \"${song.title}\"...", Toast.LENGTH_SHORT).show()
+            lifecycleScope.launch {
+                val audioUrl = "$serverBaseUrl/audio/${song.id}"
+                val success = downloadHelper.download(song, audioUrl)
+                if (success) {
+                    Toast.makeText(this@MainActivity, "Descarga completa", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Error al descargar", Toast.LENGTH_SHORT).show()
+                }
+                adapter.refreshDownloadStates()
+            }
         }
     }
 

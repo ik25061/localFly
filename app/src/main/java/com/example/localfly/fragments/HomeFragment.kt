@@ -8,10 +8,12 @@ import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
 import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
 import com.example.localfly.databinding.FragmentHomeBinding
+import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
@@ -24,6 +26,10 @@ class HomeFragment : Fragment() {
     private val binding get() = _binding!!
 
     private lateinit var sessionManager: SessionManager
+    private lateinit var downloadHelper: DownloadManagerHelper
+
+    // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
+    private val serverBaseUrl = ApiConfig.BASE_URL
 
     // Adaptadores
     private lateinit var likedAdapter: LikedSongsAdapter
@@ -41,6 +47,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         sessionManager = SessionManager(requireContext())
+        downloadHelper = DownloadManagerHelper(requireContext())
 
         setupGreeting()
         setupAdapters()
@@ -76,9 +83,11 @@ class HomeFragment : Fragment() {
         // Canciones que me gustan
         likedAdapter = LikedSongsAdapter(
             mutableListOf(),
+            downloadHelper,
             onLikeClick = { song -> toggleLike(song) },
             onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> playSong(song) }
+            onItemClick = { song -> playSong(song) },
+            onDownloadClick = { song -> toggleDownload(song) }
         )
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
@@ -118,9 +127,11 @@ class HomeFragment : Fragment() {
         // Recomendaciones
         recommendationsAdapter = LikedSongsAdapter(
             mutableListOf(),
+            downloadHelper,
             onLikeClick = { song -> toggleLike(song) },
             onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> playSong(song) }
+            onItemClick = { song -> playSong(song) },
+            onDownloadClick = { song -> toggleDownload(song) }
         )
         binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
         binding.rvRecommendations.adapter = recommendationsAdapter
@@ -206,6 +217,39 @@ class HomeFragment : Fragment() {
     private fun playSong(song: Song) {
         // Iniciar reproducción (usar PlaybackService)
         Toast.makeText(requireContext(), "Reproducir: ${song.title}", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Descarga la canción si no está descargada; si ya lo está, la elimina. */
+    private fun toggleDownload(song: Song) {
+        if (downloadHelper.isDownloaded(song.id)) {
+            downloadHelper.removeDownload(song.id)
+            Toast.makeText(requireContext(), "Descarga eliminada", Toast.LENGTH_SHORT).show()
+            refreshDownloadStates()
+        } else {
+            Toast.makeText(requireContext(), "Descargando \"${song.title}\"...", Toast.LENGTH_SHORT).show()
+            viewLifecycleOwner.lifecycleScope.launch {
+                val audioUrl = "$serverBaseUrl/audio/${song.id}"
+                val success = downloadHelper.download(song, audioUrl)
+                if (success) {
+                    Toast.makeText(requireContext(), "Descarga completa", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "Error al descargar", Toast.LENGTH_SHORT).show()
+                }
+                refreshDownloadStates()
+            }
+        }
+    }
+
+    /** Refresca el icono de descarga de las listas visibles. */
+    private fun refreshDownloadStates() {
+        if (::likedAdapter.isInitialized) likedAdapter.refreshDownloadStates()
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.refreshDownloadStates()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Refresca por si se descargó/borró una canción desde otra pantalla
+        refreshDownloadStates()
     }
 
     private fun openCollection(item: Any) {

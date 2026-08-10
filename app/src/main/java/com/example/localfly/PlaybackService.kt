@@ -18,6 +18,7 @@ import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.RetrofitClient
@@ -56,7 +57,7 @@ class PlaybackService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Base usada solo para transmitir canciones que NO están descargadas
-    private val serverBaseUrl = "http://127.0.0.1:5002"
+    private val serverBaseUrl = ApiConfig.BASE_URL
 
     var player: ExoPlayer? = null
         private set
@@ -134,6 +135,22 @@ class PlaybackService : Service() {
     /** Atajo para reproducir una sola canción (la convierte en cola de tamaño 1) */
     fun playSong(song: Song, localFilePath: String? = null) {
         setQueueAndPlay(listOf(song), 0, listOf(localFilePath))
+    }
+
+    /** Inserta una canción justo después de la actual en la cola */
+    fun playNext(song: Song) {
+        if (queue.isEmpty()) {
+            playSong(song)
+            return
+        }
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        val insertIndex = currentIndex + 1
+        mutableQueue.add(insertIndex, song)
+        mutablePaths.add(insertIndex, null) // Por ahora no sabemos la ruta local
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        onStateChanged?.invoke()
     }
 
     fun next() {
@@ -265,8 +282,8 @@ class PlaybackService : Service() {
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
             .addAction(
-                if (song?.liked == true) android.R.drawable.btn_star_big_on
-                else android.R.drawable.btn_star_big_off,
+                if (song?.liked == true) R.drawable.ic_like_on
+                else R.drawable.ic_like_off,
                 "Me gusta",
                 pendingIntentFor(ACTION_LIKE)
             )

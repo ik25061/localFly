@@ -1,25 +1,143 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#121212"
+    android:background="#000000"
     android:padding="8dp">
 
-    <TextView
+    <!-- Header -->
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Biblioteca"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        android:padding="12dp"
-        android:paddingStart="16dp" />
+        android:paddingHorizontal="8dp"
+        android:layout_marginTop="8dp">
+
+        <TextView
+            android:id="@+id/tvLibraryTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Biblioteca"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_centerVertical="true" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDownloadAll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="100"
+                android:textColor="#000000"
+                app:icon="@drawable/ic_download"
+                app:iconTint="#000000"
+                app:backgroundTint="#1DB954"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:cornerRadius="20dp"
+                android:textAllCaps="false" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRescan"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Rescanear"
+                android:textColor="#FFFFFF"
+                app:icon="@drawable/ic_sparkles"
+                app:backgroundTint="#333333"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                app:cornerRadius="20dp"
+                android:textAllCaps="false" />
+
+        </LinearLayout>
+    </RelativeLayout>
+
+    <!-- Search Bar -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        app:cardBackgroundColor="#222222"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:src="@android:drawable/ic_menu_search"
+                app:tint="#888888" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Buscar en tu biblioteca"
+                android:textColor="#888888"
+                android:textSize="14sp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Info Bar -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="12dp"
+        android:layout_marginBottom="4dp">
+
+        <TextView
+            android:id="@+id/tvSongCountInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="100 canciones · Desplázate para cargar más"
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:layout_centerVertical="true" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Ordenar: "
+                android:textColor="#888888"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Agregado"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:padding="4dp"
+                android:background="#333333" />
+        </LinearLayout>
+    </RelativeLayout>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvLibrarySongs"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:padding="4dp" />
+        android:padding="0dp"
+        android:background="#121212" />
 
 </LinearLayout>

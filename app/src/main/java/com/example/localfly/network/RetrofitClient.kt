@@ -8,16 +8,9 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // IMPORTANTE: cambia esta IP por la IP local de tu servidor mirepo.
-    //
-    // - Si pruebas en el EMULADOR de Android Studio y el servidor corre
-    //   en tu propio PC: usa "http://10.0.2.2:5002/" (10.0.2.2 apunta al
-    //   localhost de tu PC desde el emulador)
-    //
-    // - Si pruebas en un TELÉFONO FÍSICO conectado a la misma red WiFi
-    //   que tu servidor: usa la IP local de tu PC, ej "http://192.168.1.50:5002/"
-    //   (mira tu IP con `ipconfig` en Windows o `ip a` en Linux)
-    private const val BASE_URL = "http://127.0.0.1:5002/"
+    // IMPORTANTE: la URL base se lee de ApiConfig. Si necesitas cambiarla,
+    // edita ApiConfig.BASE_URL (IP local del servidor mirepo).
+    private const val BASE_URL = "${ApiConfig.BASE_URL}/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
