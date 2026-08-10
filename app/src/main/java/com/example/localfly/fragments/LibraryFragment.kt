@@ -74,7 +74,9 @@ class LibraryFragment : Fragment() {
                 activity?.playbackService?.playNext(song)
             },
             onPlaylistAddClick = { song ->
-                Toast.makeText(requireContext(), "Añadir a playlist: ${song.title}", Toast.LENGTH_SHORT).show()
+                val activity = requireActivity() as? MainActivity
+                activity?.playbackService?.addToQueue(song)
+                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
             }
         )
 

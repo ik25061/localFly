@@ -34,28 +34,32 @@ interface ApiService {
     suspend fun getAlbums(
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("search") search: String? = null
     ): Response<AlbumsResponse>
 
     @GET("api/artists")
     suspend fun getArtists(
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("search") search: String? = null
     ): Response<ArtistsResponse>
 
     @GET("api/genres")
     suspend fun getGenres(
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("search") search: String? = null
     ): Response<GenresResponse>
 
     @GET("api/years")
     suspend fun getYears(
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
-        @Query("offset") offset: Int = 0
+        @Query("offset") offset: Int = 0,
+        @Query("search") search: String? = null
     ): Response<YearsResponse>
 
     @GET("api/liked-songs")

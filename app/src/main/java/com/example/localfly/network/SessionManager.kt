@@ -42,4 +42,60 @@ class SessionManager(context: Context) {
     }
 
     fun isAutoDeleteEnabled(): Boolean = prefs.getBoolean("auto_delete_on_finish", false)
+
+    // --- Soporte Offline para Like/Dislike ---
+
+    fun addPendingLike(songId: String, liked: Boolean) {
+        val pending = getPendingLikes().toMutableMap()
+        pending[songId] = liked
+        savePendingLikes(pending)
+    }
+
+    fun getPendingLikes(): Map<String, Boolean> {
+        val json = prefs.getString("pending_likes", "{}") ?: "{}"
+        val type = object : com.google.gson.reflect.TypeToken<Map<String, Boolean>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type)
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    private fun savePendingLikes(likes: Map<String, Boolean>) {
+        val json = com.google.gson.Gson().toJson(likes)
+        prefs.edit().putString("pending_likes", json).apply()
+    }
+
+    fun removePendingLike(songId: String) {
+        val pending = getPendingLikes().toMutableMap()
+        pending.remove(songId)
+        savePendingLikes(pending)
+    }
+
+    fun addPendingDislike(songId: String) {
+        val pending = getPendingDislikes().toMutableSet()
+        pending.add(songId)
+        savePendingDislikes(pending)
+    }
+
+    fun getPendingDislikes(): Set<String> {
+        val json = prefs.getString("pending_dislikes", "[]") ?: "[]"
+        val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type)
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun savePendingDislikes(dislikes: Set<String>) {
+        val json = com.google.gson.Gson().toJson(dislikes)
+        prefs.edit().putString("pending_dislikes", json).apply()
+    }
+
+    fun removePendingDislike(songId: String) {
+        val pending = getPendingDislikes().toMutableSet()
+        pending.remove(songId)
+        savePendingDislikes(pending)
+    }
 }

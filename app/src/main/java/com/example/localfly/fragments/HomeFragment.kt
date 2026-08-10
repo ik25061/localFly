@@ -108,7 +108,8 @@ class HomeFragment : Fragment() {
             onAddToQueueClick = { song ->
                 activity?.playbackService?.addToQueue(song)
                 Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
-            }
+            },
+            onDeleteClick = { song -> removeSongFromHome(song) }
         )
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
@@ -162,7 +163,8 @@ class HomeFragment : Fragment() {
             onAddToQueueClick = { song ->
                 activity?.playbackService?.addToQueue(song)
                 Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
-            }
+            },
+            onDeleteClick = { song -> removeSongFromHome(song) }
         )
         binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
         binding.rvRecommendations.adapter = recommendationsAdapter
@@ -264,6 +266,13 @@ class HomeFragment : Fragment() {
                 refreshDownloadStates()
             }
         }
+    }
+
+    /** Elimina la canción de la lista del Home (si aparece en alguna). */
+    private fun removeSongFromHome(song: Song) {
+        if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+        Toast.makeText(requireContext(), "Canción eliminada de la lista", Toast.LENGTH_SHORT).show()
     }
 
     /** Refresca el icono de descarga de las listas visibles. */

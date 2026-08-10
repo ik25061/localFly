@@ -20,8 +20,9 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
 import com.example.localfly.adapters.CollectionAdapter
 import com.example.localfly.network.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.Normalizer
 
 class CollectionListFragment : Fragment() {
 
@@ -93,14 +94,71 @@ class CollectionListFragment : Fragment() {
         rvCollections.adapter = adapter
     }
 
+    private var searchJob: Job? = null
+
     private fun setupSearch() {
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                filter(s.toString())
+                searchServer(s.toString())
             }
             override fun afterTextChanged(s: Editable?) {}
         })
+    }
+
+    /**
+     * Busca en el servidor, es decir en TODA la base de datos y no solo en los
+     * elementos ya cargados. Los endpoints /api/artists, /api/albums, /api/genres
+     * y /api/years aceptan ?search=...; con la query vacía se devuelven todos.
+     */
+    private fun searchServer(query: String) {
+        searchJob?.cancel()
+        val normalized = query.trim()
+        searchJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(300) // debounce mientras se escribe
+            try {
+                val response = when (type) {
+                    Type.ALBUM -> RetrofitClient.api.getAlbums(
+                        userId = sessionManager.getUserId(),
+                        limit = 1000,
+                        search = normalized.ifBlank { null }
+                    )
+                    Type.ARTIST -> RetrofitClient.api.getArtists(
+                        // Sin userId: el servidor devuelve TODOS los artistas de la base de datos
+                        userId = null,
+                        limit = 1000,
+                        search = normalized.ifBlank { null }
+                    )
+                    Type.GENRE -> RetrofitClient.api.getGenres(
+                        userId = sessionManager.getUserId(),
+                        limit = 1000,
+                        search = normalized.ifBlank { null }
+                    )
+                    Type.YEAR -> RetrofitClient.api.getYears(
+                        userId = sessionManager.getUserId(),
+                        limit = 1000,
+                        search = normalized.ifBlank { null }
+                    )
+                }
+
+                if (response.isSuccessful && response.body() != null) {
+                    val body = response.body()!!
+                    originalItems = when (body) {
+                        is AlbumsResponse -> body.items
+                        is ArtistsResponse -> body.items
+                        is GenresResponse -> body.items
+                        is YearsResponse -> body.items
+                        else -> emptyList()
+                    }
+                    displayedItems = originalItems
+                    sortItems(spinnerSort.selectedItemPosition)
+                }
+            } catch (e: Exception) {
+                if (isAdded) {
+                    Toast.makeText(requireContext(), "Error al buscar: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     private fun setupSort() {
@@ -118,51 +176,7 @@ class CollectionListFragment : Fragment() {
     }
 
     private fun loadData() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                val userId = sessionManager.getUserId()
-                val response = when (type) {
-                    Type.ALBUM -> RetrofitClient.api.getAlbums(userId, limit = 1000)
-                    Type.ARTIST -> RetrofitClient.api.getArtists(userId, limit = 1000)
-                    Type.GENRE -> RetrofitClient.api.getGenres(userId, limit = 1000)
-                    Type.YEAR -> RetrofitClient.api.getYears(userId, limit = 1000)
-                }
-
-                if (response.isSuccessful && response.body() != null) {
-                    val body = response.body()!!
-                    originalItems = when (body) {
-                        is AlbumsResponse -> body.items
-                        is ArtistsResponse -> body.items
-                        is GenresResponse -> body.items
-                        is YearsResponse -> body.items
-                        else -> emptyList()
-                    }
-                    displayedItems = originalItems
-                    sortItems(spinnerSort.selectedItemPosition)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun filter(query: String) {
-        val normalizedQuery = query.removeAccents().lowercase()
-        displayedItems = if (normalizedQuery.isEmpty()) {
-            originalItems
-        } else {
-            originalItems.filter { item ->
-                val name = when (item) {
-                    is Album -> item.name
-                    is Artist -> item.name
-                    is Genre -> item.name
-                    is Year -> item.year.toString()
-                    else -> ""
-                }
-                name.removeAccents().lowercase().contains(normalizedQuery)
-            }
-        }
-        sortItems(spinnerSort.selectedItemPosition)
+        searchServer("")
     }
 
     private fun sortItems(position: Int) {
@@ -203,11 +217,6 @@ class CollectionListFragment : Fragment() {
             .replace(R.id.container, fragment)
             .addToBackStack(null)
             .commit()
-    }
-
-    private fun String.removeAccents(): String {
-        return Normalizer.normalize(this, Normalizer.Form.NFD)
-            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
     }
 
     companion object {

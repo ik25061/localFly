@@ -17,7 +17,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.media.app.NotificationCompat as MediaNotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaSession
+import com.bumptech.glide.Glide
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
@@ -27,7 +30,9 @@ import com.example.localfly.network.Song
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -61,6 +66,8 @@ class PlaybackService : Service() {
 
     var player: ExoPlayer? = null
         private set
+
+    private var mediaSession: MediaSession? = null
 
     var currentSong: Song? = null
         private set
@@ -98,6 +105,58 @@ class PlaybackService : Service() {
                 }
             }
         })
+
+        mediaSession = MediaSession.Builder(this, player!!).build()
+
+        // Sincronizar acciones offline al iniciar
+        syncOfflineActions()
+    }
+
+    private fun syncOfflineActions() {
+        serviceScope.launch(Dispatchers.IO) {
+            // Intentar sincronizar cada 30 segundos si hay pendientes
+            while (true) {
+                val pendingLikes = sessionManager.getPendingLikes()
+                val pendingDislikes = sessionManager.getPendingDislikes()
+
+                if (pendingLikes.isEmpty() && pendingDislikes.isEmpty()) {
+                    delay(60000) // Esperar un minuto si no hay nada
+                    continue
+                }
+
+                // Sincronizar Likes
+                pendingLikes.forEach { (songId, liked) ->
+                    try {
+                        val response = RetrofitClient.api.likeSong(
+                            songId,
+                            LikeRequest(sessionManager.getUserId(), liked)
+                        )
+                        if (response.isSuccessful) {
+                            sessionManager.removePendingLike(songId)
+                        }
+                    } catch (e: Exception) {
+                        // Seguir intentando más tarde
+                    }
+                }
+
+                // Sincronizar Dislikes
+                pendingDislikes.forEach { songId ->
+                    try {
+                        val response = RetrofitClient.api.hideSong(
+                            songId,
+                            HideRequest(sessionManager.getUserId())
+                        )
+                        if (response.isSuccessful) {
+                            sessionManager.removePendingDislike(songId)
+                        }
+                    } catch (e: Exception) {
+                        // Seguir intentando más tarde
+                    }
+                }
+
+                delay(30000)
+            }
+        }
     }
 
     private fun checkAutoDelete() {
@@ -251,12 +310,16 @@ class PlaybackService : Service() {
 
         serviceScope.launch {
             try {
-                RetrofitClient.api.likeSong(
+                val response = RetrofitClient.api.likeSong(
                     song.id,
                     LikeRequest(sessionManager.getUserId(), newLiked)
                 )
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingLike(song.id, newLiked)
+                }
             } catch (e: Exception) {
-                // Sin conexión: el like queda solo reflejado localmente por ahora
+                // Sin conexión: guardar para después
+                sessionManager.addPendingLike(song.id, newLiked)
             }
         }
     }
@@ -267,9 +330,13 @@ class PlaybackService : Service() {
 
         serviceScope.launch {
             try {
-                RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
+                val response = RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingDislike(song.id)
+                }
             } catch (e: Exception) {
-                // Sin conexión: se podrá reintentar más adelante
+                // Sin conexión: guardar para después
+                sessionManager.addPendingDislike(song.id)
             }
         }
 
@@ -305,6 +372,7 @@ class PlaybackService : Service() {
         )
     }
 
+    @UnstableApi
     private fun buildNotification(): Notification {
         val song = currentSong
         val isPlaying = player?.isPlaying == true
@@ -316,38 +384,62 @@ class PlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(song?.title ?: "Mirepo")
-            .setContentText(song?.artist ?: "")
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_sparkles) // Icono de la app en la barra
+            .setContentTitle(song?.title ?: "localFly")
+            .setContentText(song?.artist ?: "Música para tus oídos")
             .setContentIntent(contentIntent)
             .setOngoing(isPlaying)
             .setOnlyAlertOnce(true)
-            .addAction(
-                if (song?.liked == true) R.drawable.ic_like_on
-                else R.drawable.ic_like_off,
-                "Me gusta",
-                pendingIntentFor(ACTION_LIKE)
-            )
-            .addAction(
-                if (isPlaying) android.R.drawable.ic_media_pause
-                else android.R.drawable.ic_media_play,
-                "Reproducir/Pausar",
-                pendingIntentFor(ACTION_PLAY_PAUSE)
-            )
-            .addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
-                "No me gusta",
-                pendingIntentFor(ACTION_DISLIKE)
-            )
-            .setStyle(
-                MediaNotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+
+        // Botón Like
+        builder.addAction(
+            if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off,
+            "Me gusta",
+            pendingIntentFor(ACTION_LIKE)
+        )
+
+        // Botón Anterior
+        builder.addAction(
+            android.R.drawable.ic_media_previous,
+            "Anterior",
+            pendingIntentFor(ACTION_PREV)
+        )
+
+        // Botón Play/Pausa
+        builder.addAction(
+            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+            if (isPlaying) "Pausar" else "Reproducir",
+            pendingIntentFor(ACTION_PLAY_PAUSE)
+        )
+
+        // Botón Siguiente
+        builder.addAction(
+            android.R.drawable.ic_media_next,
+            "Siguiente",
+            pendingIntentFor(ACTION_NEXT)
+        )
+
+        // Botón No me gusta (Ocultar)
+        builder.addAction(
+            R.drawable.ic_dislike,
+            "No me gusta",
+            pendingIntentFor(ACTION_DISLIKE)
+        )
+
+        // Estilo Media
+        builder.setStyle(
+            MediaNotificationCompat.MediaStyle()
+                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente
+                .setMediaSession(mediaSession?.sessionCompatToken)
+        )
+
+        return builder.build()
     }
 
+    @UnstableApi
     private fun updateNotification() {
         val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ActivityCompat.checkSelfPermission(
@@ -356,7 +448,50 @@ class PlaybackService : Service() {
                 ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
+            val notification = buildNotification()
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+
+            // Cargar portada en background y actualizar si existe
+            loadLargeIcon()
+        }
+    }
+
+    @UnstableApi
+    private fun loadLargeIcon() {
+        val song = currentSong ?: return
+        serviceScope.launch {
+            val coverUrl = if (!song.album.isNullOrBlank()) {
+                "$serverBaseUrl/resources/album - ${song.album}.jpg"
+            } else {
+                "$serverBaseUrl/cover/${song.id}"
+            }
+
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    Glide.with(this@PlaybackService)
+                        .asBitmap()
+                        .load(coverUrl)
+                        .submit(256, 256)
+                        .get()
+                }
+
+                val notification = buildNotification()
+                val updatedNotification = NotificationCompat.Builder(this@PlaybackService, notification)
+                    .setLargeIcon(bitmap)
+                    .build()
+
+                val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                        ActivityCompat.checkSelfPermission(
+                            this@PlaybackService,
+                            android.Manifest.permission.POST_NOTIFICATIONS
+                        ) == PackageManager.PERMISSION_GRANTED
+
+                if (hasPermission) {
+                    NotificationManagerCompat.from(this@PlaybackService).notify(NOTIFICATION_ID, updatedNotification)
+                }
+            } catch (e: Exception) {
+                // Fallback silencioso
+            }
         }
     }
 

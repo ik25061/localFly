@@ -111,9 +111,10 @@ class NowPlayingActivity : AppCompatActivity() {
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
 
-        // Convención de nombres solicitada
-        val artistImageUrl = "$serverBaseUrl/resources/artist - ${song.artist}.jpg"
-        val albumImageUrl = "$serverBaseUrl/resources/album - ${song.album}.jpg"
+        // Rutas reales del servidor: /artist-cover/{nombre} y /cover/{id}
+        val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
+        val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+        val albumImageUrl = "$serverBaseUrl/cover/${song.id}"
 
         // Fondo difuminado (siempre el álbum)
         Glide.with(this)

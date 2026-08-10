@@ -1,10 +1,12 @@
 package com.example.localfly.adapters
 
 import android.view.LayoutInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
@@ -21,7 +23,8 @@ class LikedSongsAdapter(
     private val onItemClick: (Song) -> Unit,
     private val onDownloadClick: (Song) -> Unit,
     private val onPlayNextClick: ((Song) -> Unit)? = null,
-    private val onAddToQueueClick: ((Song) -> Unit)? = null
+    private val onAddToQueueClick: ((Song) -> Unit)? = null,
+    private val onDeleteClick: ((Song) -> Unit)? = null
 ) : RecyclerView.Adapter<LikedSongsAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -31,9 +34,7 @@ class LikedSongsAdapter(
         val tvArtist: TextView = view.findViewById(R.id.tvSongArtist)
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
-        val btnDownload: ImageButton = view.findViewById(R.id.btnDownload)
-        val btnPlayNext: ImageButton = view.findViewById(R.id.btnPlayNext)
-        val btnPlaylistAdd: ImageButton = view.findViewById(R.id.btnPlaylistAdd)
+        val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -51,35 +52,50 @@ class LikedSongsAdapter(
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
 
-        // Use custom icons
+        // Acciones visibles
         holder.btnLike.setImageResource(
             if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song) }
         holder.btnDislike.setOnClickListener { onDislikeClick(song) }
 
-        holder.btnDownload.setImageResource(
-            if (downloadHelper.isDownloaded(song.id)) R.drawable.ic_downloaded else R.drawable.ic_download
-        )
-        holder.btnDownload.setOnClickListener { onDownloadClick(song) }
+        // Menú (hamburguesa) con las acciones anidadas
+        holder.btnSongMenu.setOnClickListener { showSongMenu(holder, song) }
 
-        holder.btnPlayNext.setOnClickListener { onPlayNextClick?.invoke(song) }
-        holder.btnPlaylistAdd.setOnClickListener { onAddToQueueClick?.invoke(song) }
-
-        // Cover Loading
-        val coverUrl = if (!song.album.isNullOrBlank()) {
-            "$serverBaseUrl/resources/album - ${song.album}.jpg"
-        } else {
-            "$serverBaseUrl/cover/${song.id}"
-        }
-
+        // Cover: el servidor sirve la imagen en /cover/{id} (misma ruta que la web)
         Glide.with(context)
-            .load(coverUrl)
+            .load("$serverBaseUrl/cover/${song.id}")
             .placeholder(R.drawable.ic_music_placeholder)
             .centerCrop()
             .into(holder.ivCover)
 
         holder.itemView.setOnClickListener { onItemClick(song) }
+    }
+
+    private fun showSongMenu(holder: ViewHolder, song: Song) {
+        val popup = PopupMenu(holder.itemView.context, holder.btnSongMenu)
+        if (onDeleteClick != null) {
+            popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
+        }
+        popup.menu.add(0, MENU_ADD_TO_QUEUE, 1, "Añadir al final de la lista de reproducción")
+        popup.menu.add(0, MENU_PLAY_NEXT, 2, "Reproducir siguiente")
+        popup.menu.add(
+            0,
+            MENU_DOWNLOAD,
+            3,
+            if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
+        )
+
+        popup.setOnMenuItemClickListener { item: MenuItem ->
+            when (item.itemId) {
+                MENU_DELETE -> onDeleteClick?.invoke(song)
+                MENU_ADD_TO_QUEUE -> onAddToQueueClick?.invoke(song)
+                MENU_PLAY_NEXT -> onPlayNextClick?.invoke(song)
+                MENU_DOWNLOAD -> onDownloadClick(song)
+            }
+            true
+        }
+        popup.show()
     }
 
     override fun getItemCount() = songs.size
@@ -92,5 +108,21 @@ class LikedSongsAdapter(
 
     fun refreshDownloadStates() {
         notifyDataSetChanged()
+    }
+
+    /** Elimina una canción de la lista (acción "Eliminar" del menú). */
+    fun removeSongById(songId: String) {
+        val index = songs.indexOfFirst { it.id == songId }
+        if (index != -1) {
+            songs.removeAt(index)
+            notifyItemRemoved(index)
+        }
+    }
+
+    companion object {
+        const val MENU_DELETE = 1
+        const val MENU_ADD_TO_QUEUE = 2
+        const val MENU_PLAY_NEXT = 3
+        const val MENU_DOWNLOAD = 4
     }
 }

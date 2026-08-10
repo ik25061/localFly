@@ -13,6 +13,7 @@ import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
 import com.example.localfly.network.Year
+import java.net.URLEncoder
 
 class HorizontalCardAdapter(
     private var items: List<Any>,
@@ -52,14 +53,20 @@ class HorizontalCardAdapter(
             is Artist -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-                if (item.coverId != null) {
-                    Glide.with(context)
-                        .load("$serverBaseUrl/cover/${item.coverId}")
-                        .centerCrop()
-                        .into(holder.ivCover)
-                } else {
-                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
-                }
+
+                // El servidor sirve la foto del artista en /artist-cover/{nombre}
+                val encodedName = URLEncoder.encode(item.name, "UTF-8").replace("+", "%20")
+                val primary = "$serverBaseUrl/artist-cover/$encodedName"
+                val fallback = item.coverId?.let {
+                    Glide.with(context).load("$serverBaseUrl/cover/$it").centerCrop()
+                } ?: Glide.with(context).load(R.drawable.ic_music_placeholder)
+
+                Glide.with(context)
+                    .load(primary)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(fallback)
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
             is Genre -> {
                 holder.tvTitle.text = item.name

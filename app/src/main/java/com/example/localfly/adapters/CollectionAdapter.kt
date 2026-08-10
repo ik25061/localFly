@@ -41,32 +41,48 @@ class CollectionAdapter(
             is Album -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = item.artist ?: "Álbum"
-                val encodedName = URLEncoder.encode("album - ${item.name}.jpg", "UTF-8").replace("+", "%20")
-                val coverUrl = "$serverBaseUrl/resources/$encodedName"
-                
-                Glide.with(context).load(coverUrl).placeholder(R.drawable.ic_music_placeholder).error(
-                    Glide.with(context).load("$serverBaseUrl/cover/${item.coverId}").centerCrop()
-                ).centerCrop().into(holder.ivCover)
+                // El cover del álbum se sirve en /cover/{coverId} (id de su primera canción)
+                val coverUrl = item.coverId?.let { "$serverBaseUrl/cover/$it" }
+                Glide.with(context).load(coverUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
             is Artist -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-                val encodedName = URLEncoder.encode("artist - ${item.name}.jpg", "UTF-8").replace("+", "%20")
-                val coverUrl = "$serverBaseUrl/resources/$encodedName"
-                
-                Glide.with(context).load(coverUrl).placeholder(R.drawable.ic_music_placeholder).error(
-                    Glide.with(context).load("$serverBaseUrl/cover/${item.coverId}").centerCrop()
-                ).centerCrop().into(holder.ivCover)
+                // El servidor sirve la foto del artista en /artist-cover/{nombre}
+                val encodedName = URLEncoder.encode(item.name, "UTF-8").replace("+", "%20")
+                val primary = "$serverBaseUrl/artist-cover/$encodedName"
+                val fallback = item.coverId?.let {
+                    Glide.with(context).load("$serverBaseUrl/cover/$it").centerCrop()
+                } ?: Glide.with(context).load(R.drawable.ic_music_placeholder)
+                Glide.with(context).load(primary)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(fallback)
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
             is Genre -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-                Glide.with(context).load("$serverBaseUrl/cover/${item.coverId}").placeholder(R.drawable.ic_music_placeholder).centerCrop().into(holder.ivCover)
+                val coverUrl = item.coverId?.let { "$serverBaseUrl/cover/$it" }
+                Glide.with(context).load(coverUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
             is Year -> {
                 holder.tvTitle.text = item.year.toString()
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-                Glide.with(context).load("$serverBaseUrl/cover/${item.coverId}").placeholder(R.drawable.ic_music_placeholder).centerCrop().into(holder.ivCover)
+                val coverUrl = item.coverId?.let { "$serverBaseUrl/cover/$it" }
+                Glide.with(context).load(coverUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
         }
 

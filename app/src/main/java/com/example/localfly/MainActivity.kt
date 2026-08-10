@@ -182,11 +182,7 @@ class MainActivity : AppCompatActivity() {
         // Ajuste solicitado: "nombre del artista después de la palabra artista: artist - A.B. Quintanilla III"
         tvNowPlayingArtist.text = if (song.artist != null) "Artista: ${song.artist}" else "Artista desconocido"
 
-        val coverUrl = if (!song.album.isNullOrBlank()) {
-            "$serverBaseUrl/resources/album - ${song.album}.jpg"
-        } else {
-            "$serverBaseUrl/cover/${song.id}"
-        }
+        val coverUrl = "$serverBaseUrl/cover/${song.id}"
 
         Glide.with(this)
             .load(coverUrl)

@@ -4,4 +4,5 @@
     <string name="like_button">Me gusta</string>
     <string name="dislike_button">No me gusta</string>
     <string name="download_button">Descargar</string>
+    <string name="song_menu">Opciones de la canción</string>
 </resources>

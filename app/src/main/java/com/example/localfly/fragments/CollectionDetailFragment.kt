@@ -86,10 +86,10 @@ class CollectionDetailFragment : Fragment() {
         val serverBaseUrl = ApiConfig.BASE_URL
         val coverUrl = when (itemType) {
             "ARTIST" -> {
-                val encoded = java.net.URLEncoder.encode("artist - $itemName.jpg", "UTF-8").replace("+", "%20")
-                "$serverBaseUrl/resources/$encoded"
+                // El servidor sirve la foto del artista en /artist-cover/{nombre}
+                val encoded = java.net.URLEncoder.encode(itemName ?: "", "UTF-8").replace("+", "%20")
+                "$serverBaseUrl/artist-cover/$encoded"
             }
-            "YEAR", "GENRE" -> "$serverBaseUrl/cover/$coverId"
             else -> "$serverBaseUrl/cover/$coverId"
         }
 

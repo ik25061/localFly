@@ -75,12 +75,7 @@ class AlbumDetailFragment : Fragment() {
         tvName.text = albumName
         
         val serverBaseUrl = ApiConfig.BASE_URL
-        val coverUrl = if (!albumName.isNullOrBlank()) {
-            val encoded = java.net.URLEncoder.encode("album - $albumName.jpg", "UTF-8").replace("+", "%20")
-            "$serverBaseUrl/resources/$encoded"
-        } else {
-            "$serverBaseUrl/cover/$coverId"
-        }
+        val coverUrl = "$serverBaseUrl/cover/$coverId"
 
         Glide.with(this)
             .load(coverUrl)
