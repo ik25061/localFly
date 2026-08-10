@@ -44,13 +44,6 @@
     </LinearLayout>
 
     <ImageButton
-        android:id="@+id/btnMiniLike"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:src="@drawable/ic_like_off"
-        android:background="@null" />
-
-    <ImageButton
         android:id="@+id/btnPlayPause"
         android:layout_width="32dp"
         android:layout_height="32dp"
@@ -58,17 +51,17 @@
         android:background="@null" />
 
     <ImageButton
-        android:id="@+id/btnNext"
+        android:id="@+id/btnMiniLike"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:src="@android:drawable/ic_media_next"
+        android:src="@drawable/ic_like_off"
         android:background="@null" />
 
     <ImageButton
         android:id="@+id/btnMiniDislike"
         android:layout_width="32dp"
         android:layout_height="32dp"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
+        android:src="@drawable/ic_dislike"
         android:background="@null" />
 
     <ImageButton
@@ -77,5 +70,10 @@
         android:layout_height="32dp"
         android:src="@android:drawable/ic_media_previous"
         android:background="@null" />
-
+    <ImageButton
+        android:id="@+id/btnNext"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:src="@android:drawable/ic_media_next"
+        android:background="@null" />
 </LinearLayout>
