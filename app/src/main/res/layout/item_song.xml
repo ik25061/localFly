@@ -58,14 +58,7 @@
     </LinearLayout>
 
     <!-- Botones de Acción -->
-    <ImageButton
-        android:id="@+id/btnPlayNext"
-        android:layout_width="18dp"
-        android:layout_height="18dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_media_play"
-        android:scaleType="centerInside"
-        app:tint="#AAAAAA" />
+
 
     <ImageButton
         android:id="@+id/btnPlaylistAdd"
