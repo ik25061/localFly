@@ -40,15 +40,18 @@ class ArtistSelectionAdapter(
         holder.checkBox.setOnCheckedChangeListener(null)
         holder.checkBox.isChecked = selectedIds.contains(artist.id)
 
-        val encodedName = URLEncoder.encode("artist - ${artist.name}.jpg", "UTF-8").replace("+", "%20")
-        val coverUrl = "$serverBaseUrl/resources/$encodedName"
+        // El servidor sirve la foto del artista en /artist-cover/{nombre}
+        // (misma ruta que usa la versión web y el resto de la app).
+        val encodedName = URLEncoder.encode(artist.name, "UTF-8").replace("+", "%20")
+        val primaryUrl = "$serverBaseUrl/artist-cover/$encodedName"
+        val fallback = artist.coverId?.let {
+            Glide.with(context).load("$serverBaseUrl/cover/$it").centerCrop()
+        } ?: Glide.with(context).load(R.drawable.ic_music_placeholder)
 
         Glide.with(context)
-            .load(coverUrl)
+            .load(primaryUrl)
             .placeholder(R.drawable.ic_music_placeholder)
-            .error(
-                Glide.with(context).load("$serverBaseUrl/cover/${artist.coverId}").centerCrop()
-            )
+            .error(fallback)
             .centerCrop()
             .into(holder.ivCover)
 

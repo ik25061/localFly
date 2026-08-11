@@ -7,10 +7,11 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
 import com.example.localfly.adapters.ArtistSelectionAdapter
+import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.network.*
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
@@ -20,6 +21,7 @@ class AIFragment : Fragment() {
     private lateinit var rvArtists: RecyclerView
     private lateinit var adapter: ArtistSelectionAdapter
     private lateinit var btnSave: MaterialButton
+    private lateinit var tvAIResult: android.widget.TextView
     private lateinit var sessionManager: SessionManager
 
     private val selectedArtistIds = mutableSetOf<String>()
@@ -34,15 +36,19 @@ class AIFragment : Fragment() {
 
         rvArtists = view.findViewById(R.id.rvArtistSelection)
         btnSave = view.findViewById(R.id.btnSaveAIPreferences)
+        tvAIResult = view.findViewById(R.id.tvAIResult)
+        val cardAIResult = view.findViewById<androidx.cardview.widget.CardView>(R.id.cardAIResult)
 
-        // Load existing favorites
+        // Cargar favoritos existentes
         selectedArtistIds.addAll(sessionManager.getFavoriteArtists())
 
         adapter = ArtistSelectionAdapter(emptyList(), selectedArtistIds) {
-            // Callback when selection changes (optional)
+            btnSave.isEnabled = selectedArtistIds.isNotEmpty()
         }
-        rvArtists.layoutManager = LinearLayoutManager(requireContext())
+        // Cuadrícula de artistas (foto circular arriba, nombre debajo) como en la web
+        rvArtists.layoutManager = GridLayoutManager(requireContext(), 3)
         rvArtists.adapter = adapter
+        btnSave.isEnabled = selectedArtistIds.isNotEmpty()
 
         btnSave.setOnClickListener {
             saveAndAnalyze()
@@ -71,15 +77,25 @@ class AIFragment : Fragment() {
         }
 
         sessionManager.saveFavoriteArtists(selectedArtistIds)
-        
-        Toast.makeText(requireContext(), "IA analizando tus gustos...", Toast.LENGTH_LONG).show()
-        
-        // Simular demora de análisis de IA
+
+        btnSave.isEnabled = false
+        val cardAIResult = view?.findViewById<androidx.cardview.widget.CardView>(R.id.cardAIResult)
+        cardAIResult?.visibility = View.VISIBLE
+        tvAIResult.text = "🤖 IA local analizando tus gustos..."
+
+        // Ejecutar la IA local (en el dispositivo) con una pequeña demora para UX
         viewLifecycleOwner.lifecycleScope.launch {
-            kotlinx.coroutines.delay(2000)
-            Toast.makeText(requireContext(), "¡Análisis completo! Mira tus recomendaciones en el Inicio.", Toast.LENGTH_SHORT).show()
-            
-            // Navegar a Home para ver resultados
+            try {
+                val aiManager = AIRecommendationManager(sessionManager)
+                val summary = aiManager.generateRecommendationSummary()
+                tvAIResult.text = summary
+            } catch (e: Exception) {
+                tvAIResult.text = "⚠️ La IA local no pudo analizar tus gustos: ${e.message}"
+            } finally {
+                btnSave.isEnabled = true
+            }
+
+            // Navegar a Inicio para ver las recomendaciones
             activity?.findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)?.selectedItemId = R.id.nav_home
         }
     }

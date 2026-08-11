@@ -36,7 +36,30 @@
             android:id="@+id/rvArtistSelection"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipToPadding="false"
             android:padding="8dp" />
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardAIResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#12271A"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp">
+
+        <TextView
+            android:id="@+id/tvAIResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:drawableStart="@drawable/ic_sparkles"
+            android:drawablePadding="10dp"
+            android:padding="16dp"
+            android:textColor="#1DB954"
+            android:textSize="14sp"
+            android:text="IA analizando tus gustos..." />
     </androidx.cardview.widget.CardView>
 
     <com.google.android.material.button.MaterialButton
