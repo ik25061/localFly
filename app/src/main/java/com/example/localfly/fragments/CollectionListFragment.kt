@@ -24,6 +24,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+import java.text.Normalizer
+
 class CollectionListFragment : Fragment() {
 
     enum class Type { ALBUM, ARTIST, GENRE, YEAR, PLAYLIST }
@@ -38,6 +40,12 @@ class CollectionListFragment : Fragment() {
 
     private var originalItems: List<Any> = emptyList()
     private var displayedItems: List<Any> = emptyList()
+    
+    private var currentOffset = 0
+    private val limit = 100
+    private var isLoading = false
+    private var hasMore = true
+    private var currentQuery = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -94,8 +102,20 @@ class CollectionListFragment : Fragment() {
 
     private fun setupRecyclerView() {
         adapter = CollectionAdapter(emptyList()) { item -> openDetail(item) }
-        rvCollections.layoutManager = GridLayoutManager(requireContext(), 3)
+        val layoutManager = GridLayoutManager(requireContext(), 3)
+        rvCollections.layoutManager = layoutManager
         rvCollections.adapter = adapter
+
+        rvCollections.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val total = layoutManager.itemCount
+                if (!isLoading && hasMore && lastVisible >= total - 6) {
+                    searchServer(currentQuery, isNextPage = true)
+                }
+            }
+        })
     }
 
     private var searchJob: Job? = null
@@ -104,67 +124,108 @@ class CollectionListFragment : Fragment() {
         etSearch.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                searchServer(s.toString())
+                currentQuery = s.toString()
+                searchServer(currentQuery, isNextPage = false)
             }
             override fun afterTextChanged(s: Editable?) {}
         })
     }
 
-    /**
-     * Busca en el servidor, es decir en TODA la base de datos y no solo en los
-     * elementos ya cargados. Los endpoints /api/artists, /api/albums, /api/genres
-     * y /api/years aceptan ?search=...; con la query vacía se devuelven todos.
-     */
-    private fun searchServer(query: String) {
+    private fun searchServer(query: String, isNextPage: Boolean = false) {
+        if (isLoading) return
+        
         searchJob?.cancel()
         val normalized = query.trim()
+        
+        if (isNextPage) {
+            currentOffset += limit
+        } else {
+            currentOffset = 0
+            hasMore = true
+            displayedItems = emptyList()
+            originalItems = emptyList()
+        }
+
+        isLoading = true
         searchJob = viewLifecycleOwner.lifecycleScope.launch {
-            delay(300) // debounce mientras se escribe
+            if (!isNextPage) delay(300) // debounce
             try {
                 val response = when (type) {
                     Type.ALBUM -> RetrofitClient.api.getAlbums(
                         userId = sessionManager.getUserId(),
-                        limit = 1000,
+                        limit = limit,
+                        offset = currentOffset,
                         search = normalized.ifBlank { null }
                     )
                     Type.ARTIST -> RetrofitClient.api.getArtists(
-                        // Sin userId: el servidor devuelve TODOS los artistas de la base de datos
                         userId = null,
-                        limit = 1000,
+                        limit = limit,
+                        offset = currentOffset,
                         search = normalized.ifBlank { null }
                     )
                     Type.GENRE -> RetrofitClient.api.getGenres(
                         userId = sessionManager.getUserId(),
-                        limit = 1000,
+                        limit = limit,
+                        offset = currentOffset,
                         search = normalized.ifBlank { null }
                     )
                     Type.YEAR -> RetrofitClient.api.getYears(
                         userId = sessionManager.getUserId(),
-                        limit = 1000,
+                        limit = limit,
+                        offset = currentOffset,
                         search = normalized.ifBlank { null }
                     )
-                    Type.PLAYLIST -> RetrofitClient.api.getPlaylists(
-                        userId = sessionManager.getUserId()
-                    )
+                    Type.PLAYLIST -> {
+                        if (isNextPage) {
+                            isLoading = false
+                            hasMore = false
+                            return@launch
+                        }
+                        RetrofitClient.api.getPlaylists(userId = sessionManager.getUserId())
+                    }
                 }
 
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
-                    originalItems = when (body) {
-                        is AlbumsResponse -> body.items
-                        is ArtistsResponse -> body.items
-                        is GenresResponse -> body.items
-                        is YearsResponse -> body.items
-                        is PlaylistsResponse -> body.playlists
+                    val newItems = when (body) {
+                        is AlbumsResponse -> {
+                            hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)
+                            body.items
+                        }
+                        is ArtistsResponse -> {
+                            hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)
+                            body.items
+                        }
+                        is GenresResponse -> {
+                            hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)
+                            body.items
+                        }
+                        is YearsResponse -> {
+                            hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)
+                            body.items
+                        }
+                        is PlaylistsResponse -> {
+                            hasMore = false
+                            body.playlists
+                        }
                         else -> emptyList()
                     }
+
+                    if (isNextPage) {
+                        originalItems = originalItems + newItems
+                    } else {
+                        originalItems = newItems
+                    }
+                    
                     displayedItems = originalItems
                     sortItems(spinnerSort.selectedItemPosition)
                 }
             } catch (e: Exception) {
                 if (isAdded) {
-                    Toast.makeText(requireContext(), "Error al buscar: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
+            } finally {
+                isLoading = false
             }
         }
     }
@@ -188,6 +249,24 @@ class CollectionListFragment : Fragment() {
     }
 
     private fun sortItems(position: Int) {
+        val query = currentQuery.removeAccents().lowercase()
+        
+        displayedItems = if (query.isEmpty()) {
+            originalItems
+        } else {
+            originalItems.filter { item ->
+                val name = when (item) {
+                    is Album -> item.name
+                    is Artist -> item.name
+                    is Genre -> item.name
+                    is Year -> item.year.toString()
+                    is Playlist -> item.name
+                    else -> ""
+                }
+                name.removeAccents().lowercase().contains(query)
+            }
+        }
+
         displayedItems = when (position) {
             0 -> displayedItems.sortedBy { item ->
                 when (item) {
@@ -195,6 +274,7 @@ class CollectionListFragment : Fragment() {
                     is Artist -> item.name
                     is Genre -> item.name
                     is Year -> item.year.toString()
+                    is Playlist -> item.name
                     else -> ""
                 }
             }
@@ -203,6 +283,11 @@ class CollectionListFragment : Fragment() {
             else -> displayedItems
         }
         adapter.updateItems(displayedItems)
+    }
+
+    private fun String.removeAccents(): String {
+        return Normalizer.normalize(this, Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
     }
 
     private fun getSongCount(item: Any): Int = when (item) {

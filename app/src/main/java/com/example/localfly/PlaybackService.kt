@@ -108,13 +108,7 @@ class PlaybackService : Service() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    val songToHandle = currentSong
-                    val indexToHandle = currentIndex
-                    
-                    next() // Intentar ir a la siguiente primero
-                    
-                    // Borrar la descarga de la canción que acaba de terminar (si corresponde)
-                    checkAutoDelete(songToHandle, indexToHandle)
+                    next()
                 }
             }
         })
@@ -189,17 +183,24 @@ class PlaybackService : Service() {
         if (sessionManager.isAutoDeleteEnabled()) {
             val localPath = queueLocalPaths.getOrNull(index)
             if (localPath != null) {
-                // Es una descarga que acaba de terminar o ser descartada. La eliminamos.
-                downloadHelper.removeDownload(song.id)
-                
-                // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
-                val mutablePaths = queueLocalPaths.toMutableList()
-                if (index in mutablePaths.indices) {
-                    mutablePaths[index] = null
-                    queueLocalPaths = mutablePaths
+                // Pequeño retardo para asegurar que ExoPlayer ha liberado el archivo
+                serviceScope.launch {
+                    delay(300)
+                    withContext(Dispatchers.IO) {
+                        downloadHelper.removeDownload(song.id)
+                    }
+                    
+                    // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
+                    val mutablePaths = queueLocalPaths.toMutableList()
+                    if (index in mutablePaths.indices) {
+                        mutablePaths[index] = null
+                        queueLocalPaths = mutablePaths
+                    }
+                    
+                    withContext(Dispatchers.Main) {
+                        onStateChanged?.invoke()
+                    }
                 }
-                
-                onStateChanged?.invoke()
             }
         }
     }
@@ -289,16 +290,28 @@ class PlaybackService : Service() {
     }
 
     fun next() {
+        val songToHandle = currentSong
+        val indexToHandle = currentIndex
+
         if (currentIndex + 1 < queue.size) {
-            val songToHandle = currentSong
-            val indexToHandle = currentIndex
-            
             currentIndex++
             playCurrentIndex()
             
             // Borrar la descarga de la canción anterior DESPUÉS de cambiar a la nueva
             // para asegurar que el archivo ya no está bloqueado por el player.
             checkAutoDelete(songToHandle, indexToHandle)
+        } else {
+            // No hay más canciones en la cola. 
+            // Al pulsar "Siguiente" en la última canción, detenemos y limpiamos.
+            player?.stop()
+            player?.clearMediaItems()
+            
+            checkAutoDelete(songToHandle, indexToHandle)
+            
+            currentSong = null
+            currentIndex = -1
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            onStateChanged?.invoke()
         }
     }
 
@@ -413,17 +426,8 @@ class PlaybackService : Service() {
             }
         }
 
-        if (hasNext()) {
-            // next() ya se encarga de llamar a checkAutoDelete(anterior)
-            next()
-        } else {
-            // Es la última canción de la cola: detener y borrar descarga actual
-            player?.stop()
-            checkAutoDelete(songToHide, currentIndex)
-            currentSong = null
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            onStateChanged?.invoke()
-        }
+        // Avanzar a la siguiente (next ya maneja el auto-borrado de la actual)
+        next()
     }
 
     private fun createNotificationChannel() {
