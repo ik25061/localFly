@@ -118,15 +118,17 @@ class PlaybackService : Service() {
 
     private fun syncOfflineActions() {
         serviceScope.launch(Dispatchers.IO) {
-            // Intentar sincronizar cada 30 segundos si hay pendientes
+            // Intentar sincronizar periódicamente si hay acciones pendientes.
             while (true) {
                 val pendingLikes = sessionManager.getPendingLikes()
                 val pendingDislikes = sessionManager.getPendingDislikes()
 
                 if (pendingLikes.isEmpty() && pendingDislikes.isEmpty()) {
-                    delay(60000) // Esperar un minuto si no hay nada
+                    delay(30000) // Revisar cada 30 segundos si aparecen nuevas
                     continue
                 }
+
+                var anySuccess = false
 
                 // Sincronizar Likes
                 pendingLikes.forEach { (songId, liked) ->
@@ -137,9 +139,10 @@ class PlaybackService : Service() {
                         )
                         if (response.isSuccessful) {
                             sessionManager.removePendingLike(songId)
+                            anySuccess = true
                         }
                     } catch (e: Exception) {
-                        // Seguir intentando más tarde
+                        // Sin conexión o error de red: se reintentará en el siguiente ciclo.
                     }
                 }
 
@@ -152,24 +155,42 @@ class PlaybackService : Service() {
                         )
                         if (response.isSuccessful) {
                             sessionManager.removePendingDislike(songId)
+                            anySuccess = true
                         }
                     } catch (e: Exception) {
-                        // Seguir intentando más tarde
+                        // Error de red: reintentar luego.
                     }
                 }
 
-                delay(30000)
+                if (anySuccess) {
+                    withContext(Dispatchers.Main) {
+                        onStateChanged?.invoke()
+                    }
+                }
+
+                // Si falló (no hubo éxitos pero había pendientes), esperar un poco antes de reintentar.
+                // Si tuvo éxito, podemos seguir de inmediato con los que falten o esperar un ciclo corto.
+                delay(15000) 
             }
         }
     }
 
     private fun checkAutoDelete() {
         if (sessionManager.isAutoDeleteEnabled()) {
-            val songId = currentSong?.id ?: return
+            val song = currentSong ?: return
             val localPath = queueLocalPaths.getOrNull(currentIndex)
             if (localPath != null) {
-                // Es una descarga. La eliminamos.
-                DownloadManagerHelper(this).removeDownload(songId)
+                // Es una descarga que acaba de terminar. La eliminamos.
+                DownloadManagerHelper(this).removeDownload(song.id)
+                
+                // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
+                val mutablePaths = queueLocalPaths.toMutableList()
+                if (currentIndex in mutablePaths.indices) {
+                    mutablePaths[currentIndex] = null
+                    queueLocalPaths = mutablePaths
+                }
+                
+                onStateChanged?.invoke()
             }
         }
     }
@@ -410,6 +431,7 @@ class PlaybackService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_MAX)
 
+        // IMPORTANTE: La imagen del álbum debe ir aquí
         if (largeIcon != null) {
             builder.setLargeIcon(largeIcon)
         }
@@ -449,81 +471,14 @@ class PlaybackService : Service() {
             pendingIntentFor(ACTION_DISLIKE)
         )
 
+        // Configuración MediaStyle (Standard para Android 12+)
         builder.setStyle(
             MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente (Standard compact)
+                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 
-        // Vista personalizada: carátula del álbum como fondo + botones
-        // like, anterior, reproducir/pausar, siguiente y no me gusta.
-        builder.setCustomContentView(buildNotificationSmallView(song, isPlaying, largeIcon))
-        builder.setCustomBigContentView(buildNotificationBigView(song, isPlaying, largeIcon))
-
         return builder.build()
-    }
-
-    /** Construye la vista compacta (plegada) de la notificación. */
-    private fun buildNotificationSmallView(song: Song?, isPlaying: Boolean, art: Bitmap?): RemoteViews {
-        val rv = RemoteViews(packageName, R.layout.notification_small)
-        rv.setTextViewText(R.id.tv_title, song?.title ?: "localFly")
-        rv.setTextViewText(R.id.tv_artist, song?.artist ?: "Música para tus oídos")
-        applyAlbumArt(rv, art)
-
-        bindMediaButton(rv, R.id.btn_like, if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off, "Me gusta", ACTION_LIKE)
-        bindMediaButton(rv, R.id.btn_prev, R.drawable.ic_prev, "Anterior", ACTION_PREV, enabled = hasPrev())
-        bindMediaButton(rv, R.id.btn_play, if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, if (isPlaying) "Pausar" else "Reproducir", ACTION_PLAY_PAUSE)
-        bindMediaButton(rv, R.id.btn_next, R.drawable.ic_next, "Siguiente", ACTION_NEXT, enabled = hasNext())
-        bindMediaButton(rv, R.id.btn_dislike, R.drawable.ic_dislike, "No me gusta", ACTION_DISLIKE)
-        return rv
-    }
-
-    /** Construye la vista expandida de la notificación. */
-    private fun buildNotificationBigView(song: Song?, isPlaying: Boolean, art: Bitmap?): RemoteViews {
-        val rv = RemoteViews(packageName, R.layout.notification_big)
-        rv.setTextViewText(R.id.tv_title, song?.title ?: "localFly")
-        rv.setTextViewText(R.id.tv_artist, song?.artist ?: "Música para tus oídos")
-
-        val album = song?.album
-        if (album.isNullOrBlank()) {
-            rv.setViewVisibility(R.id.tv_album, View.GONE)
-        } else {
-            rv.setTextViewText(R.id.tv_album, album)
-            rv.setViewVisibility(R.id.tv_album, View.VISIBLE)
-        }
-        applyAlbumArt(rv, art)
-
-        bindMediaButton(rv, R.id.btn_like, if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off, "Me gusta", ACTION_LIKE)
-        bindMediaButton(rv, R.id.btn_prev, R.drawable.ic_prev, "Anterior", ACTION_PREV, enabled = hasPrev())
-        bindMediaButton(rv, R.id.btn_play, if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play, if (isPlaying) "Pausar" else "Reproducir", ACTION_PLAY_PAUSE)
-        bindMediaButton(rv, R.id.btn_next, R.drawable.ic_next, "Siguiente", ACTION_NEXT, enabled = hasNext())
-        bindMediaButton(rv, R.id.btn_dislike, R.drawable.ic_dislike, "No me gusta", ACTION_DISLIKE)
-        return rv
-    }
-
-    /** Pone la carátula como fondo o un color oscuro si aún no se ha cargado. */
-    private fun applyAlbumArt(rv: RemoteViews, art: Bitmap?) {
-        if (art != null) {
-            rv.setImageViewBitmap(R.id.album_background, art)
-        } else {
-            rv.setInt(R.id.album_background, "setBackgroundColor", 0xFF1B1B1E.toInt())
-        }
-    }
-
-    /** Conecta un botón de la notificación con su acción del servicio. */
-    private fun bindMediaButton(
-        rv: RemoteViews,
-        viewId: Int,
-        iconRes: Int,
-        label: String,
-        action: String,
-        enabled: Boolean = true
-    ) {
-        rv.setImageViewResource(viewId, iconRes)
-        rv.setContentDescription(viewId, label)
-        rv.setOnClickPendingIntent(viewId, pendingIntentFor(action))
-        rv.setBoolean(viewId, "setEnabled", enabled)
-        rv.setFloat(viewId, "setAlpha", if (enabled) 1f else 0.35f)
     }
 
     @UnstableApi
@@ -535,9 +490,9 @@ class PlaybackService : Service() {
                 ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
-            // First show without image
+            // Publicar versión inicial (sin imagen o con la anterior)
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
-            // Then load image and update
+            // Cargar nueva imagen
             loadLargeIcon()
         }
     }
@@ -563,41 +518,33 @@ class PlaybackService : Service() {
                             Glide.with(this@PlaybackService)
                                 .asBitmap()
                                 .load("$serverBaseUrl/cover/${song.id}")
-                                .submit(256, 256)
+                                .submit(512, 512)
                                 .get()
                         )
-                        .submit(256, 256)
+                        .submit(512, 512)
                         .get()
                 }
 
-                val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                        ActivityCompat.checkSelfPermission(
-                            this@PlaybackService,
-                            android.Manifest.permission.POST_NOTIFICATIONS
-                        ) == PackageManager.PERMISSION_GRANTED
-
-                if (hasPermission) {
-                    NotificationManagerCompat.from(this@PlaybackService).notify(
-                        NOTIFICATION_ID, 
-                        buildNotification(bitmap)
-                    )
-                }
+                showNotificationWithBitmap(bitmap)
             } catch (e: Exception) {
-                // Fallback a la imagen por ID si falla el formato por nombre
-                try {
-                    val fallbackBitmap = withContext(Dispatchers.IO) {
-                        Glide.with(this@PlaybackService)
-                            .asBitmap()
-                            .load("$serverBaseUrl/cover/${song.id}")
-                            .submit(256, 256)
-                            .get()
-                    }
-                    NotificationManagerCompat.from(this@PlaybackService).notify(
-                        NOTIFICATION_ID, 
-                        buildNotification(fallbackBitmap)
-                    )
-                } catch (e2: Exception) {}
+                // Fallback silencioso
             }
+        }
+    }
+
+    @UnstableApi
+    private fun showNotificationWithBitmap(bitmap: Bitmap) {
+        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ActivityCompat.checkSelfPermission(
+                    this,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            NotificationManagerCompat.from(this@PlaybackService).notify(
+                NOTIFICATION_ID, 
+                buildNotification(bitmap)
+            )
         }
     }
 

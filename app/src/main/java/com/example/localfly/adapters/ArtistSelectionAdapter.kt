@@ -20,6 +20,7 @@ class ArtistSelectionAdapter(
 ) : RecyclerView.Adapter<ArtistSelectionAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val root: View = view.findViewById(R.id.rootArtistItem)
         val ivCover: ImageView = view.findViewById(R.id.ivArtistCoverSelect)
         val tvName: TextView = view.findViewById(R.id.tvArtistNameSelect)
         val checkBox: CheckBox = view.findViewById(R.id.cbArtistSelect)
@@ -37,8 +38,9 @@ class ArtistSelectionAdapter(
         val serverBaseUrl = ApiConfig.BASE_URL
 
         holder.tvName.text = artist.name
-        holder.checkBox.setOnCheckedChangeListener(null)
-        holder.checkBox.isChecked = selectedIds.contains(artist.id)
+        val isSelected = selectedIds.contains(artist.id)
+        holder.checkBox.isChecked = isSelected
+        holder.root.isSelected = isSelected
 
         // El servidor sirve la foto del artista en /artist-cover/{nombre}
         // (misma ruta que usa la versión web y el resto de la app).
@@ -55,14 +57,14 @@ class ArtistSelectionAdapter(
             .centerCrop()
             .into(holder.ivCover)
 
-        holder.checkBox.setOnCheckedChangeListener { _, isChecked ->
-            if (isChecked) selectedIds.add(artist.id)
-            else selectedIds.remove(artist.id)
-            onSelectionChanged()
-        }
-
         holder.itemView.setOnClickListener {
-            holder.checkBox.isChecked = !holder.checkBox.isChecked
+            if (selectedIds.contains(artist.id)) {
+                selectedIds.remove(artist.id)
+            } else {
+                selectedIds.add(artist.id)
+            }
+            notifyItemChanged(holder.bindingAdapterPosition)
+            onSelectionChanged()
         }
     }
 

@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/rootArtistItem"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:padding="6dp"
-    android:background="?attr/selectableItemBackground">
+    android:padding="8dp"
+    android:layout_margin="2dp"
+    android:background="@drawable/bg_artist_item_selection">
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivArtistCoverSelect"
@@ -16,31 +18,31 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:shapeAppearanceOverlay="@style/CircleImage" />
+        app:shapeAppearanceOverlay="@style/CircleImage"
+        app:strokeColor="#FFFFFF"
+        app:strokeWidth="0dp" />
 
-    <!-- Indicador de selección (superpuesto en la esquina de la foto,
-         como el badge de selección de la versión web) -->
     <CheckBox
         android:id="@+id/cbArtistSelect"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_margin="4dp"
         android:buttonTint="#1DB954"
+        android:visibility="gone"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Nombre del artista debajo de la foto -->
     <TextView
         android:id="@+id/tvArtistNameSelect"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:ellipsize="end"
         android:gravity="center"
         android:maxLines="2"
         android:text="Nombre del Artista"
         android:textColor="#FFFFFF"
-        android:textSize="13sp"
+        android:textSize="12sp"
         android:textStyle="bold"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

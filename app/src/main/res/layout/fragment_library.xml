@@ -48,6 +48,17 @@
         </LinearLayout>
     </RelativeLayout>
 
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/progressDownload"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:indeterminate="false"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginTop="4dp"
+        app:indicatorColor="#1DB954"
+        app:trackColor="#333333" />
+
     <!-- Search Bar -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
@@ -97,26 +108,11 @@
             android:id="@+id/tvSongCountInfo"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="100 canciones · Desplázate para cargar más"
+            android:text="0 canciones"
             android:textColor="#888888"
             android:textSize="12sp"
             android:layout_centerVertical="true" />
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Ordenar: "
-                android:textColor="#888888"
-                android:textSize="12sp" />
-
-
-        </LinearLayout>
     </RelativeLayout>
 
     <androidx.recyclerview.widget.RecyclerView

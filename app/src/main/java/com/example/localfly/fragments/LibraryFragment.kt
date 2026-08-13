@@ -27,6 +27,7 @@ class LibraryFragment : Fragment() {
     private lateinit var tvSongCountInfo: android.widget.TextView
     private lateinit var btnDownloadAll: com.google.android.material.button.MaterialButton
     private lateinit var etSearch: android.widget.EditText
+    private lateinit var progressBar: com.google.android.material.progressindicator.LinearProgressIndicator
     
     private var currentOffset = 0
     private val limit = 100
@@ -53,6 +54,7 @@ class LibraryFragment : Fragment() {
         tvSongCountInfo = view.findViewById(R.id.tvSongCountInfo)
         btnDownloadAll = view.findViewById(R.id.btnDownloadAll)
         etSearch = view.findViewById(R.id.etSearch)
+        progressBar = view.findViewById(R.id.progressDownload)
 
         // Inicializar adaptador
         adapter = SongAdapter(
@@ -84,30 +86,33 @@ class LibraryFragment : Fragment() {
         rvSongs.adapter = adapter
         
         btnDownloadAll.setOnClickListener {
-            val songsToDownload = fullSongsList.filter { !downloadHelper.isDownloaded(it.id) }
-            if (songsToDownload.isEmpty()) {
+            val pending = fullSongsList.filter { !downloadHelper.isDownloaded(it.id) }
+            if (pending.isEmpty()) {
                 Toast.makeText(requireContext(), "Todas las canciones ya están descargadas", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             
-            Toast.makeText(requireContext(), "Iniciando descarga de ${songsToDownload.size} canciones...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "Iniciando descarga de ${pending.size} canciones...", Toast.LENGTH_SHORT).show()
             
             // Usamos el scope de la actividad para que persista al cambiar de fragmento
             activity?.lifecycleScope?.launch {
-                var count = 0
-                for (song in songsToDownload) {
-                    val audioUrl = "$serverBaseUrl/audio/${song.id}"
-                    if (downloadHelper.download(song, audioUrl)) {
-                        count++
-                        // Si el fragmento sigue visible, refrescamos el contador y la lista
-                        if (isAdded && !isDetached) {
-                            adapter.refreshDownloadStates()
-                            updateDownloadAllButton()
-                        }
-                    }
-                }
-                if (isAdded && !isDetached) {
-                    Toast.makeText(requireContext(), "Se descargaron $count canciones", Toast.LENGTH_SHORT).show()
+                downloadHelper.downloadAll(fullSongsList, serverBaseUrl)
+            }
+        }
+
+        // Observar progreso global de descargas
+        viewLifecycleOwner.lifecycleScope.launch {
+            DownloadManagerHelper.downloadProgress.collect { progress ->
+                if (progress.isDownloading) {
+                    progressBar.visibility = View.VISIBLE
+                    progressBar.max = progress.total
+                    progressBar.progress = progress.current
+                    // Actualizar botón si el fragmento sigue activo
+                    updateDownloadAllButton()
+                    adapter.refreshDownloadStates()
+                } else {
+                    progressBar.visibility = View.GONE
+                    updateDownloadAllButton()
                 }
             }
         }

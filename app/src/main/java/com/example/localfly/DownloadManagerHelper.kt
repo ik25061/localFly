@@ -6,11 +6,20 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+
+data class DownloadProgress(
+    val isDownloading: Boolean = false,
+    val current: Int = 0,
+    val total: Int = 0,
+    val songTitle: String = ""
+)
 
 /**
  * Representa una canción ya descargada al almacenamiento del teléfono.
@@ -27,11 +36,13 @@ data class DownloadedSong(
 
 /**
  * Gestiona la descarga, listado y borrado de canciones offline.
- * Guarda los archivos de audio en el almacenamiento privado de la app
- * (no requiere permisos especiales de almacenamiento) y guarda la lista
- * de canciones descargadas en SharedPreferences como JSON.
  */
 class DownloadManagerHelper(context: Context) {
+
+    companion object {
+        private val _downloadProgress = MutableStateFlow(DownloadProgress())
+        val downloadProgress: StateFlow<DownloadProgress> = _downloadProgress
+    }
 
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("localfly_downloads", Context.MODE_PRIVATE)
@@ -149,5 +160,27 @@ class DownloadManagerHelper(context: Context) {
         target?.let { File(it.filePath).delete() }
         current.removeAll { it.id == songId }
         prefs.edit().putString("list", gson.toJson(current)).apply()
+    }
+
+    suspend fun downloadAll(songs: List<Song>, serverBaseUrl: String) {
+        val pending = songs.filter { !isDownloaded(it.id) }
+        if (pending.isEmpty()) return
+
+        _downloadProgress.value = DownloadProgress(true, 0, pending.size, "")
+
+        var count = 0
+        for (song in pending) {
+            _downloadProgress.value = _downloadProgress.value.copy(
+                current = count + 1,
+                songTitle = song.title
+            )
+            
+            val audioUrl = "$serverBaseUrl/audio/${song.id}"
+            if (download(song, audioUrl)) {
+                count++
+            }
+        }
+
+        _downloadProgress.value = DownloadProgress(false, 0, 0, "")
     }
 }

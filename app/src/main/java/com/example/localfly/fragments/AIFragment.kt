@@ -22,9 +22,11 @@ class AIFragment : Fragment() {
     private lateinit var adapter: ArtistSelectionAdapter
     private lateinit var btnSave: MaterialButton
     private lateinit var tvAIResult: android.widget.TextView
+    private lateinit var etSearch: android.widget.EditText
     private lateinit var sessionManager: SessionManager
 
     private val selectedArtistIds = mutableSetOf<String>()
+    private var allArtists = listOf<Artist>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_ai_assistant, container, false)
@@ -37,6 +39,7 @@ class AIFragment : Fragment() {
         rvArtists = view.findViewById(R.id.rvArtistSelection)
         btnSave = view.findViewById(R.id.btnSaveAIPreferences)
         tvAIResult = view.findViewById(R.id.tvAIResult)
+        etSearch = view.findViewById(R.id.etSearchArtists)
         val cardAIResult = view.findViewById<androidx.cardview.widget.CardView>(R.id.cardAIResult)
 
         // Cargar favoritos existentes
@@ -54,6 +57,14 @@ class AIFragment : Fragment() {
             saveAndAnalyze()
         }
 
+        etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                filterArtists(s.toString())
+            }
+            override fun afterTextChanged(s: android.text.Editable?) {}
+        })
+
         loadArtists()
     }
 
@@ -62,12 +73,22 @@ class AIFragment : Fragment() {
             try {
                 val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), limit = 1000)
                 if (response.isSuccessful && response.body() != null) {
-                    adapter.updateItems(response.body()!!.items)
+                    allArtists = response.body()!!.items
+                    adapter.updateItems(allArtists)
                 }
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun filterArtists(query: String) {
+        val filtered = if (query.isEmpty()) {
+            allArtists
+        } else {
+            allArtists.filter { it.name.contains(query, ignoreCase = true) }
+        }
+        adapter.updateItems(filtered)
     }
 
     private fun saveAndAnalyze() {

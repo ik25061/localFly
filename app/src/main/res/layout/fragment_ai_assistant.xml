@@ -22,7 +22,44 @@
         android:text="Selecciona los artistas que más te gustan para que la IA te recomiende nueva música."
         android:textColor="#AAAAAA"
         android:textSize="14sp"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="16dp" />
+
+    <!-- Search Bar -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="16dp"
+        app:cardBackgroundColor="#222222"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="10dp"
+            android:gravity="center_vertical">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@android:drawable/ic_menu_search"
+                app:tint="#888888" />
+
+            <EditText
+                android:id="@+id/etSearchArtists"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@null"
+                android:hint="Buscar artista..."
+                android:textColor="#FFFFFF"
+                android:textColorHint="#888888"
+                android:textSize="14sp"
+                android:inputType="text"
+                android:maxLines="1" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
 
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
