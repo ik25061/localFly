@@ -110,6 +110,17 @@ class LikedSongsAdapter(
         notifyDataSetChanged()
     }
 
+    /** Devuelve el índice de una canción en la lista, o -1 si no está. */
+    fun indexOf(songId: String): Int = songs.indexOfFirst { it.id == songId }
+
+    /** Actualiza una canción en una posición concreta. */
+    fun updateSongAt(position: Int, song: Song) {
+        if (position in songs.indices) {
+            songs[position] = song
+            notifyItemChanged(position)
+        }
+    }
+
     /** Elimina una canción de la lista (acción "Eliminar" del menú). */
     fun removeSongById(songId: String) {
         val index = songs.indexOfFirst { it.id == songId }

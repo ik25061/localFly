@@ -31,15 +31,29 @@ data class DownloadedSong(
     val filePath: String,
     val duration: Double? = null,
     val hasCover: Boolean = false,
+    val liked: Boolean = false,
     val fileSize: Long = 0
 )
 
 /**
  * Gestiona la descarga, listado y borrado de canciones offline.
+ *
+ * Es un singleton ([getInstance]) para que todas las pantallas compartan la
+ * misma instancia y no se cree un [OkHttpClient] nuevo en cada uso.
  */
-class DownloadManagerHelper(context: Context) {
+class DownloadManagerHelper private constructor(context: Context) {
 
     companion object {
+        @Volatile
+        private var instance: DownloadManagerHelper? = null
+
+        fun getInstance(context: Context): DownloadManagerHelper {
+            val appContext = context.applicationContext
+            return instance ?: synchronized(this) {
+                instance ?: DownloadManagerHelper(appContext).also { instance = it }
+            }
+        }
+
         private val _downloadProgress = MutableStateFlow(DownloadProgress())
         val downloadProgress: StateFlow<DownloadProgress> = _downloadProgress
     }
@@ -125,6 +139,7 @@ class DownloadManagerHelper(context: Context) {
                         filePath = file!!.absolutePath,
                         duration = song.duration,
                         hasCover = song.hasCover,
+                        liked = song.liked,
                         fileSize = file!!.length()
                     )
                 )
@@ -159,6 +174,23 @@ class DownloadManagerHelper(context: Context) {
         val target = current.find { it.id == songId }
         target?.let { File(it.filePath).delete() }
         current.removeAll { it.id == songId }
+        prefs.edit().putString("list", gson.toJson(current)).apply()
+    }
+
+    /** Elimina todas las canciones descargadas (archivos y registro). */
+    fun removeAllDownloads() {
+        getDownloadedSongs().forEach { song ->
+            runCatching { File(song.filePath).delete() }
+        }
+        prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()
+    }
+
+    /** Actualiza el estado "me gusta" guardado de una canción descargada (si existe). */
+    fun updateLiked(songId: String, liked: Boolean) {
+        val current = getDownloadedSongs().toMutableList()
+        val idx = current.indexOfFirst { it.id == songId }
+        if (idx == -1) return
+        current[idx] = current[idx].copy(liked = liked)
         prefs.edit().putString("list", gson.toJson(current)).apply()
     }
 

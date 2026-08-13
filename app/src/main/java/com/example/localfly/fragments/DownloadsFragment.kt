@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -25,6 +26,8 @@ class DownloadsFragment : Fragment() {
     private lateinit var swAutoDelete: com.google.android.material.materialswitch.MaterialSwitch
     private lateinit var btnBack: android.widget.ImageButton
     private lateinit var ivInfo: android.widget.ImageView
+    private lateinit var btnDeleteList: android.widget.ImageButton
+    private lateinit var btnDeleteRed: android.widget.ImageButton
     
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
@@ -37,7 +40,7 @@ class DownloadsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        downloadHelper = DownloadManagerHelper(requireContext())
+        downloadHelper = DownloadManagerHelper.getInstance(requireContext())
         sessionManager = SessionManager(requireContext())
         
         rvDownloads = view.findViewById(R.id.rvDownloads)
@@ -47,6 +50,8 @@ class DownloadsFragment : Fragment() {
         swAutoDelete = view.findViewById(R.id.swAutoDelete)
         btnBack = view.findViewById(R.id.btnBack)
         ivInfo = view.findViewById(R.id.ivInfo)
+        btnDeleteList = view.findViewById(R.id.btnDeleteList)
+        btnDeleteRed = view.findViewById(R.id.btnDeleteRed)
 
         adapter = DownloadedSongAdapter(
             items = mutableListOf(),
@@ -73,7 +78,28 @@ class DownloadsFragment : Fragment() {
             Toast.makeText(requireContext(), "Si el toggle está activo la canción se eliminará después de reproducir", Toast.LENGTH_LONG).show()
         }
 
+        btnDeleteList.setOnClickListener { confirmDeleteAll() }
+        btnDeleteRed.setOnClickListener { confirmDeleteAll() }
+
         loadDownloads()
+    }
+
+    /** Pide confirmación antes de borrar todas las descargas. */
+    private fun confirmDeleteAll() {
+        if (downloadHelper.getDownloadedSongs().isEmpty()) {
+            Toast.makeText(requireContext(), "No hay descargas para eliminar", Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Eliminar todas las descargas")
+            .setMessage("¿Seguro que quieres borrar todas las canciones descargadas de tu dispositivo?")
+            .setPositiveButton("Eliminar") { _, _ ->
+                downloadHelper.removeAllDownloads()
+                loadDownloads()
+                Toast.makeText(requireContext(), "Descargas eliminadas", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun loadDownloads() {

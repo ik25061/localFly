@@ -60,7 +60,7 @@ class CollectionDetailFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        downloadHelper = DownloadManagerHelper(requireContext())
+        downloadHelper = DownloadManagerHelper.getInstance(requireContext())
         sessionManager = SessionManager(requireContext())
 
         ivCover = view.findViewById(R.id.ivCollectionCover)
@@ -192,8 +192,14 @@ class CollectionDetailFragment : Fragment() {
         adapter.updateSongAt(position, song.copy(liked = newLiked))
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
-            } catch (e: Exception) {}
+                val response = RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingLike(song.id, newLiked)
+                }
+            } catch (e: Exception) {
+                // Sin conexión: guardar para sincronizar al volver al servidor
+                sessionManager.addPendingLike(song.id, newLiked)
+            }
         }
     }
 

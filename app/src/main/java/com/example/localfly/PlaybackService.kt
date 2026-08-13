@@ -31,6 +31,7 @@ import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +88,8 @@ class PlaybackService : Service() {
 
     /** La actividad conectada puede suscribirse aquí para refrescar su UI */
     var onStateChanged: (() -> Unit)? = null
+
+    private val downloadHelper = DownloadManagerHelper.getInstance(this)
 
     private lateinit var sessionManager: SessionManager
 
@@ -181,7 +184,7 @@ class PlaybackService : Service() {
             val localPath = queueLocalPaths.getOrNull(currentIndex)
             if (localPath != null) {
                 // Es una descarga que acaba de terminar. La eliminamos.
-                DownloadManagerHelper(this).removeDownload(song.id)
+                downloadHelper.removeDownload(song.id)
                 
                 // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
                 val mutablePaths = queueLocalPaths.toMutableList()
@@ -281,6 +284,9 @@ class PlaybackService : Service() {
 
     fun next() {
         if (currentIndex + 1 < queue.size) {
+            // Si el toggle de auto-eliminación está activo, borrar la descarga
+            // de la canción actual antes de pasar a la siguiente.
+            checkAutoDelete()
             currentIndex++
             playCurrentIndex()
         }
@@ -342,6 +348,8 @@ class PlaybackService : Service() {
         val song = currentSong ?: return
         val newLiked = !song.liked
         currentSong = song.copy(liked = newLiked)
+        // Mantener el estado guardado de la descarga (si la canción está descargada)
+        downloadHelper.updateLiked(song.id, newLiked)
         updateNotification()
         onStateChanged?.invoke()
 
@@ -378,8 +386,13 @@ class PlaybackService : Service() {
         }
 
         if (hasNext()) {
+            // next() ya se encarga de eliminar la descarga actual si el toggle
+            // de auto-eliminación está activo.
             next()
         } else {
+            // Es la última canción de la cola: eliminar la descarga actual
+            // (si el toggle está activo) antes de detener la reproducción.
+            checkAutoDelete()
             player?.stop()
             currentSong = null
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -549,6 +562,9 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        // Detiene el bucle de sincronización offline para no acumular
+        // corrutinas ni hacer llamadas redundantes al servidor.
+        serviceScope.cancel()
         player?.release()
         player = null
         super.onDestroy()

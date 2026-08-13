@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         sessionManager = SessionManager(this)
-        downloadHelper = DownloadManagerHelper(this)
+        downloadHelper = DownloadManagerHelper.getInstance(this)
 
         // Verificar sesión
         if (!sessionManager.isLoggedIn()) {
@@ -240,9 +240,9 @@ class MainActivity : AppCompatActivity() {
                 artist = it.artist,
                 album = null,
                 year = null,
-                duration = null,
-                liked = false,
-                hasCover = false
+                duration = it.duration,
+                liked = it.liked,
+                hasCover = it.hasCover
             )
         }
         val localPaths = allDownloads.map { downloadHelper.getLocalFilePath(it.id) }
@@ -256,12 +256,16 @@ class MainActivity : AppCompatActivity() {
         adapter.updateSongAt(position, song.copy(liked = newLiked))
         lifecycleScope.launch {
             try {
-                RetrofitClient.api.likeSong(
+                val response = RetrofitClient.api.likeSong(
                     song.id,
                     LikeRequest(sessionManager.getUserId(), newLiked)
                 )
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingLike(song.id, newLiked)
+                }
             } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "No se pudo actualizar (sin conexión)", Toast.LENGTH_SHORT).show()
+                // Sin conexión: guardar el like para sincronizarlo al volver al servidor
+                sessionManager.addPendingLike(song.id, newLiked)
             }
         }
     }
@@ -270,9 +274,13 @@ class MainActivity : AppCompatActivity() {
         adapter.removeAt(position)
         lifecycleScope.launch {
             try {
-                RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
+                val response = RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingDislike(song.id)
+                }
             } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "No se pudo ocultar (sin conexión)", Toast.LENGTH_SHORT).show()
+                // Sin conexión: guardar el dislike para sincronizarlo al volver al servidor
+                sessionManager.addPendingDislike(song.id)
             }
         }
     }

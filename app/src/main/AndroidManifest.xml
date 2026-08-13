@@ -35,10 +35,6 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
-            android:name=".DownloadsActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".NowPlayingActivity"
             android:exported="false" />
 

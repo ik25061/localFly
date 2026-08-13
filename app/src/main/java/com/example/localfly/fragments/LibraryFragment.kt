@@ -47,7 +47,7 @@ class LibraryFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        downloadHelper = DownloadManagerHelper(requireContext())
+        downloadHelper = DownloadManagerHelper.getInstance(requireContext())
         sessionManager = SessionManager(requireContext())
 
         rvSongs = view.findViewById(R.id.rvLibrarySongs)
@@ -231,14 +231,16 @@ class LibraryFragment : Fragment() {
         adapter.updateSongAt(position, song.copy(liked = newLiked))
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                RetrofitClient.api.likeSong(
+                val response = RetrofitClient.api.likeSong(
                     song.id,
                     LikeRequest(sessionManager.getUserId(), newLiked)
                 )
-            } catch (e: Exception) {
-                if (isAdded) {
-                    Toast.makeText(requireContext(), "Error al actualizar like", Toast.LENGTH_SHORT).show()
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingLike(song.id, newLiked)
                 }
+            } catch (e: Exception) {
+                // Sin conexión: guardar para sincronizar al volver al servidor
+                sessionManager.addPendingLike(song.id, newLiked)
             }
         }
     }
@@ -247,14 +249,16 @@ class LibraryFragment : Fragment() {
         adapter.removeAt(position)
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                RetrofitClient.api.hideSong(
+                val response = RetrofitClient.api.hideSong(
                     song.id,
                     HideRequest(sessionManager.getUserId())
                 )
-            } catch (e: Exception) {
-                if (isAdded) {
-                    Toast.makeText(requireContext(), "Error al ocultar canción", Toast.LENGTH_SHORT).show()
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingDislike(song.id)
                 }
+            } catch (e: Exception) {
+                // Sin conexión: guardar para sincronizar al volver al servidor
+                sessionManager.addPendingDislike(song.id)
             }
         }
     }

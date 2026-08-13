@@ -15,6 +15,8 @@ import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
 import com.example.localfly.databinding.FragmentHomeBinding
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.HideRequest
+import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
@@ -48,7 +50,7 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         sessionManager = SessionManager(requireContext())
-        downloadHelper = DownloadManagerHelper(requireContext())
+        downloadHelper = DownloadManagerHelper.getInstance(requireContext())
 
         setupGreeting()
         setupAdapters()
@@ -240,14 +242,52 @@ class HomeFragment : Fragment() {
     }
     // Funciones de interacción (delegar a la actividad o al servicio)
     private fun toggleLike(song: Song) {
-        // Implementar llamada a API y actualizar UI
-        // Por ahora solo notificamos
-        Toast.makeText(requireContext(), "Like toggled: ${song.title}", Toast.LENGTH_SHORT).show()
+        val newLiked = !song.liked
+        val updated = song.copy(liked = newLiked)
+
+        if (::likedAdapter.isInitialized) {
+            val idxLiked = likedAdapter.indexOf(song.id)
+            if (idxLiked != -1) likedAdapter.updateSongAt(idxLiked, updated)
+        }
+        if (::recommendationsAdapter.isInitialized) {
+            val idxRec = recommendationsAdapter.indexOf(song.id)
+            if (idxRec != -1) recommendationsAdapter.updateSongAt(idxRec, updated)
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.likeSong(
+                    song.id,
+                    LikeRequest(sessionManager.getUserId(), newLiked)
+                )
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingLike(song.id, newLiked)
+                }
+            } catch (e: Exception) {
+                // Sin conexión: guardar para sincronizar al volver al servidor
+                sessionManager.addPendingLike(song.id, newLiked)
+            }
+        }
     }
 
     private fun hideSong(song: Song) {
-        // Implementar ocultar canción
-        Toast.makeText(requireContext(), "Ocultar: ${song.title}", Toast.LENGTH_SHORT).show()
+        if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.hideSong(
+                    song.id,
+                    HideRequest(sessionManager.getUserId())
+                )
+                if (!response.isSuccessful) {
+                    sessionManager.addPendingDislike(song.id)
+                }
+            } catch (e: Exception) {
+                // Sin conexión: guardar para sincronizar al volver al servidor
+                sessionManager.addPendingDislike(song.id)
+            }
+        }
     }
 
     /** Descarga la canción si no está descargada; si ya lo está, la elimina. */
