@@ -7,17 +7,31 @@ import androidx.security.crypto.MasterKey
 
 class SessionManager(context: Context) {
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
+    private val prefs: SharedPreferences
 
-    private val prefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "localfly_session",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
+    init {
+        val appContext = context.applicationContext
+        // Crear las prefs cifradas de forma segura. En algunos dispositivos/emuladores
+        // el Keystore de Android falla al generar la clave (GeneralSecurityException /
+        // IOException), lo que provocaba un crash al arrancar la app. Si eso ocurre,
+        // usamos SharedPreferences normales como respaldo para no romper el inicio.
+        prefs = try {
+            val masterKey = MasterKey.Builder(appContext)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+
+            EncryptedSharedPreferences.create(
+                appContext,
+                "localfly_session",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Fallback: no cifradas. El usuario simplemente tendrá que volver a iniciar sesión.
+            appContext.getSharedPreferences("localfly_session_plain", Context.MODE_PRIVATE)
+        }
+    }
 
     fun saveSession(token: String, userId: String, username: String) {
         prefs.edit()

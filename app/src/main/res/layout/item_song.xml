@@ -89,6 +89,15 @@
         android:scaleType="centerInside"
         android:contentDescription="@string/song_menu" />
 
+    <ImageView
+        android:id="@+id/ivLyricsIndicator"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_marginStart="8dp"
+        android:src="@drawable/ic_lyrics_presence"
+        android:visibility="gone"
+        app:tint="#1DB954" />
+
     <TextView
         android:id="@+id/tvDuration"
         android:layout_width="wrap_content"

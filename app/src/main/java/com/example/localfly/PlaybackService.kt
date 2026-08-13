@@ -89,13 +89,14 @@ class PlaybackService : Service() {
     /** La actividad conectada puede suscribirse aquí para refrescar su UI */
     var onStateChanged: (() -> Unit)? = null
 
-    private val downloadHelper = DownloadManagerHelper.getInstance(this)
+    private lateinit var downloadHelper: DownloadManagerHelper
 
     private lateinit var sessionManager: SessionManager
 
     override fun onCreate() {
         super.onCreate()
         sessionManager = SessionManager(this)
+        downloadHelper = DownloadManagerHelper.getInstance(this)
         createNotificationChannel()
 
         player = ExoPlayer.Builder(this).build()
@@ -107,8 +108,13 @@ class PlaybackService : Service() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    checkAutoDelete()
-                    next()
+                    val songToHandle = currentSong
+                    val indexToHandle = currentIndex
+                    
+                    next() // Intentar ir a la siguiente primero
+                    
+                    // Borrar la descarga de la canción que acaba de terminar (si corresponde)
+                    checkAutoDelete(songToHandle, indexToHandle)
                 }
             }
         })
@@ -178,18 +184,18 @@ class PlaybackService : Service() {
         }
     }
 
-    private fun checkAutoDelete() {
+    private fun checkAutoDelete(song: Song?, index: Int) {
+        if (song == null) return
         if (sessionManager.isAutoDeleteEnabled()) {
-            val song = currentSong ?: return
-            val localPath = queueLocalPaths.getOrNull(currentIndex)
+            val localPath = queueLocalPaths.getOrNull(index)
             if (localPath != null) {
-                // Es una descarga que acaba de terminar. La eliminamos.
+                // Es una descarga que acaba de terminar o ser descartada. La eliminamos.
                 downloadHelper.removeDownload(song.id)
                 
                 // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
                 val mutablePaths = queueLocalPaths.toMutableList()
-                if (currentIndex in mutablePaths.indices) {
-                    mutablePaths[currentIndex] = null
+                if (index in mutablePaths.indices) {
+                    mutablePaths[index] = null
                     queueLocalPaths = mutablePaths
                 }
                 
@@ -284,11 +290,15 @@ class PlaybackService : Service() {
 
     fun next() {
         if (currentIndex + 1 < queue.size) {
-            // Si el toggle de auto-eliminación está activo, borrar la descarga
-            // de la canción actual antes de pasar a la siguiente.
-            checkAutoDelete()
+            val songToHandle = currentSong
+            val indexToHandle = currentIndex
+            
             currentIndex++
             playCurrentIndex()
+            
+            // Borrar la descarga de la canción anterior DESPUÉS de cambiar a la nueva
+            // para asegurar que el archivo ya no está bloqueado por el player.
+            checkAutoDelete(songToHandle, indexToHandle)
         }
     }
 
@@ -343,6 +353,24 @@ class PlaybackService : Service() {
         player?.let { if (it.isPlaying) it.pause() else it.play() }
     }
 
+    fun toggleShuffle() {
+        player?.let {
+            it.shuffleModeEnabled = !it.shuffleModeEnabled
+            onStateChanged?.invoke()
+        }
+    }
+
+    fun toggleRepeat() {
+        player?.let {
+            it.repeatMode = when (it.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            onStateChanged?.invoke()
+        }
+    }
+
     /** Marca/desmarca "me gusta" en la canción actual y avisa al servidor */
     fun toggleLike() {
         val song = currentSong ?: return
@@ -371,29 +399,27 @@ class PlaybackService : Service() {
 
     /** "No me gusta": oculta la canción en el servidor y avanza a la siguiente */
     fun dislikeCurrentSong() {
-        val song = currentSong ?: return
+        val songToHide = currentSong ?: return
 
         serviceScope.launch {
             try {
-                val response = RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
+                val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))
                 if (!response.isSuccessful) {
-                    sessionManager.addPendingDislike(song.id)
+                    sessionManager.addPendingDislike(songToHide.id)
                 }
             } catch (e: Exception) {
                 // Sin conexión: guardar para después
-                sessionManager.addPendingDislike(song.id)
+                sessionManager.addPendingDislike(songToHide.id)
             }
         }
 
         if (hasNext()) {
-            // next() ya se encarga de eliminar la descarga actual si el toggle
-            // de auto-eliminación está activo.
+            // next() ya se encarga de llamar a checkAutoDelete(anterior)
             next()
         } else {
-            // Es la última canción de la cola: eliminar la descarga actual
-            // (si el toggle está activo) antes de detener la reproducción.
-            checkAutoDelete()
+            // Es la última canción de la cola: detener y borrar descarga actual
             player?.stop()
+            checkAutoDelete(songToHide, currentIndex)
             currentSong = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             onStateChanged?.invoke()
@@ -487,7 +513,7 @@ class PlaybackService : Service() {
         // Configuración MediaStyle (Standard para Android 12+)
         builder.setStyle(
             MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play, Siguiente
+                .setShowActionsInCompactView(2, 3) // Play/Pausa, Siguiente (sin "Anterior")
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 

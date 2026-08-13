@@ -35,6 +35,7 @@ class LikedSongsAdapter(
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
         val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
+        val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -51,6 +52,9 @@ class LikedSongsAdapter(
         holder.tvIndex.text = (position + 1).toString()
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
+
+        // Lyrics Indicator
+        holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
 
         // Acciones visibles
         holder.btnLike.setImageResource(

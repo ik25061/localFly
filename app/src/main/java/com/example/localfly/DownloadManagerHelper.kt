@@ -31,6 +31,7 @@ data class DownloadedSong(
     val filePath: String,
     val duration: Double? = null,
     val hasCover: Boolean = false,
+    val hasLyrics: Boolean = false,
     val liked: Boolean = false,
     val fileSize: Long = 0
 )
@@ -139,6 +140,7 @@ class DownloadManagerHelper private constructor(context: Context) {
                         filePath = file!!.absolutePath,
                         duration = song.duration,
                         hasCover = song.hasCover,
+                        hasLyrics = song.hasLyrics,
                         liked = song.liked,
                         fileSize = file!!.length()
                     )

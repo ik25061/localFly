@@ -10,7 +10,9 @@ data class Song(
     val year: Int?,
     val duration: Double?,
     val liked: Boolean,
-    val hasCover: Boolean
+    val hasCover: Boolean,
+    @SerializedName("hasLyrics")
+    val hasLyrics: Boolean = false
 )
 
 data class LibraryResponse(

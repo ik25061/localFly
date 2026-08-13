@@ -23,6 +23,7 @@ class DownloadedSongAdapter(
         val tvTitle: TextView = view.findViewById(R.id.tvDownloadedTitle)
         val tvArtist: TextView = view.findViewById(R.id.tvDownloadedArtist)
         val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
+        val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
@@ -38,6 +39,9 @@ class DownloadedSongAdapter(
         holder.tvTitle.text = toTitleCase(item.title)
         holder.tvArtist.text = toTitleCase(item.artist) ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(item.duration)
+
+        // Lyrics Indicator
+        holder.ivLyricsIndicator.visibility = if (item.hasLyrics) View.VISIBLE else View.GONE
 
         if (item.hasCover) {
             Glide.with(holder.itemView.context)

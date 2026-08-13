@@ -176,15 +176,18 @@ class MainActivity : AppCompatActivity() {
     private fun verifySession() {
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.api.verify(sessionManager.getUserId())
-                if (!response.isSuccessful) {
-                    // Sesión inválida en el servidor
+                val userId = sessionManager.getUserId()
+                if (userId == null) return@launch
+                
+                val response = RetrofitClient.api.verify(userId)
+                if (response.code() == 401 || response.code() == 403) {
+                    // Solo si es un error explícito de autorización
                     sessionManager.clearSession()
                     startActivity(Intent(this@MainActivity, LoginActivity::class.java))
                     finish()
                 }
             } catch (e: Exception) {
-                // Error de red, permitimos seguir offline si ya estaba logueado localmente
+                // Error de red o 404 (endpoint no implementado), permitimos seguir offline
             }
         }
     }
