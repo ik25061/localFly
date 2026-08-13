@@ -102,9 +102,8 @@ class AlbumDetailFragment : Fragment() {
                 Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
             },
             onPlaylistAddClick = { song ->
-                val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.addToQueue(song)
-                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+                val dialog = PlaylistSelectionDialogFragment.newInstance(song.id)
+                dialog.show(parentFragmentManager, "playlist_selection")
             }
         )
 

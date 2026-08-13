@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -135,21 +136,16 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchLyrics(song: Song): String? = withContext(Dispatchers.IO) {
-        val encodedTitle = java.net.URLEncoder.encode(song.title, "UTF-8").replace("+", "%20")
-        val lyricsUrl = "$serverBaseUrl/resources/$encodedTitle.lrc"
-        
-        val client = okhttp3.OkHttpClient()
-        val request = okhttp3.Request.Builder().url(lyricsUrl).build()
-        
         try {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val rawLyrics = response.body?.string() ?: return@withContext null
-                return@withContext parseLrc(rawLyrics)
+            val response = RetrofitClient.api.getLyrics(song.id)
+            if (response.isSuccessful && response.body() != null) {
+                val lyricsContent = response.body()!!.lyrics ?: return@withContext null
+                return@withContext parseLrc(lyricsContent)
             }
         } catch (e: Exception) {
-            null
+            // Log error
         }
+        null
     }
 
     private fun parseLrc(lrc: String): String {

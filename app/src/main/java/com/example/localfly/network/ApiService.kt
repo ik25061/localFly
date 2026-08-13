@@ -11,6 +11,9 @@ interface ApiService {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
+    @GET("api/auth/verify")
+    suspend fun verify(@Query("userId") userId: String?): Response<LoginResponse>
+
     @GET("api/library")
     suspend fun getLibrary(
         @Query("userId") userId: String?,
@@ -45,6 +48,18 @@ interface ApiService {
         @Query("offset") offset: Int = 0,
         @Query("search") search: String? = null
     ): Response<ArtistsResponse>
+
+    @POST("api/artists/{id}/hide")
+    suspend fun hideArtist(
+        @Path("id") artistId: String,
+        @Body request: HideArtistRequest
+    ): Response<Unit>
+
+    @POST("api/artists/{id}/unhide")
+    suspend fun unhideArtist(
+        @Path("id") artistId: String,
+        @Body request: HideArtistRequest
+    ): Response<Unit>
 
     @GET("api/genres")
     suspend fun getGenres(
@@ -93,4 +108,64 @@ interface ApiService {
         @Query("userId") userId: String?
     ): Response<LibraryResponse>
 
+    // --- Playlists ---
+
+    @GET("api/playlists")
+    suspend fun getPlaylists(
+        @Query("userId") userId: String?
+    ): Response<PlaylistsResponse>
+
+    @POST("api/playlists")
+    suspend fun createPlaylist(
+        @Body request: CreatePlaylistRequest
+    ): Response<Playlist>
+
+    @retrofit2.http.DELETE("api/playlists/{id}")
+    suspend fun deletePlaylist(
+        @Path("id") playlistId: String,
+        @Query("userId") userId: String?
+    ): Response<Unit>
+
+    @GET("api/playlists/{id}/songs")
+    suspend fun getPlaylistSongs(
+        @Path("id") playlistId: String,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
+    @POST("api/playlists/{id}/songs")
+    suspend fun addSongToPlaylist(
+        @Path("id") playlistId: String,
+        @Body request: AddSongToPlaylistRequest
+    ): Response<Unit>
+
+    @retrofit2.http.DELETE("api/playlists/{id}/songs/{songId}")
+    suspend fun removeSongFromPlaylist(
+        @Path("id") playlistId: String,
+        @Path("songId") songId: String,
+        @Query("userId") userId: String?
+    ): Response<Unit>
+
+    // --- Lyrics ---
+
+    @GET("api/lyrics/{id}")
+    suspend fun getLyrics(
+        @Path("id") songId: String
+    ): Response<LyricsResponse>
+
+    // --- Favorite Artists ---
+
+    @GET("api/favorite-artists")
+    suspend fun getFavoriteArtists(
+        @Query("userId") userId: String?
+    ): Response<ArtistsResponse>
+
+    @POST("api/favorite-artists/toggle")
+    suspend fun toggleFavoriteArtist(
+        @Body request: FavoriteArtistRequest
+    ): Response<Unit>
+
+    // --- Config ---
+
+    @GET("api/config/ip")
+    suspend fun getIpConfig(): Response<IpConfigResponse>
 }

@@ -87,18 +87,26 @@ class SongAdapter(
         if (onDeleteClick != null) {
             popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
         }
-        popup.menu.add(0, MENU_ADD_PLAYLIST, 1, "Añadir al final de la lista de reproducción")
-        popup.menu.add(0, MENU_PLAY_NEXT, 2, "Reproducir siguiente")
+        popup.menu.add(0, MENU_ADD_LIST, 1, "Añadir a lista...")
+        popup.menu.add(0, MENU_ADD_PLAYLIST, 2, "Añadir al final de la lista de reproducción")
+        popup.menu.add(0, MENU_PLAY_NEXT, 3, "Reproducir siguiente")
         popup.menu.add(
             0,
             MENU_DOWNLOAD,
-            3,
+            4,
             if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
         )
 
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
                 MENU_DELETE -> onDeleteClick?.invoke(song, holder.bindingAdapterPosition)
+                MENU_ADD_LIST -> {
+                    val activity = holder.itemView.context as? androidx.appcompat.app.AppCompatActivity
+                    activity?.let {
+                        val dialog = com.example.localfly.fragments.PlaylistSelectionDialogFragment.newInstance(song.id)
+                        dialog.show(it.supportFragmentManager, "playlist_selection")
+                    }
+                }
                 MENU_ADD_PLAYLIST -> onPlaylistAddClick?.invoke(song)
                 MENU_PLAY_NEXT -> onPlayNextClick?.invoke(song)
                 MENU_DOWNLOAD -> onDownloadClick(song)
@@ -155,8 +163,9 @@ class SongAdapter(
 
     companion object {
         const val MENU_DELETE = 1
-        const val MENU_ADD_PLAYLIST = 2
-        const val MENU_PLAY_NEXT = 3
-        const val MENU_DOWNLOAD = 4
+        const val MENU_ADD_LIST = 2
+        const val MENU_ADD_PLAYLIST = 3
+        const val MENU_PLAY_NEXT = 4
+        const val MENU_DOWNLOAD = 5
     }
 }

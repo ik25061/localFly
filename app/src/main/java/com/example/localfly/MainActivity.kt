@@ -73,12 +73,18 @@ class MainActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         downloadHelper = DownloadManagerHelper.getInstance(this)
 
-        // Verificar sesión
+        // Verificar sesión local
         if (!sessionManager.isLoggedIn()) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
+
+        // Verificar sesión con el servidor en segundo plano
+        verifySession()
+        
+        // Intentar descubrir la IP óptima del servidor
+        discoverServerIp()
 
         // Inicializar mini player
         miniPlayer = findViewById(R.id.miniPlayer)
@@ -118,7 +124,10 @@ class MainActivity : AppCompatActivity() {
             onDownloadClick = { song -> toggleDownload(song) },
             onDeleteClick = { song, position -> hideSongInLibrary(song, position) },
             onPlayNextClick = { song -> playbackService?.playNext(song) },
-            onPlaylistAddClick = { song -> /* logic here */ }
+            onPlaylistAddClick = { song -> 
+                val dialog = com.example.localfly.fragments.PlaylistSelectionDialogFragment.newInstance(song.id)
+                dialog.show(supportFragmentManager, "playlist_selection")
+            }
         )
 
         // Aquí debes asignar el adaptador a tu RecyclerView (rvSongs)
@@ -163,6 +172,38 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ===== MÉTODOS =====
+
+    private fun verifySession() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.verify(sessionManager.getUserId())
+                if (!response.isSuccessful) {
+                    // Sesión inválida en el servidor
+                    sessionManager.clearSession()
+                    startActivity(Intent(this@MainActivity, LoginActivity::class.java))
+                    finish()
+                }
+            } catch (e: Exception) {
+                // Error de red, permitimos seguir offline si ya estaba logueado localmente
+            }
+        }
+    }
+
+    private fun discoverServerIp() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getIpConfig()
+                if (response.isSuccessful && response.body() != null) {
+                    val serverIp = response.body()!!.ip
+                    // Si el servidor nos dice que su IP es distinta a la que usamos, actualizamos
+                    // (Útil para túneles o cambios de DHCP)
+                    RetrofitClient.updateBaseUrl(serverIp)
+                }
+            } catch (e: Exception) {
+                // Discovery failed, stick to current
+            }
+        }
+    }
 
     private fun replaceFragment(fragment: Fragment) {
         supportFragmentManager.beginTransaction()

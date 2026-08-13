@@ -65,7 +65,8 @@ class LikedSongsFragment : Fragment() {
                 (requireActivity() as? MainActivity)?.playbackService?.playNext(song)
             },
             onPlaylistAddClick = { song ->
-                (requireActivity() as? MainActivity)?.playbackService?.addToQueue(song)
+                val dialog = PlaylistSelectionDialogFragment.newInstance(song.id)
+                dialog.show(parentFragmentManager, "playlist_selection")
             }
         )
 

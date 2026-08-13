@@ -42,8 +42,11 @@ class AIFragment : Fragment() {
         etSearch = view.findViewById(R.id.etSearchArtists)
         val cardAIResult = view.findViewById<androidx.cardview.widget.CardView>(R.id.cardAIResult)
 
-        // Cargar favoritos existentes
+        // Cargar favoritos locales primero
         selectedArtistIds.addAll(sessionManager.getFavoriteArtists())
+
+        // Cargar favoritos del servidor para sincronizar
+        loadServerFavorites()
 
         adapter = ArtistSelectionAdapter(emptyList(), selectedArtistIds) {
             btnSave.isEnabled = selectedArtistIds.isNotEmpty()
@@ -66,6 +69,25 @@ class AIFragment : Fragment() {
         })
 
         loadArtists()
+    }
+
+    private fun loadServerFavorites() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getFavoriteArtists(sessionManager.getUserId())
+                if (response.isSuccessful && response.body() != null) {
+                    val serverIds = response.body()!!.items.map { it.id }.toSet()
+                    if (serverIds != selectedArtistIds) {
+                        selectedArtistIds.clear()
+                        selectedArtistIds.addAll(serverIds)
+                        sessionManager.saveFavoriteArtists(selectedArtistIds)
+                        adapter.notifyDataSetChanged()
+                    }
+                }
+            } catch (e: Exception) {
+                // Silently fail or log
+            }
+        }
     }
 
     private fun loadArtists() {
@@ -104,6 +126,9 @@ class AIFragment : Fragment() {
         cardAIResult?.visibility = View.VISIBLE
         tvAIResult.text = "🤖 IA local analizando tus gustos..."
 
+        // Sincronizar con el servidor en segundo plano
+        syncFavoritesWithServer()
+
         // Ejecutar la IA local (en el dispositivo) con una pequeña demora para UX
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -118,6 +143,21 @@ class AIFragment : Fragment() {
 
             // Navegar a Inicio para ver las recomendaciones
             activity?.findViewById<com.google.android.material.bottomnavigation.BottomNavigationView>(R.id.bottomNavigation)?.selectedItemId = R.id.nav_home
+        }
+    }
+
+    private fun syncFavoritesWithServer() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val userId = sessionManager.getUserId()
+            selectedArtistIds.forEach { artistId ->
+                try {
+                    RetrofitClient.api.toggleFavoriteArtist(
+                        FavoriteArtistRequest(userId, artistId, true)
+                    )
+                } catch (e: Exception) {
+                    // Ignore individual errors
+                }
+            }
         }
     }
 }

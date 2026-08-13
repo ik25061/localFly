@@ -99,3 +99,56 @@ data class LikedSongsResponse(
     val songs: List<Song>,
     val pagination: Pagination?
 )
+
+// --- Playlists ---
+
+data class Playlist(
+    val id: String,
+    val name: String,
+    val description: String?,
+    @SerializedName("user_id")
+    val userId: String?,
+    @SerializedName("song_count")
+    val songCount: Int,
+    @SerializedName("cover_id")
+    val coverId: String? = null
+)
+
+data class CreatePlaylistRequest(
+    val name: String,
+    val description: String? = null,
+    val userId: String?
+)
+
+data class AddSongToPlaylistRequest(
+    val songId: String
+)
+
+data class PlaylistsResponse(
+    val playlists: List<Playlist>
+)
+
+// --- Lyrics ---
+
+data class LyricsResponse(
+    val lyrics: String?,
+    val source: String? = null
+)
+
+// --- Config ---
+
+data class IpConfigResponse(
+    val ip: String
+)
+
+// --- Favorite Artists ---
+data class FavoriteArtistRequest(
+    val userId: String?,
+    val artistId: String,
+    val liked: Boolean
+)
+
+// --- Hidden Artists ---
+data class HideArtistRequest(
+    val userId: String?
+)

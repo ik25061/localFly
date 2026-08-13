@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 
 class CollectionListFragment : Fragment() {
 
-    enum class Type { ALBUM, ARTIST, GENRE, YEAR }
+    enum class Type { ALBUM, ARTIST, GENRE, YEAR, PLAYLIST }
 
     private var type: Type = Type.ALBUM
     private lateinit var rvCollections: RecyclerView
@@ -79,6 +79,10 @@ class CollectionListFragment : Fragment() {
             Type.YEAR -> {
                 etSearch.hint = "Buscar años..."
                 "Años"
+            }
+            Type.PLAYLIST -> {
+                etSearch.hint = "Buscar listas..."
+                "Mis Listas"
             }
         }
 
@@ -139,6 +143,9 @@ class CollectionListFragment : Fragment() {
                         limit = 1000,
                         search = normalized.ifBlank { null }
                     )
+                    Type.PLAYLIST -> RetrofitClient.api.getPlaylists(
+                        userId = sessionManager.getUserId()
+                    )
                 }
 
                 if (response.isSuccessful && response.body() != null) {
@@ -148,6 +155,7 @@ class CollectionListFragment : Fragment() {
                         is ArtistsResponse -> body.items
                         is GenresResponse -> body.items
                         is YearsResponse -> body.items
+                        is PlaylistsResponse -> body.playlists
                         else -> emptyList()
                     }
                     displayedItems = originalItems
@@ -207,6 +215,9 @@ class CollectionListFragment : Fragment() {
 
     private fun openDetail(item: Any) {
         val fragment = when (item) {
+            is com.example.localfly.network.Playlist -> {
+                CollectionDetailFragment.newInstance(item.id, item.name, "PLAYLIST", item.coverId)
+            }
             is Album -> AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             is Artist -> CollectionDetailFragment.newInstance(item.id, item.name, "ARTIST", item.coverId)
             is Genre -> CollectionDetailFragment.newInstance(item.id, item.name, "GENRE", item.coverId)

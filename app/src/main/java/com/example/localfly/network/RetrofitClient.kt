@@ -8,9 +8,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
-    // IMPORTANTE: la URL base se lee de ApiConfig. Si necesitas cambiarla,
-    // edita ApiConfig.BASE_URL (IP local del servidor mirepo).
-    private const val BASE_URL = "${ApiConfig.BASE_URL}/"
+    private var currentBaseUrl = "${ApiConfig.BASE_URL}/"
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -22,12 +20,25 @@ object RetrofitClient {
         .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
-    val api: ApiService by lazy {
-        Retrofit.Builder()
-            .baseUrl(BASE_URL)
+    private var retrofit: Retrofit = buildRetrofit(currentBaseUrl)
+
+    var api: ApiService = retrofit.create(ApiService::class.java)
+        private set
+
+    fun updateBaseUrl(newIp: String) {
+        val newUrl = "http://$newIp:5172/"
+        if (currentBaseUrl == newUrl) return
+        
+        currentBaseUrl = newUrl
+        retrofit = buildRetrofit(currentBaseUrl)
+        api = retrofit.create(ApiService::class.java)
+    }
+
+    private fun buildRetrofit(url: String): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(url)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(ApiService::class.java)
     }
 }

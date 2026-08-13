@@ -12,6 +12,7 @@ import com.example.localfly.network.Album
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
+import com.example.localfly.network.Playlist
 import com.example.localfly.network.Year
 import java.net.URLEncoder
 
@@ -38,6 +39,18 @@ class HorizontalCardAdapter(
         val serverBaseUrl = ApiConfig.BASE_URL
 
         when (item) {
+            is Playlist -> {
+                holder.tvTitle.text = item.name
+                holder.tvSubtitle.text = "${item.songCount} canciones"
+                if (!item.coverId.isNullOrBlank()) {
+                    Glide.with(context)
+                        .load("$serverBaseUrl/cover/${item.coverId}")
+                        .centerCrop()
+                        .into(holder.ivCover)
+                } else {
+                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+                }
+            }
             is Album -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = item.artist ?: "Álbum"
