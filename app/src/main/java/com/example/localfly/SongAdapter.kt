@@ -24,6 +24,7 @@ class SongAdapter(
     private val onDeleteClick: ((Song, Int) -> Unit)? = null,
     private val onPlayNextClick: ((Song) -> Unit)? = null,
     private val onPlaylistAddClick: ((Song) -> Unit)? = null,
+    private val onAddToPlaylistClick: ((Song) -> Unit)? = null,
     private var playingSongId: String? = null
 ) : RecyclerView.Adapter<SongAdapter.SongViewHolder>() {
 
@@ -35,7 +36,6 @@ class SongAdapter(
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
         val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
-        val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
@@ -61,9 +61,6 @@ class SongAdapter(
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(song.duration)
-        
-        // Lyrics Indicator
-        holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
 
         // Acciones visibles
         holder.btnLike.setImageResource(
@@ -91,9 +88,11 @@ class SongAdapter(
         if (onDeleteClick != null) {
             popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
         }
-        popup.menu.add(0, MENU_ADD_LIST, 1, "Añadir a lista...")
-        popup.menu.add(0, MENU_ADD_PLAYLIST, 2, "Añadir al final de la lista de reproducción")
-        popup.menu.add(0, MENU_PLAY_NEXT, 3, "Reproducir siguiente")
+        popup.menu.add(0, MENU_ADD_QUEUE, 1, "Añadir al final de la cola")
+        popup.menu.add(0, MENU_PLAY_NEXT, 2, "Reproducir siguiente")
+        if (onAddToPlaylistClick != null) {
+            popup.menu.add(0, MENU_ADD_PLAYLIST, 3, "Añadir a una lista")
+        }
         popup.menu.add(
             0,
             MENU_DOWNLOAD,
@@ -104,14 +103,8 @@ class SongAdapter(
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
                 MENU_DELETE -> onDeleteClick?.invoke(song, holder.bindingAdapterPosition)
-                MENU_ADD_LIST -> {
-                    val activity = holder.itemView.context as? androidx.appcompat.app.AppCompatActivity
-                    activity?.let {
-                        val dialog = com.example.localfly.fragments.PlaylistSelectionDialogFragment.newInstance(song.id)
-                        dialog.show(it.supportFragmentManager, "playlist_selection")
-                    }
-                }
-                MENU_ADD_PLAYLIST -> onPlaylistAddClick?.invoke(song)
+                MENU_ADD_QUEUE -> onPlaylistAddClick?.invoke(song)
+                MENU_ADD_PLAYLIST -> onAddToPlaylistClick?.invoke(song)
                 MENU_PLAY_NEXT -> onPlayNextClick?.invoke(song)
                 MENU_DOWNLOAD -> onDownloadClick(song)
             }
@@ -167,9 +160,9 @@ class SongAdapter(
 
     companion object {
         const val MENU_DELETE = 1
-        const val MENU_ADD_LIST = 2
-        const val MENU_ADD_PLAYLIST = 3
-        const val MENU_PLAY_NEXT = 4
-        const val MENU_DOWNLOAD = 5
+        const val MENU_ADD_QUEUE = 2
+        const val MENU_PLAY_NEXT = 3
+        const val MENU_DOWNLOAD = 4
+        const val MENU_ADD_PLAYLIST = 5
     }
 }

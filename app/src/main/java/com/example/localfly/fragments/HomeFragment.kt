@@ -212,7 +212,7 @@ class HomeFragment : Fragment() {
                 }
 
                 // 2. Playlists
-                val playlistsResp = RetrofitClient.api.getPlaylists(userId = userId)
+                val playlistsResp = RetrofitClient.api.getPlayLists(userId = userId)
                 if (playlistsResp.isSuccessful && playlistsResp.body() != null) {
                     playlistAdapter.updateItems(playlistsResp.body()!!.playlists)
                 }

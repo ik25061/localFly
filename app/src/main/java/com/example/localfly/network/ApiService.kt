@@ -84,6 +84,12 @@ interface ApiService {
         @Query("offset") offset: Int = 0
     ): Response<LikedSongsResponse>
 
+    @GET("api/songs")
+    suspend fun getSongsByIds(
+        @Query("ids") ids: String,
+        @Query("userId") userId: String?
+    ): Response<LibraryResponse>
+
     @GET("api/albums/{id}/songs")
     suspend fun getAlbumSongs(
         @Path("id") albumId: String,
@@ -111,19 +117,23 @@ interface ApiService {
     // --- Playlists ---
 
     @GET("api/playlists")
-    suspend fun getPlaylists(
+    suspend fun getPlayLists(
         @Query("userId") userId: String?
     ): Response<PlaylistsResponse>
 
+    @GET("api/playlists/{id}")
+    suspend fun getPlayList(
+        @Path("id") id: String
+    ): Response<SinglePlaylistResponse>
+
     @POST("api/playlists")
-    suspend fun createPlaylist(
+    suspend fun createPlayList(
         @Body request: CreatePlaylistRequest
     ): Response<Playlist>
 
     @retrofit2.http.DELETE("api/playlists/{id}")
-    suspend fun deletePlaylist(
-        @Path("id") playlistId: String,
-        @Query("userId") userId: String?
+    suspend fun deletePlayList(
+        @Path("id") playlistId: String
     ): Response<Unit>
 
     @GET("api/playlists/{id}/songs")
@@ -133,16 +143,15 @@ interface ApiService {
     ): Response<LibraryResponse>
 
     @POST("api/playlists/{id}/songs")
-    suspend fun addSongToPlaylist(
+    suspend fun addSongToPlayList(
         @Path("id") playlistId: String,
-        @Body request: AddSongToPlaylistRequest
+        @Body request: PlaylistSongRequest
     ): Response<Unit>
 
-    @retrofit2.http.DELETE("api/playlists/{id}/songs/{songId}")
-    suspend fun removeSongFromPlaylist(
+    @retrofit2.http.HTTP(method = "DELETE", path = "api/playlists/{id}/songs", hasBody = true)
+    suspend fun removeSongFromPlayList(
         @Path("id") playlistId: String,
-        @Path("songId") songId: String,
-        @Query("userId") userId: String?
+        @Body request: PlaylistSongRequest
     ): Response<Unit>
 
     // --- Lyrics ---

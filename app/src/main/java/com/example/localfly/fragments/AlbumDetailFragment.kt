@@ -17,6 +17,7 @@ import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.SongAdapter
+import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.*
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
@@ -102,8 +103,12 @@ class AlbumDetailFragment : Fragment() {
                 Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
             },
             onPlaylistAddClick = { song ->
-                val dialog = PlaylistSelectionDialogFragment.newInstance(song.id)
-                dialog.show(parentFragmentManager, "playlist_selection")
+                val activity = requireActivity() as? MainActivity
+                activity?.playbackService?.addToQueue(song)
+                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+            },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
             }
         )
 

@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#1A1A1A"
+    android:paddingHorizontal="16dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="24dp">
+
+    <!-- Header -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Añadir a lista"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_centerVertical="true" />
+
+        <ImageButton
+            android:id="@+id/btnCloseAddToPlaylist"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#AAAAAA" />
+    </RelativeLayout>
+
+    <!-- Canción actual -->
+    <LinearLayout
+        android:id="@+id/layoutSongPreview"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#222222"
+        android:padding="10dp"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:id="@+id/tvPreviewTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvPreviewArtist"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#AAAAAA"
+            android:textSize="11sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progressPlaylists"
+        style="?android:attr/progressBarStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginVertical="16dp" />
+
+    <TextView
+        android:id="@+id/tvNoPlaylists"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No hay listas todavía"
+        android:textColor="#888888"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:paddingVertical="16dp"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvPlaylistsPick"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxHeight="280dp"
+        android:nestedScrollingEnabled="true" />
+
+    <!-- Crear nueva lista -->
+    <LinearLayout
+        android:id="@+id/layoutNewPlaylistForm"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_marginTop="8dp">
+
+        <EditText
+            android:id="@+id/etNewPlaylistName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#222222"
+            android:padding="10dp"
+            android:hint="Nombre de la nueva lista"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#888888"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:imeOptions="actionDone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCreateAndAdd"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Crear y añadir"
+                android:textAllCaps="false"
+                android:textColor="#000000"
+                app:backgroundTint="#1DB954"
+                app:cornerRadius="18dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancelNewPlaylist"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="Cancelar"
+                android:textAllCaps="false"
+                android:textColor="#AAAAAA" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnShowNewPlaylistForm"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="+ Nueva lista"
+        android:textAllCaps="false"
+        android:textColor="#1DB954"
+        android:gravity="start|center_vertical" />
+
+</LinearLayout>

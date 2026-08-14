@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000"
+    android:padding="8dp">
+
+    <!-- Header -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        paddingHorizontal="8dp"
+        android:layout_marginTop="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tus listas"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:layout_centerVertical="true" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnNewPlaylist"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:text="Nueva"
+            android:textColor="#000000"
+            app:icon="@android:drawable/ic_menu_add"
+            app:iconTint="#000000"
+            app:backgroundTint="#1DB954"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            app:cornerRadius="18dp"
+            android:textAllCaps="false" />
+
+    </RelativeLayout>
+
+    <ProgressBar
+        android:id="@+id/progressPlaylistsList"
+        style="?android:attr/progressBarStyle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginTop="48dp" />
+
+    <TextView
+        android:id="@+id/tvEmptyPlaylists"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Todavía no tienes listas de reproducción.\nCrea una desde aquí o desde el menú de cualquier canción."
+        android:textColor="#888888"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:padding="32dp"
+        android:visibility="gone" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvPlaylists"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:paddingTop="8dp" />
+
+</LinearLayout>

@@ -15,10 +15,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.fragments.AIFragment
 import com.example.localfly.fragments.DownloadsFragment
 import com.example.localfly.fragments.HomeFragment
 import com.example.localfly.fragments.LibraryFragment
+import com.example.localfly.fragments.PlaylistsFragment
 import com.example.localfly.network.*
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.launch
@@ -124,9 +126,9 @@ class MainActivity : AppCompatActivity() {
             onDownloadClick = { song -> toggleDownload(song) },
             onDeleteClick = { song, position -> hideSongInLibrary(song, position) },
             onPlayNextClick = { song -> playbackService?.playNext(song) },
-            onPlaylistAddClick = { song -> 
-                val dialog = com.example.localfly.fragments.PlaylistSelectionDialogFragment.newInstance(song.id)
-                dialog.show(supportFragmentManager, "playlist_selection")
+            onPlaylistAddClick = { song -> playbackService?.addToQueue(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
             }
         )
 
@@ -151,6 +153,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.nav_downloads -> {
                     replaceFragment(DownloadsFragment())
+                    true
+                }
+                R.id.nav_playlists -> {
+                    replaceFragment(PlaylistsFragment())
                     true
                 }
                 R.id.nav_ai -> {

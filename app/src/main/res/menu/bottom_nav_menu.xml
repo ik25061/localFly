@@ -13,6 +13,10 @@
         android:icon="@drawable/ic_download"
         android:title="Descargas" />
     <item
+        android:id="@+id/nav_playlists"
+        android:icon="@drawable/ic_playlist"
+        android:title="Listas" />
+    <item
         android:id="@+id/nav_ai"
         android:icon="@drawable/ic_sparkles"
         android:title="Asistente" />

@@ -181,7 +181,7 @@ class CollectionListFragment : Fragment() {
                             hasMore = false
                             return@launch
                         }
-                        RetrofitClient.api.getPlaylists(userId = sessionManager.getUserId())
+                        RetrofitClient.api.getPlayLists(userId = sessionManager.getUserId())
                     }
                 }
 

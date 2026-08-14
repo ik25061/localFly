@@ -41,7 +41,8 @@ class HorizontalCardAdapter(
         when (item) {
             is Playlist -> {
                 holder.tvTitle.text = item.name
-                holder.tvSubtitle.text = "${item.songCount} canciones"
+                val count = item.songIds.size
+                holder.tvSubtitle.text = if (count == 1) "1 canción" else "$count canciones"
                 if (!item.coverId.isNullOrBlank()) {
                     Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")

@@ -14,6 +14,7 @@ import com.example.localfly.MainActivity
 import com.example.localfly.PlaybackService
 import com.example.localfly.R
 import com.example.localfly.SongAdapter
+import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.*
 import kotlinx.coroutines.launch
 
@@ -79,6 +80,9 @@ class LibraryFragment : Fragment() {
                 val activity = requireActivity() as? MainActivity
                 activity?.playbackService?.addToQueue(song)
                 Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+            },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
             }
         )
 
