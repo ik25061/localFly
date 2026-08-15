@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -11,8 +12,7 @@
         android:layout_width="20dp"
         android:layout_height="20dp"
         android:src="@drawable/ic_library"
-        app:tint="#4DA6FF"
-        xmlns:app="http://schemas.android.com/apk/res-auto" />
+        app:tint="#4DA6FF" />
 
     <TextView
         android:id="@+id/tvPlaylistPickName"
@@ -31,7 +31,6 @@
         android:layout_height="18dp"
         android:src="@android:drawable/ic_menu_add"
         android:visibility="visible"
-        app:tint="#888888"
-        xmlns:app="http://schemas.android.com/apk/res-auto" />
+        app:tint="#888888" />
 
 </LinearLayout>

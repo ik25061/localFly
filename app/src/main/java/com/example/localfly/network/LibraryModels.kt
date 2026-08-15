@@ -108,16 +108,23 @@ data class Playlist(
     val id: String,
     val name: String,
     val description: String?,
-    @SerializedName("user_id")
-    val userId: String?,
+    @SerializedName("songIds")
     val songIds: List<String> = emptyList(),
     @SerializedName("cover_id")
     val coverId: String? = null
 )
 
+data class PlaylistsResponse(
+    val playlists: List<Playlist>
+)
+
+data class PlaylistResponse(
+    val playlist: Playlist
+)
+
 data class CreatePlaylistRequest(
     val name: String,
-    val description: String? = null,
+    val description: String?,
     val userId: String?
 )
 
@@ -125,12 +132,8 @@ data class PlaylistSongRequest(
     val songId: String
 )
 
-data class SinglePlaylistResponse(
-    val playlist: Playlist
-)
-
-data class PlaylistsResponse(
-    val playlists: List<Playlist>
+data class SongsByIdsResponse(
+    val songs: List<Song>
 )
 
 // --- Lyrics ---

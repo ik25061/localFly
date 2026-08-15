@@ -75,18 +75,12 @@ class MainActivity : AppCompatActivity() {
         sessionManager = SessionManager(this)
         downloadHelper = DownloadManagerHelper.getInstance(this)
 
-        // Verificar sesión local
+        // Verificar sesión
         if (!sessionManager.isLoggedIn()) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
-
-        // Verificar sesión con el servidor en segundo plano
-        verifySession()
-        
-        // Intentar descubrir la IP óptima del servidor
-        discoverServerIp()
 
         // Inicializar mini player
         miniPlayer = findViewById(R.id.miniPlayer)
@@ -178,41 +172,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ===== MÉTODOS =====
-
-    private fun verifySession() {
-        lifecycleScope.launch {
-            try {
-                val userId = sessionManager.getUserId()
-                if (userId == null) return@launch
-                
-                val response = RetrofitClient.api.verify(userId)
-                if (response.code() == 401 || response.code() == 403) {
-                    // Solo si es un error explícito de autorización
-                    sessionManager.clearSession()
-                    startActivity(Intent(this@MainActivity, LoginActivity::class.java))
-                    finish()
-                }
-            } catch (e: Exception) {
-                // Error de red o 404 (endpoint no implementado), permitimos seguir offline
-            }
-        }
-    }
-
-    private fun discoverServerIp() {
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.api.getIpConfig()
-                if (response.isSuccessful && response.body() != null) {
-                    val serverIp = response.body()!!.ip
-                    // Si el servidor nos dice que su IP es distinta a la que usamos, actualizamos
-                    // (Útil para túneles o cambios de DHCP)
-                    RetrofitClient.updateBaseUrl(serverIp)
-                }
-            } catch (e: Exception) {
-                // Discovery failed, stick to current
-            }
-        }
-    }
 
     private fun replaceFragment(fragment: Fragment) {
         supportFragmentManager.beginTransaction()

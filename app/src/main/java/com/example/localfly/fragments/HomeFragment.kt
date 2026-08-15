@@ -14,6 +14,7 @@ import com.example.localfly.R
 import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
 import com.example.localfly.databinding.FragmentHomeBinding
+import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
@@ -36,7 +37,6 @@ class HomeFragment : Fragment() {
 
     // Adaptadores
     private lateinit var likedAdapter: LikedSongsAdapter
-    private lateinit var playlistAdapter: HorizontalCardAdapter
     private lateinit var albumAdapter: HorizontalCardAdapter
     private lateinit var artistAdapter: HorizontalCardAdapter
     private lateinit var genreAdapter: HorizontalCardAdapter
@@ -63,11 +63,6 @@ class HomeFragment : Fragment() {
                 .replace(R.id.container, LikedSongsFragment())
                 .addToBackStack(null)
                 .commit()
-        }
-        binding.tvSeeAllPlaylists.setOnClickListener {
-            // Re-using CollectionListFragment for Playlists if needed or create a specific one
-            // For now, let's use a specific Type
-            openSeeAll(CollectionListFragment.Type.PLAYLIST)
         }
         binding.tvSeeAllAlbums.setOnClickListener {
             openSeeAll(CollectionListFragment.Type.ALBUM)
@@ -123,18 +118,13 @@ class HomeFragment : Fragment() {
                 activity?.playbackService?.addToQueue(song)
                 Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
             },
-            onDeleteClick = { song -> removeSongFromHome(song) }
+            onDeleteClick = { song -> removeSongFromHome(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
+            }
         )
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
-
-        // Playlists
-        playlistAdapter = HorizontalCardAdapter(
-            emptyList(),
-            onItemClick = { item -> openCollection(item) }
-        )
-        binding.rvPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvPlaylists.adapter = playlistAdapter
 
         // Álbumes
         albumAdapter = HorizontalCardAdapter(
@@ -186,7 +176,10 @@ class HomeFragment : Fragment() {
                 activity?.playbackService?.addToQueue(song)
                 Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
             },
-            onDeleteClick = { song -> removeSongFromHome(song) }
+            onDeleteClick = { song -> removeSongFromHome(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
+            }
         )
         binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
         binding.rvRecommendations.adapter = recommendationsAdapter
@@ -211,44 +204,38 @@ class HomeFragment : Fragment() {
                     likedAdapter.updateSongs(likedResp.body()!!.songs)
                 }
 
-                // 2. Playlists
-                val playlistsResp = RetrofitClient.api.getPlayLists(userId = userId)
-                if (playlistsResp.isSuccessful && playlistsResp.body() != null) {
-                    playlistAdapter.updateItems(playlistsResp.body()!!.playlists)
-                }
-
-                // 3. Álbumes
+                // 2. Álbumes
                 val albumsResp = RetrofitClient.api.getAlbums(userId = userId, limit = 20)
                 if (albumsResp.isSuccessful && albumsResp.body() != null) {
                     albumAdapter.updateItems(albumsResp.body()!!.items)
                 }
 
-                // 4. Artistas
+                // 3. Artistas
                 val artistsResp = RetrofitClient.api.getArtists(userId = userId, limit = 20)
                 if (artistsResp.isSuccessful && artistsResp.body() != null) {
                     artistAdapter.updateItems(artistsResp.body()!!.items)
                 }
 
-                // 5. Géneros
+                // 4. Géneros
                 val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 20)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
                     genreAdapter.updateItems(genresResp.body()!!.items)
                 }
 
-                // 6. Años
+                // 5. Años
                 val yearsResp = RetrofitClient.api.getYears(userId = userId, limit = 20)
                 if (yearsResp.isSuccessful && yearsResp.body() != null) {
                     yearAdapter.updateItems(yearsResp.body()!!.items)
                 }
 
-                // 7. Recomendaciones con IA
+                // 6. Recomendaciones con IA
                 val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
                 val recommendations = aiManager.getRecommendations()
                 if (isAdded) {
                     recommendationsAdapter.updateSongs(recommendations)
                 }
 
-                // 8. Resumen mensual
+                // 7. Resumen mensual
                 if (isAdded) {
                     binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
                 }
@@ -352,9 +339,6 @@ class HomeFragment : Fragment() {
 
     private fun openCollection(item: Any) {
         val fragment = when (item) {
-            is com.example.localfly.network.Playlist -> {
-                CollectionDetailFragment.newInstance(item.id, item.name, "PLAYLIST", item.coverId)
-            }
             is com.example.localfly.network.Album -> {
                 AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             }

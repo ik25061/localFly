@@ -36,6 +36,7 @@ class SongAdapter(
         val btnLike: ImageButton = view.findViewById(R.id.btnLike)
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
         val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
+        val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
@@ -61,6 +62,9 @@ class SongAdapter(
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(song.duration)
+
+        // Lyrics Indicator (re-adding from my logic as it's useful)
+        // holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
 
         // Acciones visibles
         holder.btnLike.setImageResource(

@@ -42,7 +42,6 @@ class CollectionDetailFragment : Fragment() {
     private lateinit var tvInfo: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnDownload: MaterialButton
-    private lateinit var btnHideArtist: ImageButton
 
     private var currentSongs: List<Song> = emptyList()
 
@@ -71,7 +70,6 @@ class CollectionDetailFragment : Fragment() {
         tvInfo = view.findViewById(R.id.tvCollectionInfo)
         btnPlay = view.findViewById(R.id.btnPlayCollection)
         btnDownload = view.findViewById(R.id.btnDownloadCollection)
-        btnHideArtist = view.findViewById(R.id.btnHideArtist)
         rvSongs = view.findViewById(R.id.rvCollectionSongs)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
@@ -80,18 +78,10 @@ class CollectionDetailFragment : Fragment() {
 
         tvName.text = itemName
         tvType.text = when (itemType) {
-            "ARTIST" -> {
-                btnHideArtist.visibility = View.VISIBLE
-                "ARTISTA"
-            }
+            "ARTIST" -> "ARTISTA"
             "GENRE" -> "GÉNERO"
             "YEAR" -> "AÑO"
-            "PLAYLIST" -> "LISTA"
             else -> "COLECCIÓN"
-        }
-
-        btnHideArtist.setOnClickListener {
-            hideCurrentArtist()
         }
         
         val serverBaseUrl = ApiConfig.BASE_URL
@@ -100,11 +90,6 @@ class CollectionDetailFragment : Fragment() {
                 // El servidor sirve la foto del artista en /artist-cover/{nombre}
                 val encoded = java.net.URLEncoder.encode(itemName ?: "", "UTF-8").replace("+", "%20")
                 "$serverBaseUrl/artist-cover/$encoded"
-            }
-            "PLAYLIST" -> {
-                // Si la playlist tiene coverId (de la primera canción), usarlo. Si no, placeholder.
-                if (!coverId.isNullOrBlank()) "$serverBaseUrl/cover/$coverId"
-                else null
             }
             else -> "$serverBaseUrl/cover/$coverId"
         }
@@ -126,13 +111,7 @@ class CollectionDetailFragment : Fragment() {
                 activity?.playbackService?.setQueueAndPlay(currentSongs, position)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
-            onDislikeClick = { song, position -> 
-                if (itemType == "PLAYLIST") {
-                    removeSongFromPlaylist(song, position)
-                } else {
-                    hideSong(song, position)
-                }
-            },
+            onDislikeClick = { _, _ -> },
             onDownloadClick = { song -> toggleDownload(song) },
             onPlayNextClick = { song ->
                 val activity = requireActivity() as? MainActivity
@@ -181,19 +160,6 @@ class CollectionDetailFragment : Fragment() {
         loadSongs()
     }
 
-    private fun hideCurrentArtist() {
-        val aId = itemId ?: return
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                RetrofitClient.api.hideArtist(aId, HideArtistRequest(sessionManager.getUserId()))
-                Toast.makeText(requireContext(), "Artista ocultado", Toast.LENGTH_SHORT).show()
-                parentFragmentManager.popBackStack()
-            } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error al ocultar artista", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
     private fun loadSongs() {
         val id = itemId ?: return
         viewLifecycleOwner.lifecycleScope.launch {
@@ -202,7 +168,6 @@ class CollectionDetailFragment : Fragment() {
                     "ARTIST" -> RetrofitClient.api.getArtistSongs(id, sessionManager.getUserId())
                     "GENRE" -> RetrofitClient.api.getGenreSongs(id, sessionManager.getUserId())
                     "YEAR" -> RetrofitClient.api.getYearSongs(id.toInt(), sessionManager.getUserId())
-                    "PLAYLIST" -> RetrofitClient.api.getPlaylistSongs(id, sessionManager.getUserId())
                     else -> return@launch
                 }
                 if (response.isSuccessful && response.body() != null) {
@@ -238,27 +203,6 @@ class CollectionDetailFragment : Fragment() {
             } catch (e: Exception) {
                 // Sin conexión: guardar para sincronizar al volver al servidor
                 sessionManager.addPendingLike(song.id, newLiked)
-            }
-        }
-    }
-
-    private fun hideSong(song: Song, position: Int) {
-        adapter.removeAt(position)
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
-            } catch (e: Exception) {}
-        }
-    }
-
-    private fun removeSongFromPlaylist(song: Song, position: Int) {
-        val pId = itemId ?: return
-        adapter.removeAt(position)
-        viewLifecycleOwner.lifecycleScope.launch {
-            try {
-                RetrofitClient.api.removeSongFromPlayList(pId, PlaylistSongRequest(song.id))
-            } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error al quitar de lista", Toast.LENGTH_SHORT).show()
             }
         }
     }

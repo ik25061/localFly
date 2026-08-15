@@ -2,7 +2,9 @@ package com.example.localfly.network
 
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -11,15 +13,15 @@ interface ApiService {
     @POST("api/auth/login")
     suspend fun login(@Body request: LoginRequest): Response<LoginResponse>
 
-    @GET("api/auth/verify")
-    suspend fun verify(@Query("userId") userId: String?): Response<LoginResponse>
-
     @GET("api/library")
     suspend fun getLibrary(
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 100,
         @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
+
+    @GET("api/auth/verify")
+    suspend fun verify(@Query("userId") userId: String?): Response<LoginResponse>
 
     @POST("api/songs/{id}/like")
     suspend fun likeSong(
@@ -84,12 +86,6 @@ interface ApiService {
         @Query("offset") offset: Int = 0
     ): Response<LikedSongsResponse>
 
-    @GET("api/songs")
-    suspend fun getSongsByIds(
-        @Query("ids") ids: String,
-        @Query("userId") userId: String?
-    ): Response<LibraryResponse>
-
     @GET("api/albums/{id}/songs")
     suspend fun getAlbumSongs(
         @Path("id") albumId: String,
@@ -123,36 +119,36 @@ interface ApiService {
 
     @GET("api/playlists/{id}")
     suspend fun getPlayList(
-        @Path("id") id: String
-    ): Response<SinglePlaylistResponse>
+        @Path("id") playlistId: String
+    ): Response<PlaylistResponse>
 
     @POST("api/playlists")
     suspend fun createPlayList(
         @Body request: CreatePlaylistRequest
-    ): Response<Playlist>
-
-    @retrofit2.http.DELETE("api/playlists/{id}")
-    suspend fun deletePlayList(
-        @Path("id") playlistId: String
-    ): Response<Unit>
-
-    @GET("api/playlists/{id}/songs")
-    suspend fun getPlaylistSongs(
-        @Path("id") playlistId: String,
-        @Query("userId") userId: String?
-    ): Response<LibraryResponse>
+    ): Response<PlaylistResponse>
 
     @POST("api/playlists/{id}/songs")
     suspend fun addSongToPlayList(
         @Path("id") playlistId: String,
         @Body request: PlaylistSongRequest
-    ): Response<Unit>
+    ): Response<PlaylistResponse>
 
-    @retrofit2.http.HTTP(method = "DELETE", path = "api/playlists/{id}/songs", hasBody = true)
+    @HTTP(method = "DELETE", path = "api/playlists/{id}/songs", hasBody = true)
     suspend fun removeSongFromPlayList(
         @Path("id") playlistId: String,
         @Body request: PlaylistSongRequest
+    ): Response<PlaylistResponse>
+
+    @DELETE("api/playlists/{id}")
+    suspend fun deletePlayList(
+        @Path("id") playlistId: String
     ): Response<Unit>
+
+    @GET("api/songs/by-ids")
+    suspend fun getSongsByIds(
+        @Query("ids") ids: String,
+        @Query("userId") userId: String?
+    ): Response<SongsByIdsResponse>
 
     // --- Lyrics ---
 
@@ -177,4 +173,5 @@ interface ApiService {
 
     @GET("api/config/ip")
     suspend fun getIpConfig(): Response<IpConfigResponse>
+
 }
