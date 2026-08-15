@@ -149,14 +149,13 @@ class AIFragment : Fragment() {
     private fun syncFavoritesWithServer() {
         viewLifecycleOwner.lifecycleScope.launch {
             val userId = sessionManager.getUserId()
+            // Optimizamos: si hay muchos, lanzamos en bloques o secuencial para no saturar
             selectedArtistIds.forEach { artistId ->
                 try {
                     RetrofitClient.api.toggleFavoriteArtist(
                         FavoriteArtistRequest(userId, artistId, true)
                     )
-                } catch (e: Exception) {
-                    // Ignore individual errors
-                }
+                } catch (e: Exception) { }
             }
         }
     }

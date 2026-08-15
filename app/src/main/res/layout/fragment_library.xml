@@ -44,6 +44,15 @@
                 app:cornerRadius="18dp"
                 android:textAllCaps="false" />
 
+            <ImageButton
+                android:id="@+id/btnLibraryToPlaylist"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_playlist"
+                app:tint="#FFFFFF" />
+
 
         </LinearLayout>
     </RelativeLayout>

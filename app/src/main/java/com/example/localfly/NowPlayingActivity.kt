@@ -12,15 +12,23 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
+import com.example.localfly.adapters.LyricLine
+import com.example.localfly.adapters.LyricsAdapter
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Song
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.util.Locale
 
 class NowPlayingActivity : AppCompatActivity() {
@@ -50,6 +58,10 @@ class NowPlayingActivity : AppCompatActivity() {
     private var isBound = false
     private var userIsSeeking = false
     private var queueIsVisible = false
+
+    private var lyricsDialog: android.app.Dialog? = null
+    private var lyricsAdapter: LyricsAdapter? = null
+    private var lyricsUpdateJob: Job? = null
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private val progressRunnable = object : Runnable {
@@ -155,70 +167,141 @@ class NowPlayingActivity : AppCompatActivity() {
         val song = playbackService?.currentSong ?: return
         val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.setContentView(R.layout.dialog_lyrics)
-        val tvContent = dialog.findViewById<TextView>(R.id.tvLyricsContent)
+        lyricsDialog = dialog
+
+        val rvLyrics = dialog.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLyrics)
         val btnClose = dialog.findViewById<ImageButton>(R.id.btnCloseLyrics)
-        btnClose.setOnClickListener { dialog.dismiss() }
+        btnClose.setOnClickListener { 
+            lyricsUpdateJob?.cancel()
+            dialog.dismiss() 
+        }
+
         lifecycleScope.launch {
             try {
-                val lyrics = fetchLyrics(song)
-                tvContent.text = lyrics ?: "No hay letra disponible para esta canción"
+                val lines = fetchLyrics(song)
+                if (lines != null && lines.isNotEmpty()) {
+                    lyricsAdapter = LyricsAdapter(lines)
+                    rvLyrics.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@NowPlayingActivity)
+                    rvLyrics.adapter = lyricsAdapter
+                    startLyricsUpdateLoop(rvLyrics)
+                } else {
+                    Toast.makeText(this@NowPlayingActivity, "No hay letra disponible", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
+                }
             } catch (e: Exception) {
-                tvContent.text = "Error al cargar la letra"
+                Toast.makeText(this@NowPlayingActivity, "Error al cargar la letra", Toast.LENGTH_SHORT).show()
             }
         }
         dialog.show()
     }
 
-    private suspend fun fetchLyrics(song: Song): String? = withContext(Dispatchers.IO) {
-        // Primero intentamos por el endpoint de la API (más fiable si existe)
-        try {
-            val response = RetrofitClient.api.getLyrics(song.id)
-            if (response.isSuccessful && response.body()?.lyrics != null) {
-                return@withContext parseLrc(response.body()!!.lyrics!!)
+    private fun startLyricsUpdateLoop(recyclerView: androidx.recyclerview.widget.RecyclerView) {
+        lyricsUpdateJob?.cancel()
+        lyricsUpdateJob = lifecycleScope.launch {
+            while (true) {
+                val currentTime = playbackService?.getProgressMs() ?: 0L
+                val activePos = lyricsAdapter?.updateActiveLine(currentTime) ?: -1
+                if (activePos != -1) {
+                    recyclerView.smoothScrollToPosition(activePos)
+                }
+                delay(300)
             }
-        } catch (e: Exception) {
-            // Silencioso, pasamos al fallback
+        }
+    }
+
+    private suspend fun fetchLyrics(song: Song): List<LyricLine>? = withContext(Dispatchers.IO) {
+        var rawLyrics: String? = null
+
+        // 0. Intentar cargar archivo local si la canción está descargada
+        val localLrc = File(filesDir, "downloads/${song.id}.lrc")
+        if (localLrc.exists()) {
+            try {
+                rawLyrics = localLrc.readText()
+            } catch (e: Exception) { }
         }
 
-        // Fallback: Intentar cargar directamente el archivo .lrc por el título (como pide el usuario)
-        try {
-            val encodedTitle = java.net.URLEncoder.encode(song.title, "UTF-8").replace("+", "%20")
-            val lyricsUrl = "${ApiConfig.BASE_URL}/resources/$encodedTitle.lrc"
-            
-            val client = okhttp3.OkHttpClient()
-            val request = okhttp3.Request.Builder().url(lyricsUrl).build()
-            
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val rawLyrics = response.body?.string()
-                    if (!rawLyrics.isNullOrBlank()) {
-                        return@withContext parseLrc(rawLyrics)
-                    }
+        if (rawLyrics == null || isHtml(rawLyrics)) {
+            // 1. Intentar por el endpoint oficial de la API
+            try {
+                val response = RetrofitClient.api.getLyrics(song.id)
+                if (response.isSuccessful && response.body()?.lyrics != null) {
+                    rawLyrics = response.body()!!.lyrics!!
                 }
+            } catch (e: Exception) { }
+        }
+
+        if (rawLyrics == null || isHtml(rawLyrics)) {
+            // 2. Fallback: Buscar archivo .lrc directo en /resources/
+            val variants = mutableListOf<String>()
+            variants.add(song.title)
+            song.artist?.let { variants.add("$it - ${song.title}") }
+            variants.add(song.title.lowercase(Locale.getDefault()))
+            song.artist?.let { variants.add("${it.lowercase(Locale.getDefault())} - ${song.title.lowercase(Locale.getDefault())}") }
+
+            val client = OkHttpClient()
+            for (variant in variants.distinct()) {
+                try {
+                    val encoded = java.net.URLEncoder.encode(variant, "UTF-8").replace("+", "%20")
+                    val url = "${ApiConfig.BASE_URL}/resources/$encoded.lrc"
+                    val request = Request.Builder().url(url).build()
+                    client.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            val bodyString = response.body?.string()
+                            if (!bodyString.isNullOrBlank() && !isHtml(bodyString)) {
+                                rawLyrics = bodyString
+                                break
+                            }
+                        }
+                    }
+                } catch (e: Exception) { }
             }
-        } catch (e: Exception) {
-            // Fallback fallido
+        }
+
+        val lyricsToParse = rawLyrics
+        if (lyricsToParse != null && !isHtml(lyricsToParse)) {
+            return@withContext parseLrcToList(lyricsToParse)
         }
         null
     }
 
-    private fun parseLrc(lrc: String): String {
+    private fun parseLrcToList(lrc: String): List<LyricLine> {
         val lines = lrc.split("\n")
-        val parsed = StringBuilder()
+        val lyricLines = mutableListOf<LyricLine>()
         // Regex para marcas de tiempo: [00:00.00], [00:00], [00:00:00], etc.
-        val timestampRegex = Regex("\\[\\d{1,2}:\\d{2}([.:]\\d{2,3})?\\]")
+        val timestampRegex = Regex("\\[(\\d{1,2}):(\\d{2})([.:](\\d{2,3}))?\\]")
         // Regex para etiquetas de metadatos: [ar: artist], [al: album], [ti: title], etc.
         val metadataRegex = Regex("\\[[a-z]{2,}:.*\\]")
         
         for (line in lines) {
-            var cleanLine = line.replace(timestampRegex, "")
-            cleanLine = cleanLine.replace(metadataRegex, "").trim()
-            
-            if (cleanLine.isNotEmpty()) {
-                parsed.append(cleanLine).append("\n\n")
+            val match = timestampRegex.find(line)
+            if (match != null) {
+                val min = match.groupValues[1].toLong()
+                val sec = match.groupValues[2].toLong()
+                val msPart = match.groupValues[4].let { 
+                    if (it.isEmpty()) 0L 
+                    else if (it.length == 2) it.toLong() * 10 
+                    else it.toLong()
+                }
+                val timeMs = (min * 60 * 1000) + (sec * 1000) + msPart
+                
+                var content = line.replace(timestampRegex, "").trim()
+                content = content.replace(metadataRegex, "").trim()
+                
+                if (content.isNotEmpty()) {
+                    lyricLines.add(LyricLine(timeMs, content))
+                }
             }
         }
-        return parsed.toString().trim()
+        return lyricLines.sortedBy { it.timeMs }
+    }
+
+    private fun isHtml(text: String): Boolean {
+        val t = text.trim()
+        return t.startsWith("<!DOCTYPE", ignoreCase = true) ||
+               t.startsWith("<html", ignoreCase = true) ||
+               t.startsWith("<head", ignoreCase = true) ||
+               t.startsWith("<body", ignoreCase = true) ||
+               t.startsWith("<div", ignoreCase = true)
     }
 
     private fun refreshUi() {

@@ -517,7 +517,7 @@ class PlaybackService : Service() {
         // Configuración MediaStyle (Standard para Android 12+)
         builder.setStyle(
             MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(2, 3) // Play/Pausa, Siguiente (sin "Anterior")
+                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play/Pausa, Siguiente
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 
@@ -597,6 +597,8 @@ class PlaybackService : Service() {
         serviceScope.cancel()
         player?.release()
         player = null
+        mediaSession?.release()
+        mediaSession = null
         super.onDestroy()
     }
 }

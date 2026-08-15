@@ -55,17 +55,7 @@ class LikedSongsAdapter(
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
 
         // Lyrics Indicator
-        // Note: The user's provided LikedSongsAdapter didn't have hasLyrics, 
-        // but my current item_song has ivLyricsIndicator. I should check if I should keep it.
-        // I'll keep it as the previous turn added it and it's useful.
-        // holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
-        // Wait, the user's provided LibraryModels has hasLyrics removed? 
-        // Let's re-read the provided LibraryModels.kt... 
-        // Ah, it DOES NOT have hasLyrics. The user wants to revert that part?
-        // No, probably they just sent an older version of LibraryModels.
-        // I should probably keep hasLyrics if it was working and they didn't explicitly say "remove it".
-        // Actually, "implement updates proposed in documents" means follow documents.
-        // I'll stick to the documents.
+        holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
 
         // Acciones visibles
         holder.btnLike.setImageResource(

@@ -63,6 +63,8 @@ class DownloadManagerHelper private constructor(context: Context) {
     private val prefs = appContext.getSharedPreferences("localfly_downloads", Context.MODE_PRIVATE)
     private val gson = Gson()
 
+    private var cachedDownloads: List<DownloadedSong>? = null
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
@@ -75,10 +77,14 @@ class DownloadManagerHelper private constructor(context: Context) {
     }
 
     fun getDownloadedSongs(): List<DownloadedSong> {
+        cachedDownloads?.let { return it }
+        
         val json = prefs.getString("list", null) ?: return emptyList()
         val type = object : TypeToken<List<DownloadedSong>>() {}.type
         return try {
-            gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
+            val list = gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
+            cachedDownloads = list
+            list
         } catch (e: Exception) {
             emptyList()
         }
@@ -130,6 +136,11 @@ class DownloadManagerHelper private constructor(context: Context) {
                     return@withContext false
                 }
 
+                // Descargar letra si existe y no la tenemos
+                if (song.hasLyrics) {
+                    downloadLyrics(song)
+                }
+
                 val current = getDownloadedSongs().toMutableList()
                 current.removeAll { it.id == song.id }
                 current.add(
@@ -145,7 +156,9 @@ class DownloadManagerHelper private constructor(context: Context) {
                         fileSize = file!!.length()
                     )
                 )
-                prefs.edit().putString("list", gson.toJson(current)).apply()
+                val newList = current.toList()
+                cachedDownloads = newList
+                prefs.edit().putString("list", gson.toJson(newList)).apply()
 
                 true
             }
@@ -171,12 +184,38 @@ class DownloadManagerHelper private constructor(context: Context) {
         else -> "mp3"
     }
 
+    private suspend fun downloadLyrics(song: Song) {
+        val baseUrl = com.example.localfly.network.ApiConfig.BASE_URL
+        val encodedTitle = java.net.URLEncoder.encode(song.title, "UTF-8").replace("+", "%20")
+        val url = "$baseUrl/resources/$encodedTitle.lrc"
+
+        try {
+            httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body ?: return
+                    val lrcFile = File(downloadsDir(), "${song.id}.lrc")
+                    FileOutputStream(lrcFile).use { output ->
+                        body.byteStream().copyTo(output)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // Silencioso, si la letra falla el audio sigue valiendo
+        }
+    }
+
     fun removeDownload(songId: String) {
         val current = getDownloadedSongs().toMutableList()
         val target = current.find { it.id == songId }
-        target?.let { File(it.filePath).delete() }
+        target?.let { 
+            File(it.filePath).delete() 
+            // También borrar la letra si existe
+            File(downloadsDir(), "$songId.lrc").delete()
+        }
         current.removeAll { it.id == songId }
-        prefs.edit().putString("list", gson.toJson(current)).apply()
+        val newList = current.toList()
+        cachedDownloads = newList
+        prefs.edit().putString("list", gson.toJson(newList)).apply()
     }
 
     /** Elimina todas las canciones descargadas (archivos y registro). */
@@ -184,6 +223,7 @@ class DownloadManagerHelper private constructor(context: Context) {
         getDownloadedSongs().forEach { song ->
             runCatching { File(song.filePath).delete() }
         }
+        cachedDownloads = emptyList()
         prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()
     }
 
@@ -193,7 +233,9 @@ class DownloadManagerHelper private constructor(context: Context) {
         val idx = current.indexOfFirst { it.id == songId }
         if (idx == -1) return
         current[idx] = current[idx].copy(liked = liked)
-        prefs.edit().putString("list", gson.toJson(current)).apply()
+        val newList = current.toList()
+        cachedDownloads = newList
+        prefs.edit().putString("list", gson.toJson(newList)).apply()
     }
 
     suspend fun downloadAll(songs: List<Song>, serverBaseUrl: String) {

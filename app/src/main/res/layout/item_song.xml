@@ -18,16 +18,33 @@
         android:textColor="#888888"
         android:textSize="12sp" />
 
-    <com.google.android.material.imageview.ShapeableImageView
-        android:id="@+id/ivCover"
+    <FrameLayout
         android:layout_width="40dp"
         android:layout_height="40dp"
-        android:layout_marginStart="8dp"
-        android:scaleType="centerCrop"
-        android:background="#1DB954"
-        android:src="@drawable/ic_music_placeholder"
-        app:shapeAppearanceOverlay="@style/RoundedCorners4"
-        android:contentDescription="@string/cover_placeholder" />
+        android:layout_marginStart="8dp">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/ivCover"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:background="#1DB954"
+            android:src="@drawable/ic_music_placeholder"
+            app:shapeAppearanceOverlay="@style/RoundedCorners4"
+            android:contentDescription="@string/cover_placeholder" />
+
+        <ImageView
+            android:id="@+id/ivLyricsIndicator"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="2dp"
+            android:src="@drawable/ic_lyrics_sheet"
+            android:visibility="gone"
+            android:padding="2dp"
+            android:background="@drawable/bg_lyrics_indicator"
+            app:tint="#FFFFFF" />
+    </FrameLayout>
 
     <LinearLayout
         android:layout_width="0dp"
@@ -76,7 +93,7 @@
         android:layout_height="18dp"
         android:layout_marginStart="4dp"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_dislike"
+        android:src="@drawable/ic_dislike_off"
         android:scaleType="centerInside" />
 
     <ImageButton
@@ -88,15 +105,6 @@
         android:src="@drawable/ic_menu"
         android:scaleType="centerInside"
         android:contentDescription="@string/song_menu" />
-
-    <ImageView
-        android:id="@+id/ivLyricsIndicator"
-        android:layout_width="16dp"
-        android:layout_height="16dp"
-        android:layout_marginStart="8dp"
-        android:src="@drawable/ic_lyrics_presence"
-        android:visibility="gone"
-        app:tint="#1DB954" />
 
     <TextView
         android:id="@+id/tvDuration"

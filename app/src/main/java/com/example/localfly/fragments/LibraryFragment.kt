@@ -27,6 +27,7 @@ class LibraryFragment : Fragment() {
     
     private lateinit var tvSongCountInfo: android.widget.TextView
     private lateinit var btnDownloadAll: com.google.android.material.button.MaterialButton
+    private lateinit var btnAddPlaylist: android.widget.ImageButton
     private lateinit var etSearch: android.widget.EditText
     private lateinit var progressBar: com.google.android.material.progressindicator.LinearProgressIndicator
     
@@ -54,6 +55,7 @@ class LibraryFragment : Fragment() {
         rvSongs = view.findViewById(R.id.rvLibrarySongs)
         tvSongCountInfo = view.findViewById(R.id.tvSongCountInfo)
         btnDownloadAll = view.findViewById(R.id.btnDownloadAll)
+        btnAddPlaylist = view.findViewById(R.id.btnLibraryToPlaylist)
         etSearch = view.findViewById(R.id.etSearch)
         progressBar = view.findViewById(R.id.progressDownload)
 
@@ -101,6 +103,18 @@ class LibraryFragment : Fragment() {
             // Usamos el scope de la actividad para que persista al cambiar de fragmento
             activity?.lifecycleScope?.launch {
                 downloadHelper.downloadAll(fullSongsList, serverBaseUrl)
+            }
+        }
+
+        btnAddPlaylist.setOnClickListener {
+            if (fullSongsList.isNotEmpty()) {
+                AddToPlaylistDialog.showList(
+                    requireContext(),
+                    viewLifecycleOwner.lifecycleScope,
+                    fullSongsList,
+                    "Mi Biblioteca",
+                    sessionManager
+                )
             }
         }
 
@@ -251,6 +265,9 @@ class LibraryFragment : Fragment() {
 
     private fun hideSong(song: Song, position: Int) {
         adapter.removeAt(position)
+        fullSongsList.removeAll { it.id == song.id }
+        tvSongCountInfo.text = "${fullSongsList.size} canciones"
+        
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.hideSong(

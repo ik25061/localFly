@@ -251,7 +251,8 @@ class MainActivity : AppCompatActivity() {
                 year = null,
                 duration = it.duration,
                 liked = it.liked,
-                hasCover = it.hasCover
+                hasCover = it.hasCover,
+                hasLyrics = it.hasLyrics
             )
         }
         val localPaths = allDownloads.map { downloadHelper.getLocalFilePath(it.id) }

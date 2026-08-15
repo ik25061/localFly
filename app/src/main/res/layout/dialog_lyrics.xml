@@ -30,24 +30,14 @@
             app:tint="#FFFFFF" />
     </RelativeLayout>
 
-    <ScrollView
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvLyrics"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:scrollbarThumbVertical="@android:color/white"
-        android:fadeScrollbars="false">
-
-        <TextView
-            android:id="@+id/tvLyricsContent"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="24sp"
-            android:textStyle="bold"
-            android:lineSpacingExtra="12dp"
-            android:gravity="start"
-            android:paddingBottom="40dp"
-            android:text="Cargando letra..." />
-    </ScrollView>
+        android:clipToPadding="false"
+        android:paddingTop="120dp"
+        android:paddingBottom="120dp"
+        android:overScrollMode="never" />
 
 </LinearLayout>

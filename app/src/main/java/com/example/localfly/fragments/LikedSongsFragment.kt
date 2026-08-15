@@ -29,6 +29,7 @@ class LikedSongsFragment : Fragment() {
     private lateinit var tvCount: TextView
     private lateinit var btnPlayAll: MaterialButton
     private lateinit var btnDownloadAll: MaterialButton
+    private lateinit var btnAddPlaylist: ImageButton
 
     private var currentSongs: List<Song> = emptyList()
 
@@ -45,6 +46,7 @@ class LikedSongsFragment : Fragment() {
         tvCount = view.findViewById(R.id.tvLikedCount)
         btnPlayAll = view.findViewById(R.id.btnPlayAll)
         btnDownloadAll = view.findViewById(R.id.btnDownloadAllLiked)
+        btnAddPlaylist = view.findViewById(R.id.btnLikedToPlaylist)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
             parentFragmentManager.popBackStack()
@@ -79,6 +81,18 @@ class LikedSongsFragment : Fragment() {
         btnPlayAll.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
                 (requireActivity() as? MainActivity)?.playbackService?.setQueueAndPlay(currentSongs, 0)
+            }
+        }
+
+        btnAddPlaylist.setOnClickListener {
+            if (currentSongs.isNotEmpty()) {
+                AddToPlaylistDialog.showList(
+                    requireContext(),
+                    viewLifecycleOwner.lifecycleScope,
+                    currentSongs,
+                    "Canciones que te gustan",
+                    sessionManager
+                )
             }
         }
 

@@ -251,7 +251,8 @@ class CollectionListFragment : Fragment() {
     private fun sortItems(position: Int) {
         val query = currentQuery.removeAccents().lowercase()
         
-        displayedItems = if (query.isEmpty()) {
+        // Filtrado por búsqueda
+        var filteredList = if (query.isEmpty()) {
             originalItems
         } else {
             originalItems.filter { item ->
@@ -267,8 +268,16 @@ class CollectionListFragment : Fragment() {
             }
         }
 
+        // Filtrado por cantidad de canciones: si NO hay búsqueda activa, 
+        // ocultar los que solo tienen una canción (excepto en Playlists).
+        if (query.isEmpty() && type != Type.PLAYLIST) {
+            filteredList = filteredList.filter { item ->
+                getSongCount(item) > 1
+            }
+        }
+
         displayedItems = when (position) {
-            0 -> displayedItems.sortedBy { item ->
+            0 -> filteredList.sortedBy { item ->
                 when (item) {
                     is Album -> item.name
                     is Artist -> item.name
@@ -278,9 +287,9 @@ class CollectionListFragment : Fragment() {
                     else -> ""
                 }
             }
-            1 -> displayedItems.sortedByDescending { item -> getSongCount(item) }
-            2 -> displayedItems.sortedBy { item -> getSongCount(item) }
-            else -> displayedItems
+            1 -> filteredList.sortedByDescending { item -> getSongCount(item) }
+            2 -> filteredList.sortedBy { item -> getSongCount(item) }
+            else -> filteredList
         }
         adapter.updateItems(displayedItems)
     }

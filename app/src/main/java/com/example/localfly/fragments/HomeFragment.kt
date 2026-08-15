@@ -37,6 +37,7 @@ class HomeFragment : Fragment() {
 
     // Adaptadores
     private lateinit var likedAdapter: LikedSongsAdapter
+    private lateinit var playlistAdapter: HorizontalCardAdapter
     private lateinit var albumAdapter: HorizontalCardAdapter
     private lateinit var artistAdapter: HorizontalCardAdapter
     private lateinit var genreAdapter: HorizontalCardAdapter
@@ -126,6 +127,14 @@ class HomeFragment : Fragment() {
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
 
+        // Playlists
+        playlistAdapter = HorizontalCardAdapter(
+            emptyList(),
+            onItemClick = { item -> openCollection(item) }
+        )
+        binding.rvPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvPlaylists.adapter = playlistAdapter
+
         // Álbumes
         albumAdapter = HorizontalCardAdapter(
             emptyList(),
@@ -194,56 +203,66 @@ class HomeFragment : Fragment() {
 
         // Usar viewLifecycleOwner para que se cancele al destruir la vista
         viewLifecycleOwner.lifecycleScope.launch {
+            // 1. Canciones que me gustan
             try {
-                // Verificar que el fragmento sigue adjunto
-                if (!isAdded) return@launch
-
-                // 1. Canciones que me gustan
                 val likedResp = RetrofitClient.api.getLikedSongs(userId = userId, limit = 20)
                 if (likedResp.isSuccessful && likedResp.body() != null) {
                     likedAdapter.updateSongs(likedResp.body()!!.songs)
                 }
+            } catch (e: Exception) { }
 
-                // 2. Álbumes
+            // 2. Playlists
+            try {
+                val playlistsResp = RetrofitClient.api.getPlayLists(userId = userId)
+                if (playlistsResp.isSuccessful && playlistsResp.body() != null) {
+                    playlistAdapter.updateItems(playlistsResp.body()!!.playlists)
+                }
+            } catch (e: Exception) { }
+
+            // 3. Álbumes
+            try {
                 val albumsResp = RetrofitClient.api.getAlbums(userId = userId, limit = 20)
                 if (albumsResp.isSuccessful && albumsResp.body() != null) {
                     albumAdapter.updateItems(albumsResp.body()!!.items)
                 }
+            } catch (e: Exception) { }
 
-                // 3. Artistas
+            // 4. Artistas
+            try {
                 val artistsResp = RetrofitClient.api.getArtists(userId = userId, limit = 20)
                 if (artistsResp.isSuccessful && artistsResp.body() != null) {
                     artistAdapter.updateItems(artistsResp.body()!!.items)
                 }
+            } catch (e: Exception) { }
 
-                // 4. Géneros
+            // 5. Géneros
+            try {
                 val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 20)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
                     genreAdapter.updateItems(genresResp.body()!!.items)
                 }
+            } catch (e: Exception) { }
 
-                // 5. Años
+            // 6. Años
+            try {
                 val yearsResp = RetrofitClient.api.getYears(userId = userId, limit = 20)
                 if (yearsResp.isSuccessful && yearsResp.body() != null) {
                     yearAdapter.updateItems(yearsResp.body()!!.items)
                 }
+            } catch (e: Exception) { }
 
-                // 6. Recomendaciones con IA
+            // 7. Recomendaciones con IA
+            try {
                 val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
                 val recommendations = aiManager.getRecommendations()
                 if (isAdded) {
                     recommendationsAdapter.updateSongs(recommendations)
                 }
+            } catch (e: Exception) { }
 
-                // 7. Resumen mensual
-                if (isAdded) {
-                    binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
-                }
-
-            } catch (e: Exception) {
-                if (isAdded) {
-                    Toast.makeText(requireContext(), "Error al cargar datos: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+            // 8. Resumen mensual
+            if (isAdded) {
+                binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
             }
         }
     }
@@ -339,6 +358,9 @@ class HomeFragment : Fragment() {
 
     private fun openCollection(item: Any) {
         val fragment = when (item) {
+            is com.example.localfly.network.Playlist -> {
+                PlaylistDetailFragment.newInstance(item.id, item.name)
+            }
             is com.example.localfly.network.Album -> {
                 AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             }

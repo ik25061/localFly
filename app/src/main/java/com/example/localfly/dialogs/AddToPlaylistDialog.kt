@@ -36,6 +36,19 @@ object AddToPlaylistDialog {
         sessionManager: SessionManager,
         onAdded: (() -> Unit)? = null
     ) {
+        showList(context, scope, listOf(song), song.title, sessionManager, onAdded)
+    }
+
+    fun showList(
+        context: Context,
+        scope: CoroutineScope,
+        songs: List<Song>,
+        previewTitle: String,
+        sessionManager: SessionManager,
+        onAdded: (() -> Unit)? = null
+    ) {
+        if (songs.isEmpty()) return
+        
         val dialog = BottomSheetDialog(context)
         dialog.setContentView(R.layout.dialog_add_to_playlist)
 
@@ -51,8 +64,13 @@ object AddToPlaylistDialog {
         val btnCreateAndAdd = dialog.findViewById<MaterialButton>(R.id.btnCreateAndAdd)
         val btnCancelForm = dialog.findViewById<MaterialButton>(R.id.btnCancelNewPlaylist)
 
-        tvTitle?.text = song.title
-        tvArtist?.text = song.artist ?: "Artista desconocido"
+        if (songs.size == 1) {
+            tvTitle?.text = songs[0].title
+            tvArtist?.text = songs[0].artist ?: "Artista desconocido"
+        } else {
+            tvTitle?.text = previewTitle
+            tvArtist?.text = "${songs.size} canciones"
+        }
 
         btnClose?.setOnClickListener { dialog.dismiss() }
 
@@ -61,12 +79,17 @@ object AddToPlaylistDialog {
         val adapter = PlaylistPickAdapter(emptyList()) { playlist ->
             scope.launch {
                 try {
-                    val response = RetrofitClient.api.addSongToPlayList(
-                        playlist.id,
-                        PlaylistSongRequest(song.id)
-                    )
-                    if (response.isSuccessful) {
-                        Toast.makeText(context, "Añadida a \"${playlist.name}\"", Toast.LENGTH_SHORT).show()
+                    var successCount = 0
+                    for (song in songs) {
+                        val response = RetrofitClient.api.addSongToPlayList(
+                            playlist.id,
+                            PlaylistSongRequest(song.id)
+                        )
+                        if (response.isSuccessful) successCount++
+                    }
+                    
+                    if (successCount > 0) {
+                        Toast.makeText(context, "Añadidas $successCount canciones a \"${playlist.name}\"", Toast.LENGTH_SHORT).show()
                         onAdded?.invoke()
                         dialog.dismiss()
                     } else {
@@ -103,16 +126,21 @@ object AddToPlaylistDialog {
                     )
                     val playlist = createResponse.body()?.playlist
                     if (createResponse.isSuccessful && playlist != null) {
-                        val addResponse = RetrofitClient.api.addSongToPlayList(
-                            playlist.id,
-                            PlaylistSongRequest(song.id)
-                        )
-                        if (addResponse.isSuccessful) {
-                            Toast.makeText(context, "Lista creada y canción añadida", Toast.LENGTH_SHORT).show()
+                        var successCount = 0
+                        for (song in songs) {
+                            val addResponse = RetrofitClient.api.addSongToPlayList(
+                                playlist.id,
+                                PlaylistSongRequest(song.id)
+                            )
+                            if (addResponse.isSuccessful) successCount++
+                        }
+                        
+                        if (successCount > 0) {
+                            Toast.makeText(context, "Lista creada y $successCount canciones añadidas", Toast.LENGTH_SHORT).show()
                             onAdded?.invoke()
                             dialog.dismiss()
                         } else {
-                            Toast.makeText(context, "Lista creada, pero no se pudo añadir la canción", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Lista creada, pero no se pudieron añadir canciones", Toast.LENGTH_SHORT).show()
                         }
                     } else {
                         Toast.makeText(context, "Error al crear la lista", Toast.LENGTH_SHORT).show()

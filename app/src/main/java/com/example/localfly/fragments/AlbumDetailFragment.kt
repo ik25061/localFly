@@ -40,6 +40,7 @@ class AlbumDetailFragment : Fragment() {
     private lateinit var tvInfo: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnDownload: MaterialButton
+    private lateinit var btnAddPlaylist: ImageButton
 
     private var currentSongs: List<Song> = emptyList()
 
@@ -67,6 +68,7 @@ class AlbumDetailFragment : Fragment() {
         tvInfo = view.findViewById(R.id.tvAlbumInfo)
         btnPlay = view.findViewById(R.id.btnPlayAlbum)
         btnDownload = view.findViewById(R.id.btnDownloadAlbum)
+        btnAddPlaylist = view.findViewById(R.id.btnAddAlbumToPlaylist)
         rvSongs = view.findViewById(R.id.rvAlbumSongs)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
@@ -119,6 +121,18 @@ class AlbumDetailFragment : Fragment() {
             if (currentSongs.isNotEmpty()) {
                 val activity = requireActivity() as? MainActivity
                 activity?.playbackService?.setQueueAndPlay(currentSongs, 0)
+            }
+        }
+
+        btnAddPlaylist.setOnClickListener {
+            if (currentSongs.isNotEmpty()) {
+                AddToPlaylistDialog.showList(
+                    requireContext(),
+                    viewLifecycleOwner.lifecycleScope,
+                    currentSongs,
+                    albumName ?: "Álbum",
+                    sessionManager
+                )
             }
         }
 

@@ -42,6 +42,8 @@ class CollectionDetailFragment : Fragment() {
     private lateinit var tvInfo: TextView
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnDownload: MaterialButton
+    private lateinit var btnAddPlaylist: ImageButton
+    private lateinit var btnHideArtist: ImageButton
 
     private var currentSongs: List<Song> = emptyList()
 
@@ -70,6 +72,8 @@ class CollectionDetailFragment : Fragment() {
         tvInfo = view.findViewById(R.id.tvCollectionInfo)
         btnPlay = view.findViewById(R.id.btnPlayCollection)
         btnDownload = view.findViewById(R.id.btnDownloadCollection)
+        btnAddPlaylist = view.findViewById(R.id.btnAddCollectionToPlaylist)
+        btnHideArtist = view.findViewById(R.id.btnHideArtist)
         rvSongs = view.findViewById(R.id.rvCollectionSongs)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
@@ -78,10 +82,29 @@ class CollectionDetailFragment : Fragment() {
 
         tvName.text = itemName
         tvType.text = when (itemType) {
-            "ARTIST" -> "ARTISTA"
+            "ARTIST" -> {
+                btnHideArtist.visibility = View.VISIBLE
+                "ARTISTA"
+            }
             "GENRE" -> "GÉNERO"
             "YEAR" -> "AÑO"
             else -> "COLECCIÓN"
+        }
+
+        btnHideArtist.setOnClickListener {
+            hideCurrentArtist()
+        }
+
+        btnAddPlaylist.setOnClickListener {
+            if (currentSongs.isNotEmpty()) {
+                AddToPlaylistDialog.showList(
+                    requireContext(),
+                    viewLifecycleOwner.lifecycleScope,
+                    currentSongs,
+                    itemName ?: "Colección",
+                    sessionManager
+                )
+            }
         }
         
         val serverBaseUrl = ApiConfig.BASE_URL
@@ -158,6 +181,19 @@ class CollectionDetailFragment : Fragment() {
         }
 
         loadSongs()
+    }
+
+    private fun hideCurrentArtist() {
+        val aId = itemId ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                RetrofitClient.api.hideArtist(aId, HideArtistRequest(sessionManager.getUserId()))
+                Toast.makeText(requireContext(), "Artista ocultado", Toast.LENGTH_SHORT).show()
+                parentFragmentManager.popBackStack()
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "Error al ocultar artista", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadSongs() {
