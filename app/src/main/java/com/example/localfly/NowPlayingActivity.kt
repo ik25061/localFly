@@ -21,6 +21,8 @@ import com.example.localfly.adapters.LyricsAdapter
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Song
+import com.example.localfly.network.SessionManager
+import com.example.localfly.ai.AIRecommendationManager
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
@@ -164,15 +166,34 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun setupQueue() {
         val service = playbackService ?: return
         val currentIdx = service.currentIndex
-        val upcomingSongs = service.queue.drop(currentIdx + 1)
+        val upcomingSongs = service.queue.drop(currentIdx + 1).toMutableList()
         
-        rvUpcoming.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this)
-        rvUpcoming.adapter = QueueAdapter(upcomingSongs) { song, action ->
-            when (action) {
-                QueueAction.PLAY_NEXT -> service.playNext(song)
-                QueueAction.ADD_TO_END -> service.addToQueue(song)
+        lifecycleScope.launch {
+            // Si hay menos de 10 canciones, rellenar con recomendaciones
+            if (upcomingSongs.size < 10) {
+                try {
+                    val sessionManager = SessionManager(this@NowPlayingActivity)
+                    val aiManager = AIRecommendationManager(sessionManager)
+                    val recommendations = aiManager.getRecommendations(limit = 10 - upcomingSongs.size)
+                    
+                    // Filtrar duplicados (canciones que ya están en la cola o ya se mostraron)
+                    val existingIds = service.queue.map { it.id }.toSet()
+                    val filteredRecs = recommendations.filter { it.id !in existingIds }
+                    
+                    upcomingSongs.addAll(filteredRecs)
+                } catch (e: Exception) {
+                    // Fallback silencioso si falla la IA
+                }
             }
-            setupQueue()
+
+            rvUpcoming.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@NowPlayingActivity)
+            rvUpcoming.adapter = QueueAdapter(upcomingSongs) { song, action ->
+                when (action) {
+                    QueueAction.PLAY_NEXT -> service.playNext(song)
+                    QueueAction.ADD_TO_END -> service.addToQueue(song)
+                }
+                setupQueue()
+            }
         }
     }
 

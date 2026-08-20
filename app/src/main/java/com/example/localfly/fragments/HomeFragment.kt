@@ -237,9 +237,21 @@ class HomeFragment : Fragment() {
 
             // 5. Géneros
             try {
-                val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 20)
+                val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 40)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
-                    genreAdapter.updateItems(genresResp.body()!!.items)
+                    val rawGenres = genresResp.body()!!.items
+                    // Aplanar géneros que vienen concatenados con ;
+                    val flattenedGenres = rawGenres.flatMap { genre ->
+                        if (genre.name.contains(";")) {
+                            genre.name.split(";").map { part ->
+                                genre.copy(name = part.trim())
+                            }
+                        } else {
+                            listOf(genre)
+                        }
+                    }.distinctBy { it.name.lowercase() }
+                    
+                    genreAdapter.updateItems(flattenedGenres.take(20))
                 }
             } catch (e: Exception) { }
 
