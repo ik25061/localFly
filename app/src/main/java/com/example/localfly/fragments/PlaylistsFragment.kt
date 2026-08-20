@@ -27,6 +27,7 @@ class PlaylistsFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var tvEmpty: TextView
     private lateinit var btnNewPlaylist: MaterialButton
+    private lateinit var btnAIPlaylist: MaterialButton
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_playlists, container, false)
@@ -40,6 +41,7 @@ class PlaylistsFragment : Fragment() {
         progressBar = view.findViewById(R.id.progressPlaylistsList)
         tvEmpty = view.findViewById(R.id.tvEmptyPlaylists)
         btnNewPlaylist = view.findViewById(R.id.btnNewPlaylist)
+        btnAIPlaylist = view.findViewById(R.id.btnAIPlaylist)
 
         adapter = PlaylistAdapter(
             playlists = emptyList(),
@@ -56,6 +58,7 @@ class PlaylistsFragment : Fragment() {
         rvPlaylists.adapter = adapter
 
         btnNewPlaylist.setOnClickListener { showCreateDialog() }
+        btnAIPlaylist.setOnClickListener { showAIPlaylistDialog() }
 
         loadPlaylists()
     }
@@ -64,6 +67,58 @@ class PlaylistsFragment : Fragment() {
         super.onResume()
         // Por si se creó/eliminó una playlist desde el detalle
         loadPlaylists()
+    }
+
+    private fun showAIPlaylistDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Lista Inteligente")
+            .setMessage("¿Quieres que la IA genere una nueva lista basada en tus gustos musicales?")
+            .setPositiveButton("Generar") { _, _ -> createAIPlaylist() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun createAIPlaylist() {
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
+                val recommendations = aiManager.getRecommendations(limit = 20)
+                
+                if (recommendations.isEmpty()) {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "La IA no tiene suficientes datos para generar una lista", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Crear la lista
+                val name = "Descubrimiento IA - ${java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault()).format(java.util.Date())}"
+                val createResp = RetrofitClient.api.createPlayList(
+                    CreatePlaylistRequest(name, "Lista generada automáticamente por la IA local de localFly", sessionManager.getUserId())
+                )
+
+                if (createResp.isSuccessful && createResp.body() != null) {
+                    val playlist = createResp.body()!!.playlist
+                    
+                    // Añadir canciones
+                    var successCount = 0
+                    for (song in recommendations) {
+                        val addResp = RetrofitClient.api.addSongToPlayList(playlist.id, PlaylistSongRequest(song.id))
+                        if (addResp.isSuccessful) successCount++
+                    }
+                    
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "Lista \"$name\" creada con $successCount canciones", Toast.LENGTH_SHORT).show()
+                    loadPlaylists()
+                } else {
+                    progressBar.visibility = View.GONE
+                    Toast.makeText(requireContext(), "Error al crear la lista de la IA", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                progressBar.visibility = View.GONE
+                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun loadPlaylists() {

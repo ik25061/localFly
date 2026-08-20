@@ -128,6 +128,19 @@ class NowPlayingActivity : AppCompatActivity() {
         btnRepeat.setOnClickListener { playbackService?.toggleRepeat() }
         btnShowQueue.setOnClickListener { toggleQueue() }
 
+        tvArtist.setOnClickListener {
+            val artistName = playbackService?.currentSong?.artist
+            if (!artistName.isNullOrBlank()) {
+                val intent = Intent(this, MainActivity::class.java).apply {
+                    action = "com.example.localfly.ACTION_OPEN_ARTIST"
+                    putExtra("artist_name", artistName)
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                startActivity(intent)
+                finish()
+            }
+        }
+
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (fromUser) tvCurrentTime.text = formatTime(progress.toLong())

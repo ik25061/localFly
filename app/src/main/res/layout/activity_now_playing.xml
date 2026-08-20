@@ -108,6 +108,9 @@
         android:layout_marginTop="4dp"
         android:textColor="#AAAAAA"
         android:textSize="16sp"
+        android:clickable="true"
+        android:focusable="true"
+        android:background="?attr/selectableItemBackground"
         app:layout_constraintEnd_toEndOf="@id/tvFullTitle"
         app:layout_constraintStart_toStartOf="@id/tvFullTitle"
         app:layout_constraintTop_toBottomOf="@id/tvFullTitle" />

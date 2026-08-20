@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.fragments.AIFragment
+import com.example.localfly.fragments.CollectionDetailFragment
 import com.example.localfly.fragments.DownloadsFragment
 import com.example.localfly.fragments.HomeFragment
 import com.example.localfly.fragments.LibraryFragment
@@ -163,20 +164,66 @@ class MainActivity : AppCompatActivity() {
 
         // Cargar fragmento inicial
         if (savedInstanceState == null) {
-            replaceFragment(HomeFragment())
-            bottomNav.selectedItemId = R.id.nav_home
+            handleIntent(intent)
         }
-
-        // Cargar la biblioteca (opcional, si quieres que se cargue al inicio)
-        // loadLibrary()
     }
 
-    // ===== MÉTODOS =====
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
 
-    private fun replaceFragment(fragment: Fragment) {
-        supportFragmentManager.beginTransaction()
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) {
+            replaceFragment(HomeFragment())
+            return
+        }
+
+        when (intent.action) {
+            "com.example.localfly.ACTION_OPEN_ARTIST" -> {
+                val artistName = intent.getStringExtra("artist_name")
+                if (artistName != null) {
+                    openArtistByName(artistName)
+                } else {
+                    replaceFragment(HomeFragment())
+                }
+            }
+            else -> {
+                replaceFragment(HomeFragment())
+            }
+        }
+    }
+
+    private fun openArtistByName(name: String) {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = name)
+                if (response.isSuccessful && response.body() != null) {
+                    val artists = response.body()!!.items
+                    val match = artists.find { it.name.equals(name, ignoreCase = true) } ?: artists.firstOrNull()
+                    if (match != null) {
+                        val fragment = CollectionDetailFragment.newInstance(
+                            match.id, match.name, "ARTIST", match.coverId
+                        )
+                        replaceFragment(fragment, addToBackStack = true)
+                    } else {
+                        Toast.makeText(this@MainActivity, "No se encontró al artista", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MainActivity, "Error al buscar artista", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false) {
+        val transaction = supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
-            .commit()
+        
+        if (addToBackStack) {
+            transaction.addToBackStack(null)
+        }
+        transaction.commit()
     }
 
     private fun refreshMiniPlayer() {
