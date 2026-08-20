@@ -197,17 +197,26 @@ class MainActivity : AppCompatActivity() {
     private fun openArtistByName(name: String) {
         lifecycleScope.launch {
             try {
+                // Seleccionar primero la pestaña de biblioteca para que el fragmento base sea el correcto
+                val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+                if (bottomNav.selectedItemId != R.id.nav_library) {
+                    bottomNav.selectedItemId = R.id.nav_library
+                }
+
                 val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = name)
                 if (response.isSuccessful && response.body() != null) {
                     val artists = response.body()!!.items
-                    val match = artists.find { it.name.equals(name, ignoreCase = true) } ?: artists.firstOrNull()
+                    val match = artists.find { it.name.equals(name, ignoreCase = true) } 
+                                ?: artists.find { it.name.contains(name, ignoreCase = true) }
+                                ?: artists.firstOrNull()
+                                
                     if (match != null) {
-                        val fragment = CollectionDetailFragment.newInstance(
+                        val fragment = com.example.localfly.fragments.CollectionDetailFragment.newInstance(
                             match.id, match.name, "ARTIST", match.coverId
                         )
                         replaceFragment(fragment, addToBackStack = true)
                     } else {
-                        Toast.makeText(this@MainActivity, "No se encontró al artista", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "No se encontró al artista \"$name\"", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
