@@ -26,7 +26,13 @@ class AIFragment : Fragment() {
     private lateinit var sessionManager: SessionManager
 
     private val selectedArtistIds = mutableSetOf<String>()
-    private var allArtists = listOf<Artist>()
+    private var allArtists = mutableListOf<Artist>()
+    
+    private var currentOffset = 0
+    private val limit = 60
+    private var isLoading = false
+    private var hasMore = true
+    private var currentQuery = ""
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_ai_assistant, container, false)
@@ -51,10 +57,21 @@ class AIFragment : Fragment() {
         adapter = ArtistSelectionAdapter(emptyList(), selectedArtistIds) {
             btnSave.isEnabled = selectedArtistIds.isNotEmpty()
         }
-        // Cuadrícula de artistas (foto circular arriba, nombre debajo) como en la web
-        rvArtists.layoutManager = GridLayoutManager(requireContext(), 3)
+        val layoutManager = GridLayoutManager(requireContext(), 3)
+        rvArtists.layoutManager = layoutManager
         rvArtists.adapter = adapter
         btnSave.isEnabled = selectedArtistIds.isNotEmpty()
+
+        rvArtists.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val total = layoutManager.itemCount
+                if (!isLoading && hasMore && currentQuery.isEmpty() && lastVisible >= total - 12) {
+                    loadArtists(isNextPage = true)
+                }
+            }
+        })
 
         btnSave.setOnClickListener {
             saveAndAnalyze()
@@ -63,7 +80,8 @@ class AIFragment : Fragment() {
         etSearch.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                filterArtists(s.toString())
+                currentQuery = s.toString()
+                filterArtists(currentQuery)
             }
             override fun afterTextChanged(s: android.text.Editable?) {}
         })
@@ -90,27 +108,57 @@ class AIFragment : Fragment() {
         }
     }
 
-    private fun loadArtists() {
+    private fun loadArtists(isNextPage: Boolean = false) {
+        if (isLoading) return
+        
+        if (isNextPage) {
+            currentOffset += limit
+        } else {
+            currentOffset = 0
+            hasMore = true
+            allArtists.clear()
+        }
+
+        isLoading = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), limit = 1000)
+                val response = RetrofitClient.api.getArtists(
+                    sessionManager.getUserId(), 
+                    limit = limit,
+                    offset = currentOffset
+                )
                 if (response.isSuccessful && response.body() != null) {
-                    allArtists = response.body()!!.items
+                    val body = response.body()!!
+                    val newItems = body.items
+                    
+                    allArtists.addAll(newItems)
                     adapter.updateItems(allArtists)
+                    
+                    hasMore = body.pagination?.hasMore ?: (newItems.size >= limit)
                 }
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                if (isAdded) Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoading = false
             }
         }
     }
 
     private fun filterArtists(query: String) {
-        val filtered = if (query.isEmpty()) {
-            allArtists
+        if (query.isNotEmpty()) {
+            // Si hay búsqueda, cargar directamente del servidor con el término
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = query, limit = 100)
+                    if (response.isSuccessful && response.body() != null) {
+                        adapter.updateItems(response.body()!!.items)
+                    }
+                } catch (e: Exception) { }
+            }
         } else {
-            allArtists.filter { it.name.contains(query, ignoreCase = true) }
+            // Si se limpia la búsqueda, volver a la lista paginada original
+            adapter.updateItems(allArtists)
         }
-        adapter.updateItems(filtered)
     }
 
     private fun saveAndAnalyze() {
