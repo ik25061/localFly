@@ -486,28 +486,14 @@ class PlaybackService : Service() {
             pendingIntentFor(ACTION_LIKE)
         )
 
-        // Action 1: Anterior
-        builder.addAction(
-            android.R.drawable.ic_media_previous,
-            "Anterior",
-            pendingIntentFor(ACTION_PREV)
-        )
-
-        // Action 2: Play/Pausa
+        // Action 1: Play/Pausa
         builder.addAction(
             if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
             if (isPlaying) "Pausar" else "Reproducir",
             pendingIntentFor(ACTION_PLAY_PAUSE)
         )
 
-        // Action 3: Siguiente
-        builder.addAction(
-            android.R.drawable.ic_media_next,
-            "Siguiente",
-            pendingIntentFor(ACTION_NEXT)
-        )
-
-        // Action 4: No me gusta
+        // Action 2: No me gusta
         builder.addAction(
             R.drawable.ic_dislike_off,
             "No me gusta",
@@ -517,7 +503,7 @@ class PlaybackService : Service() {
         // Configuración MediaStyle (Standard para Android 12+)
         builder.setStyle(
             MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(1, 2, 3) // Anterior, Play/Pausa, Siguiente
+                .setShowActionsInCompactView(0, 1, 2) // Me gusta, Play/Pausa, No me gusta
                 .setMediaSession(mediaSession?.sessionCompatToken)
         )
 
