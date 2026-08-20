@@ -27,8 +27,8 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
         val userId = sessionManager.getUserId() ?: return@withContext emptyList()
         val favArtistIds = sessionManager.getFavoriteArtists()
 
-        // 1. Canciones que le gustan (para extraer patrones)
-        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 50)
+        // 1. Canciones que le gustan (para extraer patrones profundos)
+        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
         val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
 
         // 2. Toda la biblioteca disponible para recomendar
@@ -37,48 +37,70 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
 
         if (allSongs.isEmpty()) return@withContext emptyList()
 
-        // Mapear IDs de artistas favoritos a nombres (para emparejar con las canciones)
+        // Mapear IDs de artistas favoritos a nombres
         val favArtistNames = resolveFavoriteArtistNames(userId, favArtistIds).toSet()
         val likedIds = likedSongs.mapNotNull { it.id }.toSet()
 
-        // Sin likes: recomendar de artistas favoritos o, si no hay, aleatorias (como la web)
-        if (likedIds.isEmpty()) {
-            val favSongs = allSongs.filter { it.artist in favArtistNames }
-            val pool = if (favSongs.isNotEmpty()) favSongs else allSongs
-            return@withContext diversify(pool.shuffled(), limit)
+        // Análisis de gustos por década de las canciones con "Like"
+        val preferredDecades = mutableMapOf<Int, Int>()
+
+        likedSongs.forEach { song ->
+            song.year?.let { y ->
+                val decade = (y / 10) * 10
+                preferredDecades[decade] = (preferredDecades[decade] ?: 0) + 1
+            }
         }
 
-        // Años favoritos (frecuencia)
-        val yearCount = mutableMapOf<String, Int>()
-        likedSongs.forEach { s ->
-            val y = s.year?.toString() ?: "0"
-            yearCount[y] = (yearCount[y] ?: 0) + 1
-        }
-        val topYears = yearCount.entries.sortedByDescending { it.value }.take(3).map { it.key }.toSet()
+        val topDecades = preferredDecades.entries.sortedByDescending { it.value }.take(2).map { it.key }.toSet()
+
+        // Análisis específico: ¿Qué géneros/estilos le gustan de sus artistas favoritos?
+        val likedArtists = likedSongs.mapNotNull { it.artist }.toSet()
 
         // Candidatos: canciones que aún no le gustan
         val candidates = allSongs.filter { it.id !in likedIds }
 
-        val favCandidates = candidates.filter { it.artist in favArtistNames }
-        val otherCandidates = candidates.filter { it.artist !in favArtistNames }
+        fun score(song: Song): Int {
+            var sc = 0
+            val isFavArtist = song.artist in favArtistNames
+            val hasLikedOtherSongsFromThisArtist = song.artist in likedArtists
+            
+            // Puntuación base
+            if (isFavArtist) {
+                // Si es un artista favorito, tiene un peso importante pero no definitivo
+                sc += 25 
+            }
+            
+            if (hasLikedOtherSongsFromThisArtist) {
+                // Si ya le gustan otras canciones de este artista, es una señal fuerte de gusto por su estilo
+                sc += 15
+            }
+            
+            // El peso de la "era" musical (década) es fundamental para filtrar canciones que no encajan
+            val songDecade = if (song.year != null) (song.year / 10) * 10 else -1
+            if (topDecades.contains(songDecade)) {
+                // Si la canción es de una década que le gusta, sumamos puntos.
+                // Si además es un artista que le gusta, el bonus es mayor.
+                sc += if (isFavArtist || hasLikedOtherSongsFromThisArtist) 20 else 10
+            }
+            
+            // Bonus por tener portada (calidad visual)
+            if (song.hasCover) sc += 5
 
-        fun score(song: Song, isFavorite: Boolean): Int {
-            var sc = if (isFavorite) 50 else 0        // bonus por artista favorito
-            if (topYears.contains(song.year?.toString())) sc += if (isFavorite) 10 else 15
-            if (song.hasCover) sc += 5                 // tiene portada
+            // Aleatoriedad ligera (0-5) para que las recomendaciones varíen un poco
+            sc += (Math.random() * 5).toInt()
+            
             return sc
         }
 
-        val scored = (favCandidates.map { it to score(it, true) } +
-                      otherCandidates.map { it to score(it, false) })
-            .sortedWith(compareByDescending<Pair<Song, Int>> { it.second + (Math.random() * 10) })
+        val scored = candidates.map { it to score(it) }
+            .sortedByDescending { it.second }
 
         val diversified = mutableListOf<Song>()
         val artistCounts = mutableMapOf<String, Int>()
         for ((song, _) in scored) {
             val key = song.artist ?: song.id
             val count = artistCounts[key] ?: 0
-            if (count < 2) { // diversidad: máx. 2 por artista
+            if (count < 2) { 
                 diversified.add(song)
                 artistCounts[key] = count + 1
             }
