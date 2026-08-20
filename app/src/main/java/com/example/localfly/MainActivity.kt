@@ -203,7 +203,7 @@ class MainActivity : AppCompatActivity() {
             if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         
-        btnMiniDislike.setImageResource(R.drawable.ic_dislike)
+        btnMiniDislike.setImageResource(R.drawable.ic_dislike_off)
 
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(

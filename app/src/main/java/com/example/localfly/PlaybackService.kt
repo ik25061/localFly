@@ -509,7 +509,7 @@ class PlaybackService : Service() {
 
         // Action 4: No me gusta
         builder.addAction(
-            R.drawable.ic_dislike,
+            R.drawable.ic_dislike_off,
             "No me gusta",
             pendingIntentFor(ACTION_DISLIKE)
         )

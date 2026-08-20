@@ -186,21 +186,39 @@ class DownloadManagerHelper private constructor(context: Context) {
 
     private suspend fun downloadLyrics(song: Song) {
         val baseUrl = com.example.localfly.network.ApiConfig.BASE_URL
-        val encodedTitle = java.net.URLEncoder.encode(song.title, "UTF-8").replace("+", "%20")
-        val url = "$baseUrl/resources/$encodedTitle.lrc"
+        val client = httpClient // Usar el OkHttpClient ya configurado en la clase
 
-        try {
-            httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body ?: return
-                    val lrcFile = File(downloadsDir(), "${song.id}.lrc")
-                    FileOutputStream(lrcFile).use { output ->
-                        body.byteStream().copyTo(output)
+        // Intentamos varias variantes de nombre para asegurar que encontramos el archivo .lrc
+        val variants = listOf(
+            song.title,
+            "${song.artist} - ${song.title}",
+            song.title.lowercase(java.util.Locale.getDefault()),
+            "${song.artist?.lowercase(java.util.Locale.getDefault())} - ${song.title.lowercase(java.util.Locale.getDefault())}"
+        ).distinct()
+
+        for (variant in variants) {
+            try {
+                val encoded = java.net.URLEncoder.encode(variant, "UTF-8").replace("+", "%20")
+                val url = "$baseUrl/resources/$encoded.lrc"
+                val request = Request.Builder().url(url).build()
+
+                client.newCall(request).execute().use { response ->
+                    val contentType = response.header("Content-Type")
+                    if (response.isSuccessful && contentType?.contains("text/html") == false) {
+                        val body = response.body ?: return@use
+                        val content = body.string()
+                        
+                        // Verificar que no sea HTML (ej. página de error 404 personalizada)
+                        if (content.isNotBlank() && !content.trim().startsWith("<")) {
+                            val lrcFile = File(downloadsDir(), "${song.id}.lrc")
+                            lrcFile.writeText(content)
+                            return // Éxito, salimos del bucle de variantes
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                // Siguiente variante
             }
-        } catch (e: Exception) {
-            // Silencioso, si la letra falla el audio sigue valiendo
         }
     }
 
