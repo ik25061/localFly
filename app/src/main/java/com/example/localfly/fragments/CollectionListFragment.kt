@@ -146,6 +146,8 @@ class CollectionListFragment : Fragment() {
             originalItems = emptyList()
         }
 
+        val minSongs = if (normalized.isEmpty()) 2 else 0
+
         isLoading = true
         searchJob = viewLifecycleOwner.lifecycleScope.launch {
             if (!isNextPage) delay(300) // debounce
@@ -155,19 +157,22 @@ class CollectionListFragment : Fragment() {
                         userId = sessionManager.getUserId(),
                         limit = limit,
                         offset = currentOffset,
-                        search = normalized.ifBlank { null }
+                        search = normalized.ifBlank { null },
+                        minSongs = minSongs
                     )
                     Type.ARTIST -> RetrofitClient.api.getArtists(
                         userId = null,
                         limit = limit,
                         offset = currentOffset,
-                        search = normalized.ifBlank { null }
+                        search = normalized.ifBlank { null },
+                        minSongs = minSongs
                     )
                     Type.GENRE -> RetrofitClient.api.getGenres(
                         userId = sessionManager.getUserId(),
                         limit = limit,
                         offset = currentOffset,
-                        search = normalized.ifBlank { null }
+                        search = normalized.ifBlank { null },
+                        minSongs = minSongs
                     )
                     Type.YEAR -> RetrofitClient.api.getYears(
                         userId = sessionManager.getUserId(),
@@ -251,7 +256,7 @@ class CollectionListFragment : Fragment() {
     private fun sortItems(position: Int) {
         val query = currentQuery.removeAccents().lowercase()
         
-        // Filtrado por búsqueda
+        // Filtrado por búsqueda local (opcional, el servidor ya lo hace, pero ayuda con los acentos)
         var filteredList = if (query.isEmpty()) {
             originalItems
         } else {
@@ -265,14 +270,6 @@ class CollectionListFragment : Fragment() {
                     else -> ""
                 }
                 name.removeAccents().lowercase().contains(query)
-            }
-        }
-
-        // Filtrado por cantidad de canciones: si NO hay búsqueda activa, 
-        // ocultar los que solo tienen una canción (excepto en Playlists).
-        if (query.isEmpty() && type != Type.PLAYLIST) {
-            filteredList = filteredList.filter { item ->
-                getSongCount(item) > 1
             }
         }
 
