@@ -40,7 +40,8 @@ interface ApiService {
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
         @Query("offset") offset: Int = 0,
-        @Query("search") search: String? = null
+        @Query("search") search: String? = null,
+        @Query("minSongs") minSongs: Int = 0
     ): Response<AlbumsResponse>
 
     @GET("api/artists")
@@ -48,7 +49,8 @@ interface ApiService {
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
         @Query("offset") offset: Int = 0,
-        @Query("search") search: String? = null
+        @Query("search") search: String? = null,
+        @Query("minSongs") minSongs: Int = 0
     ): Response<ArtistsResponse>
 
     @POST("api/artists/{id}/hide")
@@ -68,7 +70,8 @@ interface ApiService {
         @Query("userId") userId: String?,
         @Query("limit") limit: Int = 20,
         @Query("offset") offset: Int = 0,
-        @Query("search") search: String? = null
+        @Query("search") search: String? = null,
+        @Query("minSongs") minSongs: Int = 0
     ): Response<GenresResponse>
 
     @GET("api/years")
