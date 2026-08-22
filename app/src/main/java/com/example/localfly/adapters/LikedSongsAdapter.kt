@@ -67,10 +67,20 @@ class LikedSongsAdapter(
         // Menú (hamburguesa) con las acciones anidadas
         holder.btnSongMenu.setOnClickListener { showSongMenu(holder, song) }
 
-        // Cover: el servidor sirve la imagen en /cover/{id} (misma ruta que la web)
+        // Carga de portada con fallback inteligente
+        val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
+        val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+
         Glide.with(context)
             .load("$serverBaseUrl/cover/${song.id}")
             .placeholder(R.drawable.ic_music_placeholder)
+            .error(
+                Glide.with(context)
+                    .load(artistImageUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+            )
             .centerCrop()
             .into(holder.ivCover)
 

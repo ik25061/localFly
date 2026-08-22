@@ -43,15 +43,22 @@ class DownloadedSongAdapter(
         // Lyrics Indicator
         holder.ivLyricsIndicator.visibility = if (item.hasLyrics) View.VISIBLE else View.GONE
 
-        if (item.hasCover) {
-            Glide.with(holder.itemView.context)
-                .load("$serverBaseUrl/cover/${item.id}")
-                .placeholder(R.drawable.ic_music_placeholder)
-                .centerCrop()
-                .into(holder.ivCover)
-        } else {
-            holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
-        }
+        // Carga de portada con fallback inteligente
+        val artistEncoded = java.net.URLEncoder.encode(item.artist ?: "", "UTF-8").replace("+", "%20")
+        val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+
+        Glide.with(holder.itemView.context)
+            .load("$serverBaseUrl/cover/${item.id}")
+            .placeholder(R.drawable.ic_music_placeholder)
+            .error(
+                Glide.with(holder.itemView.context)
+                    .load(artistImageUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+            )
+            .centerCrop()
+            .into(holder.ivCover)
 
         holder.itemView.setOnClickListener { onItemClick(item) }
         holder.btnDelete.setOnClickListener { onDeleteClick(item) }

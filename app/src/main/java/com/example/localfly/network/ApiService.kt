@@ -35,6 +35,11 @@ interface ApiService {
         @Body request: HideRequest
     ): Response<Unit>
 
+    @HTTP(method = "DELETE", path = "api/songs", hasBody = true)
+    suspend fun deleteSong(
+        @Body request: DeleteSongRequest
+    ): Response<Unit>
+
     @GET("api/albums")
     suspend fun getAlbums(
         @Query("userId") userId: String?,
@@ -134,6 +139,12 @@ interface ApiService {
     suspend fun addSongToPlayList(
         @Path("id") playlistId: String,
         @Body request: PlaylistSongRequest
+    ): Response<PlaylistResponse>
+
+    @POST("api/playlists/{id}/songs/bulk")
+    suspend fun addSongsToPlayListBulk(
+        @Path("id") playlistId: String,
+        @Body request: PlaylistSongsBulkRequest
     ): Response<PlaylistResponse>
 
     @HTTP(method = "DELETE", path = "api/playlists/{id}/songs", hasBody = true)

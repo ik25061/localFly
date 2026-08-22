@@ -21,6 +21,7 @@ import com.example.localfly.adapters.LyricsAdapter
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Song
+import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.SessionManager
 import com.example.localfly.ai.AIRecommendationManager
 import okhttp3.OkHttpClient
@@ -49,17 +50,29 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnDislike: ImageButton
     private lateinit var btnPrev: ImageButton
     private lateinit var btnNext: ImageButton
-    private lateinit var btnShuffle: ImageButton
+    private lateinit var btnDeleteSong: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
     private lateinit var btnShowQueue: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvUpcomingHeader: TextView
+    private lateinit var queueOverlay: androidx.constraintlayout.widget.ConstraintLayout
+    private lateinit var ivQueueMiniThumb: ImageView
+    private lateinit var tvQueueMiniInfo: TextView
+    private lateinit var btnCloseQueueOverlay: ImageButton
+    private var queueAdapter: QueueAdapter? = null
+    private var queueItemTouchHelper: androidx.recyclerview.widget.ItemTouchHelper? = null
+
+    private var deleteConfirmArmed = false
+    private val deleteConfirmResetRunnable = Runnable { resetDeleteConfirmState() }
 
     private var playbackService: PlaybackService? = null
     private var isBound = false
     private var userIsSeeking = false
     private var queueIsVisible = false
+
+    private var currentQueueSongs: MutableList<Song> = mutableListOf()
+    private var aiRecommendationsLoaded = false
 
     private var lyricsDialog: android.app.Dialog? = null
     private var lyricsAdapter: LyricsAdapter? = null
@@ -79,7 +92,7 @@ class NowPlayingActivity : AppCompatActivity() {
             playbackService = binder.getService()
             isBound = true
             playbackService?.onStateChanged = { refreshUi() }
-            if (queueIsVisible) setupQueue()
+            if (queueIsVisible) updateQueueUI()
             refreshUi()
         }
 
@@ -105,15 +118,19 @@ class NowPlayingActivity : AppCompatActivity() {
         btnDislike = findViewById(R.id.btnFullDislike)
         btnPrev = findViewById(R.id.btnFullPrev)
         btnNext = findViewById(R.id.btnFullNext)
-        btnShuffle = findViewById(R.id.btnShuffle)
+        btnDeleteSong = findViewById(R.id.btnDeleteSong)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
         btnShowQueue = findViewById(R.id.btnShowQueue)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         tvUpcomingHeader = findViewById(R.id.tvUpcomingHeader)
+        queueOverlay = findViewById(R.id.queueOverlay)
+        ivQueueMiniThumb = findViewById(R.id.ivQueueMiniThumb)
+        tvQueueMiniInfo = findViewById(R.id.tvQueueMiniInfo)
+        btnCloseQueueOverlay = findViewById(R.id.btnCloseQueueOverlay)
 
-        rvUpcoming.visibility = android.view.View.GONE
-        tvUpcomingHeader.visibility = android.view.View.GONE
+        queueOverlay.visibility = android.view.View.GONE
+        btnCloseQueueOverlay.setOnClickListener { toggleQueue() }
 
         findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
 
@@ -126,7 +143,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
         btnLyrics.setOnClickListener { showLyrics() }
-        btnShuffle.setOnClickListener { playbackService?.toggleShuffle() }
+        btnDeleteSong.setOnClickListener { onDeleteSongClicked() }
         btnRepeat.setOnClickListener { playbackService?.toggleRepeat() }
         btnShowQueue.setOnClickListener { toggleQueue() }
 
@@ -157,42 +174,220 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun toggleQueue() {
         queueIsVisible = !queueIsVisible
-        rvUpcoming.visibility = if (queueIsVisible) android.view.View.VISIBLE else android.view.View.GONE
-        tvUpcomingHeader.visibility = if (queueIsVisible) android.view.View.VISIBLE else android.view.View.GONE
-        btnShowQueue.rotation = if (queueIsVisible) 180f else 0f
-        if (queueIsVisible) setupQueue()
+        if (queueIsVisible) {
+            openQueueOverlay()
+        } else {
+            closeQueueOverlay()
+        }
+    }
+
+    private fun openQueueOverlay() {
+        val song = playbackService?.currentSong
+        if (song != null) {
+            tvQueueMiniInfo.text = "Reproduciendo ahora: ${song.title}"
+            Glide.with(this)
+                .load("$serverBaseUrl/cover/${song.id}")
+                .placeholder(R.drawable.ic_music_placeholder)
+                .centerCrop()
+                .into(ivQueueMiniThumb)
+        }
+
+        queueOverlay.visibility = android.view.View.VISIBLE
+        queueOverlay.translationY = queueOverlay.height.takeIf { it > 0 }
+            ?.toFloat() ?: resources.displayMetrics.heightPixels.toFloat()
+        queueOverlay.animate()
+            .translationY(0f)
+            .setDuration(280)
+            .start()
+
+        // Encoger y subir la carátula, como en Spotify, mientras sube la cola
+        ivCircularImage.animate()
+            .scaleX(0.35f)
+            .scaleY(0.35f)
+            .translationY(-260f)
+            .alpha(0.6f)
+            .setDuration(280)
+            .start()
+
+        btnShowQueue.rotation = 0f
+        setupQueue()
+    }
+
+    private fun closeQueueOverlay() {
+        queueOverlay.animate()
+            .translationY(queueOverlay.height.toFloat())
+            .setDuration(220)
+            .withEndAction { queueOverlay.visibility = android.view.View.GONE }
+            .start()
+
+        ivCircularImage.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .translationY(0f)
+            .alpha(1f)
+            .setDuration(220)
+            .start()
+
+        btnShowQueue.rotation = 180f
     }
 
     private fun setupQueue() {
         val service = playbackService ?: return
-        val currentIdx = service.currentIndex
-        val upcomingSongs = service.queue.drop(currentIdx + 1).toMutableList()
-        
+
         lifecycleScope.launch {
-            // Si hay menos de 10 canciones, rellenar con recomendaciones
-            if (upcomingSongs.size < 10) {
+            // Si hay menos de 10 canciones pendientes, rellenar con IA y
+            // AÑADIRLAS de verdad a la cola real (no solo mostrarlas).
+            val pendingCount = service.queue.size - (service.currentIndex + 1)
+            if (pendingCount < 10) {
                 try {
                     val sessionManager = SessionManager(this@NowPlayingActivity)
                     val aiManager = AIRecommendationManager(sessionManager)
-                    val recommendations = aiManager.getRecommendations(limit = 10 - upcomingSongs.size)
-                    
-                    // Filtrar duplicados (canciones que ya están en la cola o ya se mostraron)
+                    val recommendations = aiManager.getRecommendations(
+                        limit = 10 - pendingCount,
+                        seedSong = service.currentSong
+                    )
                     val existingIds = service.queue.map { it.id }.toSet()
                     val filteredRecs = recommendations.filter { it.id !in existingIds }
-                    
-                    upcomingSongs.addAll(filteredRecs)
+                    if (filteredRecs.isNotEmpty()) {
+                        service.addListToQueue(filteredRecs)
+                    }
                 } catch (e: Exception) {
                     // Fallback silencioso si falla la IA
                 }
             }
 
-            rvUpcoming.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@NowPlayingActivity)
-            rvUpcoming.adapter = QueueAdapter(upcomingSongs) { song, action ->
-                when (action) {
-                    QueueAction.PLAY_NEXT -> service.playNext(song)
-                    QueueAction.ADD_TO_END -> service.addToQueue(song)
+            val upcomingSongs = service.queue.drop(service.currentIndex + 1).toMutableList()
+
+            val existingAdapter = queueAdapter
+            if (existingAdapter != null && rvUpcoming.adapter === existingAdapter) {
+                existingAdapter.updateSongs(upcomingSongs)
+                return@launch
+            }
+
+            val adapter = QueueAdapter(
+                songs = upcomingSongs,
+                onDragHandleTouch = { holder -> queueItemTouchHelper?.startDrag(holder) },
+                onMove = { from, to ->
+                    // Los índices de la vista son relativos a "próximas
+                    // canciones"; sumamos currentIndex + 1 para obtener el
+                    // índice absoluto real dentro de service.queue.
+                    val offset = service.currentIndex + 1
+                    service.moveQueueItem(from + offset, to + offset)
+                },
+                onRemove = { position ->
+                    val offset = service.currentIndex + 1
+                    service.removeFromQueue(position + offset)
                 }
-                setupQueue()
+            )
+            queueAdapter = adapter
+            rvUpcoming.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@NowPlayingActivity)
+            rvUpcoming.adapter = adapter
+
+            val callback = object : androidx.recyclerview.widget.ItemTouchHelper.SimpleCallback(
+                androidx.recyclerview.widget.ItemTouchHelper.UP or androidx.recyclerview.widget.ItemTouchHelper.DOWN,
+                androidx.recyclerview.widget.ItemTouchHelper.LEFT or androidx.recyclerview.widget.ItemTouchHelper.RIGHT
+            ) {
+                override fun onMove(
+                    recyclerView: androidx.recyclerview.widget.RecyclerView,
+                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder,
+                    target: androidx.recyclerview.widget.RecyclerView.ViewHolder
+                ): Boolean {
+                    adapter.onItemMove(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+                    return true
+                }
+
+                override fun clearView(
+                    recyclerView: androidx.recyclerview.widget.RecyclerView,
+                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder
+                ) {
+                    super.clearView(recyclerView, viewHolder)
+                    // onItemMove ya reordenó la lista visual; aquí confirmamos
+                    // el cambio real usando la posición final del holder.
+                    val finalPosition = viewHolder.bindingAdapterPosition
+                    if (finalPosition != androidx.recyclerview.widget.RecyclerView.NO_POSITION) {
+                        adapter.confirmMove(lastDragFrom, finalPosition)
+                    }
+                }
+
+                private var lastDragFrom = -1
+
+                override fun onSelectedChanged(
+                    viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder?,
+                    actionState: Int
+                ) {
+                    super.onSelectedChanged(viewHolder, actionState)
+                    if (actionState == androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                        lastDragFrom = viewHolder.bindingAdapterPosition
+                    }
+                }
+
+                override fun onSwiped(viewHolder: androidx.recyclerview.widget.RecyclerView.ViewHolder, direction: Int) {
+                    adapter.onItemDismiss(viewHolder.bindingAdapterPosition)
+                }
+            }
+
+            queueItemTouchHelper?.attachToRecyclerView(null)
+            queueItemTouchHelper = androidx.recyclerview.widget.ItemTouchHelper(callback)
+            queueItemTouchHelper?.attachToRecyclerView(rvUpcoming)
+        }
+    }
+
+    private fun updateQueueUI() {
+        setupQueue()
+    }
+
+    private fun onDeleteSongClicked() {
+        if (deleteConfirmArmed) {
+            progressHandler.removeCallbacks(deleteConfirmResetRunnable)
+            resetDeleteConfirmState()
+            deleteCurrentSong()
+        } else {
+            deleteConfirmArmed = true
+            btnDeleteSong.imageTintList = android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.parseColor("#FFA500")
+            )
+            Toast.makeText(this, "Pulsa de nuevo para eliminar esta canción permanentemente", Toast.LENGTH_SHORT).show()
+            progressHandler.postDelayed(deleteConfirmResetRunnable, 3000)
+        }
+    }
+
+    private fun resetDeleteConfirmState() {
+        deleteConfirmArmed = false
+        btnDeleteSong.imageTintList = android.content.res.ColorStateList.valueOf(
+            android.graphics.Color.parseColor("#FF4444")
+        )
+    }
+
+    private fun deleteCurrentSong() {
+        val service = playbackService ?: return
+        val song = service.currentSong ?: return
+        val sessionManager = SessionManager(this)
+
+        btnDeleteSong.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.deleteSong(
+                    DeleteSongRequest(id = song.id, userId = sessionManager.getUserId())
+                )
+                if (response.isSuccessful) {
+                    val downloadHelper = DownloadManagerHelper.getInstance(this@NowPlayingActivity)
+                    if (downloadHelper.isDownloaded(song.id)) {
+                        withContext(Dispatchers.IO) { downloadHelper.removeDownload(song.id) }
+                    }
+                    Toast.makeText(this@NowPlayingActivity, "Canción eliminada", Toast.LENGTH_SHORT).show()
+                    if (service.hasNext()) {
+                        service.next()
+                    } else {
+                        finish()
+                    }
+                } else {
+                    Toast.makeText(this@NowPlayingActivity, "No se pudo eliminar la canción", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@NowPlayingActivity, "Sin conexión: no se pudo eliminar la canción", Toast.LENGTH_SHORT).show()
+            } finally {
+                btnDeleteSong.isEnabled = true
             }
         }
     }
@@ -350,13 +545,12 @@ class NowPlayingActivity : AppCompatActivity() {
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
-        btnShuffle.imageTintList = android.content.res.ColorStateList.valueOf(if (playbackService?.player?.shuffleModeEnabled == true) android.graphics.Color.parseColor("#1DB954") else android.graphics.Color.WHITE)
         btnRepeat.imageTintList = android.content.res.ColorStateList.valueOf(if (playbackService?.player?.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) android.graphics.Color.parseColor("#1DB954") else android.graphics.Color.WHITE)
         btnPrev.isEnabled = playbackService?.hasPrev() == true
         btnPrev.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
         btnNext.isEnabled = playbackService?.hasNext() == true
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
-        if (queueIsVisible) setupQueue()
+        if (queueIsVisible) updateQueueUI()
     }
 
     private fun updateProgress() {

@@ -59,7 +59,8 @@ class LikedSongsFragment : Fragment() {
             downloadHelper = downloadHelper,
             onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.setQueueAndPlay(currentSongs, position)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(currentSongs, position, localPaths)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
             onDislikeClick = { _, _ -> },
@@ -80,7 +81,8 @@ class LikedSongsFragment : Fragment() {
 
         btnPlayAll.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
-                (requireActivity() as? MainActivity)?.playbackService?.setQueueAndPlay(currentSongs, 0)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                (requireActivity() as? MainActivity)?.playbackService?.setQueueAndPlay(currentSongs, 0, localPaths)
             }
         }
 

@@ -100,15 +100,16 @@ class PlaylistsFragment : Fragment() {
                 if (createResp.isSuccessful && createResp.body() != null) {
                     val playlist = createResp.body()!!.playlist
                     
-                    // Añadir canciones
-                    var successCount = 0
-                    for (song in recommendations) {
-                        val addResp = RetrofitClient.api.addSongToPlayList(playlist.id, PlaylistSongRequest(song.id))
-                        if (addResp.isSuccessful) successCount++
-                    }
+                    // Añadir canciones en lote (Bulk)
+                    val songIds = recommendations.map { it.id }
+                    val addResp = RetrofitClient.api.addSongsToPlayListBulk(playlist.id, PlaylistSongsBulkRequest(songIds))
                     
                     progressBar.visibility = View.GONE
-                    Toast.makeText(requireContext(), "Lista \"$name\" creada con $successCount canciones", Toast.LENGTH_SHORT).show()
+                    if (addResp.isSuccessful) {
+                        Toast.makeText(requireContext(), "Lista \"$name\" creada con ${songIds.size} canciones", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Lista creada, pero hubo un error al añadir las canciones", Toast.LENGTH_SHORT).show()
+                    }
                     loadPlaylists()
                 } else {
                     progressBar.visibility = View.GONE

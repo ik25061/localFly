@@ -174,7 +174,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+        
         if (intent == null) {
+            bottomNav.selectedItemId = R.id.nav_home
             replaceFragment(HomeFragment())
             return
         }
@@ -185,10 +188,12 @@ class MainActivity : AppCompatActivity() {
                 if (artistName != null) {
                     openArtistByName(artistName)
                 } else {
+                    bottomNav.selectedItemId = R.id.nav_home
                     replaceFragment(HomeFragment())
                 }
             }
             else -> {
+                bottomNav.selectedItemId = R.id.nav_home
                 replaceFragment(HomeFragment())
             }
         }

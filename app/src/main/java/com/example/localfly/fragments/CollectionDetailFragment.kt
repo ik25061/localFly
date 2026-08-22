@@ -131,7 +131,8 @@ class CollectionDetailFragment : Fragment() {
             downloadHelper = downloadHelper,
             onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.setQueueAndPlay(currentSongs, position)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(currentSongs, position, localPaths)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
             onDislikeClick = { _, _ -> },
@@ -157,7 +158,8 @@ class CollectionDetailFragment : Fragment() {
         btnPlay.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
                 val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.setQueueAndPlay(currentSongs, 0)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(currentSongs, 0, localPaths)
             }
         }
 
@@ -207,7 +209,13 @@ class CollectionDetailFragment : Fragment() {
                     else -> return@launch
                 }
                 if (response.isSuccessful && response.body() != null) {
-                    currentSongs = response.body()!!.songs
+                    val songs = response.body()!!.songs
+                    // Garantizar que el artista se muestre correctamente si estamos en modo ARTISTA
+                    currentSongs = if (itemType == "ARTIST") {
+                        songs.map { it.copy(artist = it.artist ?: itemName) }
+                    } else {
+                        songs
+                    }
                     adapter.updateSongs(currentSongs)
                     
                     val totalDuration = currentSongs.sumOf { it.duration ?: 0.0 }

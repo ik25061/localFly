@@ -14,6 +14,7 @@ import com.example.localfly.adapters.ArtistSelectionAdapter
 import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.network.*
 import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class AIFragment : Fragment() {
@@ -27,6 +28,8 @@ class AIFragment : Fragment() {
 
     private val selectedArtistIds = mutableSetOf<String>()
     private var allArtists = mutableListOf<Artist>()
+    
+    private var searchJob: kotlinx.coroutines.Job? = null
     
     private var currentOffset = 0
     private val limit = 60
@@ -145,9 +148,10 @@ class AIFragment : Fragment() {
     }
 
     private fun filterArtists(query: String) {
+        searchJob?.cancel()
         if (query.isNotEmpty()) {
-            // Si hay búsqueda, cargar directamente del servidor con el término
-            viewLifecycleOwner.lifecycleScope.launch {
+            searchJob = viewLifecycleOwner.lifecycleScope.launch {
+                delay(300)
                 try {
                     val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = query, limit = 100)
                     if (response.isSuccessful && response.body() != null) {
@@ -156,7 +160,6 @@ class AIFragment : Fragment() {
                 } catch (e: Exception) { }
             }
         } else {
-            // Si se limpia la búsqueda, volver a la lista paginada original
             adapter.updateItems(allArtists)
         }
     }

@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
 import com.example.localfly.adapters.CollectionAdapter
 import com.example.localfly.network.*
+import com.example.localfly.utils.GenreUtils
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -203,16 +204,9 @@ class CollectionListFragment : Fragment() {
                         }
                         is GenresResponse -> {
                             hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)
-                            // Aplanar géneros concatenados
-                            body.items.flatMap { genre ->
-                                if (genre.name.contains(";")) {
-                                    genre.name.split(";").map { part ->
-                                        genre.copy(name = part.trim())
-                                    }
-                                } else {
-                                    listOf(genre)
-                                }
-                            }.distinctBy { it.name.lowercase() }
+                            // Usar utilidad compartida para aplanar géneros legacy
+                            val flattened = GenreUtils.flattenLegacyGenres(body.items)
+                            flattened
                         }
                         is YearsResponse -> {
                             hasMore = body.pagination?.hasMore ?: (body.items.size >= limit)

@@ -15,12 +15,8 @@ import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
 import com.example.localfly.databinding.FragmentHomeBinding
 import com.example.localfly.dialogs.AddToPlaylistDialog
-import com.example.localfly.network.ApiConfig
-import com.example.localfly.network.HideRequest
-import com.example.localfly.network.LikeRequest
-import com.example.localfly.network.RetrofitClient
-import com.example.localfly.network.SessionManager
-import com.example.localfly.network.Song
+import com.example.localfly.network.*
+import com.example.localfly.utils.GenreUtils
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -240,17 +236,8 @@ class HomeFragment : Fragment() {
                 val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 40)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
                     val rawGenres = genresResp.body()!!.items
-                    // Aplanar géneros que vienen concatenados con ;
-                    val flattenedGenres = rawGenres.flatMap { genre ->
-                        if (genre.name.contains(";")) {
-                            genre.name.split(";").map { part ->
-                                genre.copy(name = part.trim())
-                            }
-                        } else {
-                            listOf(genre)
-                        }
-                    }.distinctBy { it.name.lowercase() }
-                    
+                    // Usar utilidad compartida para aplanar géneros legacy
+                    val flattenedGenres = GenreUtils.flattenLegacyGenres(rawGenres)
                     genreAdapter.updateItems(flattenedGenres.take(20))
                 }
             } catch (e: Exception) { }
@@ -370,10 +357,10 @@ class HomeFragment : Fragment() {
 
     private fun openCollection(item: Any) {
         val fragment = when (item) {
-            is com.example.localfly.network.Playlist -> {
+            is Playlist -> {
                 PlaylistDetailFragment.newInstance(item.id, item.name)
             }
-            is com.example.localfly.network.Album -> {
+            is Album -> {
                 AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             }
             is com.example.localfly.network.Artist -> {

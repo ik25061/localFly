@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.network.Song
+import java.net.URLEncoder
 import java.util.Locale
 
 class SongAdapter(
@@ -76,11 +77,22 @@ class SongAdapter(
         // Menú (hamburguesa) con las acciones anidadas
         holder.btnSongMenu.setOnClickListener { showSongMenu(holder, song) }
 
-        // Cover: el servidor sirve la imagen en /cover/{id} (misma ruta que la web)
+        // Carga de portada con fallback inteligente:
+        // 1. Intentar cargar la portada del álbum/canción (/cover/{id})
+        // 2. Si falla, intentar cargar la foto del artista (/artist-cover/{nombre})
+        val artistEncoded = URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
+        val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+
         Glide.with(holder.itemView.context)
             .load("$serverBaseUrl/cover/${song.id}")
             .placeholder(R.drawable.ic_music_placeholder)
-            .error(R.drawable.ic_music_placeholder)
+            .error(
+                Glide.with(holder.itemView.context)
+                    .load(artistImageUrl)
+                    .placeholder(R.drawable.ic_music_placeholder)
+                    .error(R.drawable.ic_music_placeholder)
+                    .centerCrop()
+            )
             .centerCrop()
             .into(holder.ivCover)
 

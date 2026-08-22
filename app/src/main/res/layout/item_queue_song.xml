@@ -5,7 +5,7 @@
     android:layout_height="wrap_content"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingVertical="8dp"
+    android:paddingVertical="10dp"
     android:paddingHorizontal="24dp"
     android:background="?attr/selectableItemBackground">
 
@@ -46,25 +46,13 @@
 
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/btnQueuePlayNext"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_media_play"
-        android:scaleType="centerInside"
+    <ImageView
+        android:id="@+id/ivQueueDragHandle"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
         android:padding="4dp"
-        app:tint="#AAAAAA" />
-
-    <ImageButton
-        android:id="@+id/btnQueueAddToEnd"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:layout_marginStart="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@android:drawable/ic_menu_add"
         android:scaleType="centerInside"
-        android:padding="4dp"
-        app:tint="#AAAAAA" />
+        android:src="@drawable/ic_drag_handle"
+        app:tint="#888888" />
 
 </LinearLayout>

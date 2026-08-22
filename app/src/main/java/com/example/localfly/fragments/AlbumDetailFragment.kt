@@ -92,9 +92,10 @@ class AlbumDetailFragment : Fragment() {
             songs = mutableListOf(),
             serverBaseUrl = serverBaseUrl,
             downloadHelper = downloadHelper,
-            onSongClick = { song, position ->
+            onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.setQueueAndPlay(currentSongs, position)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(currentSongs, position, localPaths)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
             onDislikeClick = { song, position -> /* No op for album view maybe? */ },
@@ -120,7 +121,8 @@ class AlbumDetailFragment : Fragment() {
         btnPlay.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
                 val activity = requireActivity() as? MainActivity
-                activity?.playbackService?.setQueueAndPlay(currentSongs, 0)
+                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(currentSongs, 0, localPaths)
             }
         }
 

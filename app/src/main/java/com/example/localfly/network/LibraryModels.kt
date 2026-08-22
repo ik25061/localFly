@@ -132,6 +132,15 @@ data class PlaylistSongRequest(
     val songId: String
 )
 
+data class PlaylistSongsBulkRequest(
+    val songIds: List<String>
+)
+
+data class DeleteSongRequest(
+    val id: String,
+    val userId: String?
+)
+
 data class SongsByIdsResponse(
     val songs: List<Song>
 )

@@ -23,7 +23,10 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
      *  - Bonus por tener portada
      *  - Diversidad: máximo 2 canciones por artista
      */
-    suspend fun getRecommendations(limit: Int = 10): List<Song> = withContext(Dispatchers.IO) {
+    suspend fun getRecommendations(
+        limit: Int = 10,
+        seedSong: Song? = null
+    ): List<Song> = withContext(Dispatchers.IO) {
         val userId = sessionManager.getUserId() ?: return@withContext emptyList()
         val favArtistIds = sessionManager.getFavoriteArtists()
 
@@ -73,6 +76,19 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
             if (hasLikedOtherSongsFromThisArtist) {
                 // Si ya le gustan otras canciones de este artista, es una señal fuerte de gusto por su estilo
                 sc += 15
+            }
+            
+            // Si hay una canción semilla (p.ej. la que está sonando y ya
+            // no tiene más canciones propias en la cola), priorizar
+            // mismo artista y años cercanos como aproximación de "mismo
+            // estilo" (no hay campo de género disponible en el modelo).
+            if (seedSong != null) {
+                if (song.artist != null && song.artist == seedSong.artist) sc += 40
+                val seedYear = seedSong.year
+                val songYear = song.year
+                if (seedYear != null && songYear != null && kotlin.math.abs(songYear - seedYear) <= 3) {
+                    sc += 15
+                }
             }
             
             // El peso de la "era" musical (década) es fundamental para filtrar canciones que no encajan

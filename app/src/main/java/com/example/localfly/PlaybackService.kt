@@ -180,27 +180,36 @@ class PlaybackService : Service() {
 
     private fun checkAutoDelete(song: Song?, index: Int) {
         if (song == null) return
-        if (sessionManager.isAutoDeleteEnabled()) {
-            val localPath = queueLocalPaths.getOrNull(index)
-            if (localPath != null) {
-                // Pequeño retardo para asegurar que ExoPlayer ha liberado el archivo
-                serviceScope.launch {
-                    delay(300)
-                    withContext(Dispatchers.IO) {
-                        downloadHelper.removeDownload(song.id)
-                    }
-                    
-                    // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
-                    val mutablePaths = queueLocalPaths.toMutableList()
-                    if (index in mutablePaths.indices) {
-                        mutablePaths[index] = null
-                        queueLocalPaths = mutablePaths
-                    }
-                    
-                    withContext(Dispatchers.Main) {
-                        onStateChanged?.invoke()
-                    }
+        if (!sessionManager.isAutoDeleteEnabled()) return
+
+        // No confiar solo en queueLocalPaths (depende de que la pantalla de
+        // origen haya construido la cola pasando localPaths correctamente).
+        // Confirmar también contra el registro real de descargas para que
+        // el auto-borrado nunca dependa silenciosamente de eso.
+        val localPath = queueLocalPaths.getOrNull(index)
+        val isDownloaded = localPath != null || downloadHelper.isDownloaded(song.id)
+        if (!isDownloaded) return
+
+        // Pequeño retardo para asegurar que ExoPlayer ha liberado el archivo
+        serviceScope.launch {
+            delay(300)
+            try {
+                withContext(Dispatchers.IO) {
+                    downloadHelper.removeDownload(song.id)
                 }
+            } catch (e: Exception) {
+                // No dejar que un fallo aquí tumbe el resto del flujo de reproducción
+            }
+
+            // Limpiar la ruta en la cola para que no intente reproducirla de nuevo localmente
+            val mutablePaths = queueLocalPaths.toMutableList()
+            if (index in mutablePaths.indices) {
+                mutablePaths[index] = null
+                queueLocalPaths = mutablePaths
+            }
+
+            withContext(Dispatchers.Main) {
+                onStateChanged?.invoke()
             }
         }
     }
@@ -286,6 +295,54 @@ class PlaybackService : Service() {
         mutablePaths.addAll(List(songs.size) { null })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
+        onStateChanged?.invoke()
+    }
+
+    /**
+     * Mueve una canción de la cola de [fromIndex] a [toIndex] (índices
+     * absolutos sobre `queue`, no relativos a la vista "próximas"). No
+     * permite mover la canción que está sonando actualmente.
+     */
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == currentIndex || toIndex == currentIndex) return
+        if (fromIndex !in queue.indices || toIndex !in queue.indices) return
+
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        val song = mutableQueue.removeAt(fromIndex)
+        val path = mutablePaths.removeAt(fromIndex)
+        mutableQueue.add(toIndex, song)
+        mutablePaths.add(toIndex, path)
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+
+        // Si el movimiento cruza por encima/debajo de la canción actual,
+        // el índice de la canción en reproducción cambia de posición.
+        currentIndex = when {
+            fromIndex < currentIndex && toIndex >= currentIndex -> currentIndex - 1
+            fromIndex > currentIndex && toIndex <= currentIndex -> currentIndex + 1
+            else -> currentIndex
+        }
+        onStateChanged?.invoke()
+    }
+
+    /**
+     * Elimina una canción de la cola por índice absoluto. No se puede
+     * eliminar así la canción que está sonando actualmente (para eso está
+     * "Siguiente"/"Anterior").
+     */
+    fun removeFromQueue(index: Int) {
+        if (index == currentIndex) return
+        if (index !in queue.indices) return
+
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        mutableQueue.removeAt(index)
+        mutablePaths.removeAt(index)
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+
+        if (index < currentIndex) currentIndex--
         onStateChanged?.invoke()
     }
 
