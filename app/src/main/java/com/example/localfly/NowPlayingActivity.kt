@@ -23,6 +23,9 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Song
 import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.SessionManager
+import com.example.localfly.network.LrclibClient
+import com.example.localfly.network.ServerReachability
+import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,6 +37,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NowPlayingActivity : AppCompatActivity() {
 
     private val serverBaseUrl = ApiConfig.BASE_URL
@@ -42,7 +46,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var ivBlurredBackground: ImageView
     private lateinit var tvTitle: TextView
     private lateinit var tvArtist: TextView
-    private lateinit var seekBar: SeekBar
+    private lateinit var waveformSeekBar: com.masoudss.lib.WaveformSeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
     private lateinit var btnPlayPause: ImageButton
@@ -56,6 +60,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnShowQueue: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvUpcomingHeader: TextView
+    private lateinit var btnSmartReorder: com.google.android.material.button.MaterialButton
     private lateinit var queueOverlay: androidx.constraintlayout.widget.ConstraintLayout
     private lateinit var ivQueueMiniThumb: ImageView
     private lateinit var tvQueueMiniInfo: TextView
@@ -77,6 +82,16 @@ class NowPlayingActivity : AppCompatActivity() {
     private var lyricsDialog: android.app.Dialog? = null
     private var lyricsAdapter: LyricsAdapter? = null
     private var lyricsUpdateJob: Job? = null
+
+    // Vistas del mini-reproductor en el diálogo de letras
+    private var ivLyricsMiniCover: ImageView? = null
+    private var tvLyricsMiniTitle: TextView? = null
+    private var tvLyricsMiniArtist: TextView? = null
+    private var btnLyricsMiniPlayPause: ImageButton? = null
+    private var sbLyricsMiniProgress: SeekBar? = null
+
+    private lateinit var downloadHelper: DownloadManagerHelper
+    private lateinit var amplituda: linc.com.amplituda.Amplituda
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private val progressRunnable = object : Runnable {
@@ -106,11 +121,14 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_now_playing)
 
+        downloadHelper = DownloadManagerHelper.getInstance(this)
+        amplituda = linc.com.amplituda.Amplituda(this)
+
         ivCircularImage = findViewById(R.id.ivCircularImage)
         ivBlurredBackground = findViewById(R.id.ivBlurredBackground)
         tvTitle = findViewById(R.id.tvFullTitle)
         tvArtist = findViewById(R.id.tvFullArtist)
-        seekBar = findViewById(R.id.seekBarProgress)
+        waveformSeekBar = findViewById(R.id.waveformSeekBar)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
         btnPlayPause = findViewById(R.id.btnFullPlayPause)
@@ -124,6 +142,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnShowQueue = findViewById(R.id.btnShowQueue)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         tvUpcomingHeader = findViewById(R.id.tvUpcomingHeader)
+        btnSmartReorder = findViewById(R.id.btnSmartReorder)
         queueOverlay = findViewById(R.id.queueOverlay)
         ivQueueMiniThumb = findViewById(R.id.ivQueueMiniThumb)
         tvQueueMiniInfo = findViewById(R.id.tvQueueMiniInfo)
@@ -131,6 +150,10 @@ class NowPlayingActivity : AppCompatActivity() {
 
         queueOverlay.visibility = android.view.View.GONE
         btnCloseQueueOverlay.setOnClickListener { toggleQueue() }
+
+        btnSmartReorder.setOnClickListener {
+            applySmartReorder()
+        }
 
         findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
 
@@ -160,16 +183,26 @@ class NowPlayingActivity : AppCompatActivity() {
             }
         }
 
-        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+        waveformSeekBar.onProgressChanged = object : com.masoudss.lib.SeekBarOnProgressChanged {
+            override fun onProgressChanged(waveformSeekBar: com.masoudss.lib.WaveformSeekBar, progress: Float, fromUser: Boolean) {
                 if (fromUser) tvCurrentTime.text = formatTime(progress.toLong())
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) { userIsSeeking = true }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                userIsSeeking = false
-                playbackService?.seekTo(seekBar?.progress?.toLong() ?: 0L)
+        }
+        
+        // Listener para el inicio y fin del scroll (seek)
+        waveformSeekBar.setOnTouchListener { view, event ->
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    userIsSeeking = true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    userIsSeeking = false
+                    playbackService?.seekTo(waveformSeekBar.progress.toLong())
+                }
             }
-        })
+            view.performClick()
+            false
+        }
     }
 
     private fun toggleQueue() {
@@ -336,6 +369,39 @@ class NowPlayingActivity : AppCompatActivity() {
         setupQueue()
     }
 
+    private fun animateSkeleton(view: android.view.View) {
+        view.alpha = 0.4f
+        view.animate()
+            .alpha(0.8f)
+            .setDuration(1000)
+            .setInterpolator(android.view.animation.AccelerateDecelerateInterpolator())
+            .withEndAction {
+                if (view.visibility == android.view.View.VISIBLE) {
+                    animateSkeleton(view)
+                }
+            }
+            .start()
+    }
+
+    private fun applySmartReorder() {
+        val service = playbackService ?: return
+        if (service.queue.isEmpty()) return
+
+        lifecycleScope.launch {
+            Toast.makeText(this@NowPlayingActivity, "🤖 IA mezclando tu sesión...", Toast.LENGTH_SHORT).show()
+            
+            // Reordenar solo las canciones PRÓXIMAS (no la que suena ni las pasadas)
+            val currentIdx = service.currentIndex
+            val history = service.queue.take(currentIdx + 1)
+            val upcoming = service.queue.drop(currentIdx + 1)
+            
+            val reorderedUpcoming = com.example.localfly.utils.SmartReorderUtils.reorder(upcoming)
+            
+            service.updateFullQueue(history + reorderedUpcoming)
+            Toast.makeText(this@NowPlayingActivity, "Mezcla Smart DJ aplicada", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun onDeleteSongClicked() {
         if (deleteConfirmArmed) {
             progressHandler.removeCallbacks(deleteConfirmResetRunnable)
@@ -399,22 +465,78 @@ class NowPlayingActivity : AppCompatActivity() {
         lyricsDialog = dialog
 
         val rvLyrics = dialog.findViewById<androidx.recyclerview.widget.RecyclerView>(R.id.rvLyrics)
+        val progressBar = dialog.findViewById<android.widget.ProgressBar>(R.id.progressLyrics)
+        val skeleton = dialog.findViewById<android.view.View>(R.id.llLyricsSkeleton)
         val btnClose = dialog.findViewById<ImageButton>(R.id.btnCloseLyrics)
+        
+        // Enlazar mini-reproductor del diálogo
+        ivLyricsMiniCover = dialog.findViewById(R.id.ivLyricsMiniCover)
+        tvLyricsMiniTitle = dialog.findViewById(R.id.tvLyricsMiniTitle)
+        tvLyricsMiniArtist = dialog.findViewById(R.id.tvLyricsMiniArtist)
+        btnLyricsMiniPlayPause = dialog.findViewById(R.id.btnLyricsMiniPlayPause)
+        sbLyricsMiniProgress = dialog.findViewById(R.id.sbLyricsMiniProgress)
+        val btnPrev = dialog.findViewById<ImageButton>(R.id.btnLyricsMiniPrev)
+        val btnNext = dialog.findViewById<ImageButton>(R.id.btnLyricsMiniNext)
+
+        btnLyricsMiniPlayPause?.setOnClickListener { playbackService?.togglePlayPause() }
+        btnPrev?.setOnClickListener { playbackService?.prev() }
+        btnNext?.setOnClickListener { playbackService?.next() }
+        
+        // Actualizar datos iniciales del mini-reproductor
+        refreshLyricsMiniPlayer()
+
         btnClose.setOnClickListener { 
             lyricsUpdateJob?.cancel()
+            lyricsDialog = null
+            resetLyricsMiniPlayerViews()
             dialog.dismiss() 
         }
 
         lifecycleScope.launch {
             try {
-                val lines = fetchLyrics(song)
+                skeleton.visibility = android.view.View.VISIBLE
+                progressBar.visibility = android.view.View.VISIBLE
+                
+                // Animación de pulso para el skeleton
+                animateSkeleton(skeleton)
+
+                var lines = fetchLyrics(song)
+                
+                // Si no hay líneas pero estamos online, intentar forzar descarga desde LRCLIB y guardar localmente
+                if ((lines == null || lines.isEmpty()) && ServerReachability.isServerReachable()) {
+                    lines = fetchLyrics(song)
+                }
+
+                progressBar.visibility = android.view.View.GONE
+                skeleton.visibility = android.view.View.GONE
+
                 if (lines != null && lines.isNotEmpty()) {
-                    lyricsAdapter = LyricsAdapter(lines)
+                    // Limpiar timestamps residuales de las líneas si por algún motivo se colaron
+                    val timestampRegex = Regex("\\[\\d{1,2}:\\d{2}([.:]\\d{2,3})?\\]")
+                    val cleanedLines = lines.map { it.copy(content = it.content.replace(timestampRegex, "").trim()) }
+                    
+                    // Si el archivo local no existe pero tenemos la letra (la acabamos de bajar de LRCLIB),
+                    // la guardamos para la próxima vez offline.
+                    if (downloadHelper.isDownloaded(song.id)) {
+                        saveLyricsLocallyIfMissing(song, cleanedLines)
+                    }
+
+                    val finalLines = try {
+                        LyricsTranslator.translateIfEnglish(cleanedLines)
+                    } catch (e: Exception) {
+                        cleanedLines
+                    }
+                    
+                    lyricsAdapter = LyricsAdapter(finalLines) { clickedLine ->
+                        if (clickedLine.timeMs > 0) {
+                            playbackService?.seekTo(clickedLine.timeMs)
+                        }
+                    }
                     rvLyrics.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(this@NowPlayingActivity)
                     rvLyrics.adapter = lyricsAdapter
                     startLyricsUpdateLoop(rvLyrics)
                 } else {
-                    Toast.makeText(this@NowPlayingActivity, "No hay letra disponible", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@NowPlayingActivity, "No se encontró la letra (revisando fuentes...)", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
                 }
             } catch (e: Exception) {
@@ -422,6 +544,24 @@ class NowPlayingActivity : AppCompatActivity() {
             }
         }
         dialog.show()
+    }
+
+    private fun saveLyricsLocallyIfMissing(song: Song, lines: List<LyricLine>) {
+        val lrcFile = File(filesDir, "downloads/${song.id}.lrc")
+        if (lrcFile.exists()) return
+
+        // Reconstruir texto LRC simple o texto plano
+        val content = lines.joinToString("\n") { 
+            val totalSeconds = it.timeMs / 1000
+            val minutes = totalSeconds / 60
+            val seconds = totalSeconds % 60
+            val ms = (it.timeMs % 1000) / 10
+            String.format(Locale.getDefault(), "[%02d:%02d.%02d]%s", minutes, seconds, ms, it.content)
+        }
+        try {
+            lrcFile.writeText(content)
+            Toast.makeText(this, "Letra guardada para uso offline", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) { }
     }
 
     private fun startLyricsUpdateLoop(recyclerView: androidx.recyclerview.widget.RecyclerView) {
@@ -439,58 +579,128 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchLyrics(song: Song): List<LyricLine>? = withContext(Dispatchers.IO) {
-        var rawLyrics: String? = null
-
-        // 0. Intentar cargar archivo local si la canción está descargada
+        // 0. Archivo local (canción descargada). Puede ser LRC real
+        //    (con timestamps) o texto plano guardado previamente.
         val localLrc = File(filesDir, "downloads/${song.id}.lrc")
         if (localLrc.exists()) {
             try {
-                rawLyrics = localLrc.readText()
-            } catch (e: Exception) { }
-        }
-
-        if (rawLyrics == null || isHtml(rawLyrics)) {
-            // 1. Intentar por el endpoint oficial de la API
-            try {
-                val response = RetrofitClient.api.getLyrics(song.id)
-                if (response.isSuccessful && response.body()?.lyrics != null) {
-                    rawLyrics = response.body()!!.lyrics!!
+                val content = localLrc.readText()
+                if (content.isNotBlank() && !isHtml(content)) {
+                    val parsed = parseLrcToList(content)
+                    if (parsed.isNotEmpty()) return@withContext parsed
+                    val plain = plainTextToLines(content)
+                    if (plain.isNotEmpty()) return@withContext plain
                 }
             } catch (e: Exception) { }
         }
 
-        if (rawLyrics == null || isHtml(rawLyrics)) {
-            // 2. Fallback: Buscar archivo .lrc directo en /resources/
-            val variants = mutableListOf<String>()
-            variants.add(song.title)
-            song.artist?.let { variants.add("$it - ${song.title}") }
-            variants.add(song.title.lowercase(Locale.getDefault()))
-            song.artist?.let { variants.add("${it.lowercase(Locale.getDefault())} - ${song.title.lowercase(Locale.getDefault())}") }
+        // 1. Servidor: preferir syncedLines (ya vienen parseadas, en
+        //    segundos) y el texto plano solo como respaldo.
+        try {
+            val response = RetrofitClient.api.getLyrics(song.id)
+            if (response.isSuccessful) {
+                val body = response.body()
+                val synced = body?.syncedLines
+                if (!synced.isNullOrEmpty()) {
+                    val lines = synced
+                        .sortedBy { it.time }
+                        .map { LyricLine((it.time * 1000).toLong(), it.text.trim()) }
+                        .filter { it.content.isNotEmpty() }
+                    if (lines.isNotEmpty()) return@withContext lines
+                }
+                val plain = body?.lyrics
+                if (!plain.isNullOrBlank() && !isHtml(plain)) {
+                    val plainLines = plainTextToLines(plain)
+                    if (plainLines.isNotEmpty()) return@withContext plainLines
+                }
+            }
+        } catch (e: Exception) { }
 
-            val client = OkHttpClient()
-            for (variant in variants.distinct()) {
-                try {
-                    val encoded = java.net.URLEncoder.encode(variant, "UTF-8").replace("+", "%20")
-                    val url = "${ApiConfig.BASE_URL}/resources/$encoded.lrc"
-                    val request = Request.Builder().url(url).build()
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            val bodyString = response.body?.string()
-                            if (!bodyString.isNullOrBlank() && !isHtml(bodyString)) {
-                                rawLyrics = bodyString
-                                break
-                            }
+        // 2. Servidor no alcanzable (o sin resultado): buscar directo en
+        //    LRCLIB desde el móvil, si hay internet.
+        try {
+            val trackName = song.title
+            val artistName = song.artist
+            val lrclibResponse = LrclibClient.api.getLyrics(trackName, artistName)
+            if (lrclibResponse.isSuccessful) {
+                val result = lrclibResponse.body()
+                val synced = result?.syncedLyrics
+                if (!synced.isNullOrBlank()) {
+                    val lines = parseLrcToList(synced)
+                    if (lines.isNotEmpty()) {
+                        runOnUiThread { Toast.makeText(this@NowPlayingActivity, "Letra encontrada en internet", Toast.LENGTH_SHORT).show() }
+                        queueLyricsUploadIfServerHasNone(song.id, synced)
+                        return@withContext lines
+                    }
+                }
+                val plain = result?.plainLyrics
+                if (!plain.isNullOrBlank()) {
+                    val plainLines = plainTextToLines(plain)
+                    if (plainLines.isNotEmpty()) {
+                        runOnUiThread { Toast.makeText(this@NowPlayingActivity, "Letra encontrada en internet", Toast.LENGTH_SHORT).show() }
+                        queueLyricsUploadIfServerHasNone(song.id, plain)
+                        return@withContext plainLines
+                    }
+                }
+            }
+        } catch (e: Exception) { }
+
+        // 3. Último recurso, heredado de versiones antiguas de la
+        //    biblioteca (rara vez encuentra algo).
+        val variants = mutableListOf<String>()
+        variants.add(song.title)
+        song.artist?.let { variants.add("$it - ${song.title}") }
+        variants.add(song.title.lowercase(Locale.getDefault()))
+        song.artist?.let { variants.add("${it.lowercase(Locale.getDefault())} - ${song.title.lowercase(Locale.getDefault())}") }
+
+        val client = OkHttpClient()
+        for (variant in variants.distinct()) {
+            try {
+                val encoded = java.net.URLEncoder.encode(variant, "UTF-8").replace("+", "%20")
+                val url = "${ApiConfig.BASE_URL}/resources/$encoded.lrc"
+                val request = Request.Builder().url(url).build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val bodyString = response.body?.string()
+                        if (!bodyString.isNullOrBlank() && !isHtml(bodyString)) {
+                            val parsed = parseLrcToList(bodyString)
+                            if (parsed.isNotEmpty()) return@withContext parsed
+                            val plain = plainTextToLines(bodyString)
+                            if (plain.isNotEmpty()) return@withContext plain
                         }
                     }
-                } catch (e: Exception) { }
-            }
+                }
+            } catch (e: Exception) { }
         }
 
-        val lyricsToParse = rawLyrics
-        if (lyricsToParse != null && !isHtml(lyricsToParse)) {
-            return@withContext parseLrcToList(lyricsToParse)
-        }
         null
+    }
+
+    private fun plainTextToLines(text: String): List<LyricLine> {
+        val timestampRegex = Regex("\\[\\d{1,2}:\\d{2}([.:]\\d{2,3})?\\]")
+        return text.split("\n")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { LyricLine(0L, it.replace(timestampRegex, "").trim()) }
+    }
+
+    /**
+     * Guarda como pendiente de subir SOLO si el servidor no tenía ya esta
+     * letra (evita subir de más si el servidor sí la tenía pero, por lo
+     * que sea, esa petición en concreto falló). Comprobación best-effort:
+     * si no se puede saber, se guarda igual — subir de más no hace daño,
+     * el servidor simplemente sobrescribe el mismo archivo .lrc.
+     */
+    private suspend fun queueLyricsUploadIfServerHasNone(songId: String, content: String) {
+        try {
+            val sessionManager = SessionManager(this@NowPlayingActivity)
+            sessionManager.addPendingLyricsUpload(songId, content)
+            // Si el servidor está disponible ahora mismo, intentar subir ya
+            // en vez de esperar al próximo evento de reconexión.
+            if (ServerReachability.isServerReachable()) {
+                playbackService?.flushPendingLyricsUploads()
+            }
+        } catch (e: Exception) { }
     }
 
     private fun parseLrcToList(lrc: String): List<LyricLine> {
@@ -533,10 +743,48 @@ class NowPlayingActivity : AppCompatActivity() {
                t.startsWith("<div", ignoreCase = true)
     }
 
+    private fun resetLyricsMiniPlayerViews() {
+        ivLyricsMiniCover = null
+        tvLyricsMiniTitle = null
+        tvLyricsMiniArtist = null
+        btnLyricsMiniPlayPause = null
+        sbLyricsMiniProgress = null
+    }
+
+    private fun refreshLyricsMiniPlayer() {
+        val song = playbackService?.currentSong ?: return
+        
+        tvLyricsMiniTitle?.text = song.title
+        tvLyricsMiniArtist?.text = song.artist ?: "Artista desconocido"
+        
+        val isPlaying = playbackService?.player?.isPlaying == true
+        btnLyricsMiniPlayPause?.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
+        
+        ivLyricsMiniCover?.let { iv ->
+            Glide.with(this)
+                .load("$serverBaseUrl/cover/${song.id}")
+                .placeholder(R.drawable.ic_music_placeholder)
+                .centerCrop()
+                .into(iv)
+        }
+        
+        val duration = playbackService?.getDurationMs() ?: 0L
+        if (duration > 0) {
+            sbLyricsMiniProgress?.max = duration.toInt()
+        }
+    }
+
     private fun refreshUi() {
         val song = playbackService?.currentSong ?: run { finish(); return }
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
+        
+        // Actualizar mini-reproductor de letras si el diálogo está abierto
+        refreshLyricsMiniPlayer()
+
+        // Cargar waveform
+        loadWaveform(song)
+
         val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
         val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
         val albumImageUrl = "$serverBaseUrl/cover/${song.id}"
@@ -558,12 +806,13 @@ class NowPlayingActivity : AppCompatActivity() {
         val duration = service.getDurationMs()
         val progress = service.getProgressMs()
         if (duration > 0) {
-            seekBar.max = duration.toInt()
+            waveformSeekBar.maxProgress = duration.toFloat()
             tvTotalTime.text = formatTime(duration)
         }
         if (!userIsSeeking) {
-            seekBar.progress = progress.toInt()
+            waveformSeekBar.progress = progress.toFloat()
             tvCurrentTime.text = formatTime(progress)
+            sbLyricsMiniProgress?.progress = progress.toInt()
         }
     }
 
@@ -578,6 +827,28 @@ class NowPlayingActivity : AppCompatActivity() {
         if (text.isNullOrBlank()) return text
         return text.lowercase(Locale.getDefault()).split(" ").joinToString(" ") { word ->
             if (word.isEmpty()) word else word.replaceFirstChar { it.uppercase(Locale.getDefault()) }
+        }
+    }
+
+    private fun loadWaveform(song: Song) {
+        val localPath = downloadHelper.getLocalFilePath(song.id)
+        if (localPath != null) {
+            amplituda.processAudio(localPath).get(
+                { result ->
+                    runOnUiThread {
+                        waveformSeekBar.setSampleFrom(result.amplitudesAsList().toIntArray())
+                    }
+                },
+                { error ->
+                    runOnUiThread {
+                        val randomAmplitudes = IntArray(100) { (10..100).random() }
+                        waveformSeekBar.setSampleFrom(randomAmplitudes)
+                    }
+                }
+            )
+        } else {
+            val randomAmplitudes = IntArray(100) { (10..100).random() }
+            waveformSeekBar.setSampleFrom(randomAmplitudes)
         }
     }
 

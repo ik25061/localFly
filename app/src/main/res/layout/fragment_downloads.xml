@@ -140,6 +140,39 @@
         </RelativeLayout>
     </androidx.cardview.widget.CardView>
 
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="12dp"
+        android:layout_marginBottom="8dp"
+        app:cardBackgroundColor="#1A1A1A"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="0dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp">
+
+            <TextView
+                android:id="@+id/tvCrossfadeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Fundido entre canciones"
+                android:textColor="#DDDDDD"
+                android:textSize="13sp"
+                android:layout_centerVertical="true" />
+
+            <com.google.android.material.materialswitch.MaterialSwitch
+                android:id="@+id/swCrossfade"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true" />
+
+        </RelativeLayout>
+    </androidx.cardview.widget.CardView>
+
     <TextView
         android:id="@+id/tvEmptyDownloads"
         android:layout_width="match_parent"

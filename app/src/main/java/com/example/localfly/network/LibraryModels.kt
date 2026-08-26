@@ -9,6 +9,9 @@ data class Song(
     val album: String?,
     val year: Int?,
     val duration: Double?,
+    val bpm: Double?,
+    @SerializedName("key_name")
+    val key: String?,
     val liked: Boolean,
     val hasCover: Boolean,
     @SerializedName("hasLyrics")
@@ -147,9 +150,27 @@ data class SongsByIdsResponse(
 
 // --- Lyrics ---
 
+data class SyncedLyricLine(
+    val time: Double, // segundos, con decimales — no milisegundos
+    val text: String
+)
+
 data class LyricsResponse(
     val lyrics: String?,
+    @SerializedName("syncedLines")
+    val syncedLines: List<SyncedLyricLine>? = null,
     val source: String? = null
+)
+
+// --- LRCLIB (fuente pública directa, sin pasar por el servidor) ---
+
+data class LrclibResult(
+    val id: Long? = null,
+    val trackName: String? = null,
+    val artistName: String? = null,
+    val syncedLyrics: String? = null,
+    val plainLyrics: String? = null,
+    val instrumental: Boolean = false
 )
 
 // --- Config ---

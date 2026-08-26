@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.localfly"
-        minSdk = 24
+        minSdk = 33
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
@@ -64,7 +64,15 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
     implementation("androidx.media:media:1.7.0")
+
+    // ML Kit para traducción de letras
+    implementation("com.google.mlkit:language-id:17.0.6")
+    implementation("com.google.mlkit:translate:17.0.3")
     
     // Google AI (Gemini) SDK
     implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+
+    // Waveform SeekBar y Amplituda para visualización
+    implementation("com.github.massoudss:waveformSeekBar:5.0.2")
+    implementation("com.github.lincollincol:amplituda:2.2.2")
 }

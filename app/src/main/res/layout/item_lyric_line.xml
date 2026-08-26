@@ -1,11 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<TextView xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/tvLyricLine"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="48dp"
+    android:paddingEnd="32dp"
     android:paddingVertical="6dp"
-    android:textColor="#80FFFFFF"
-    android:textSize="18sp"
-    android:textStyle="bold"
-    android:gravity="start"
-    android:alpha="0.6" />
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <TextView
+        android:id="@+id/tvLyricLine"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#80FFFFFF"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:gravity="start"
+        android:alpha="0.6"
+        android:includeFontPadding="false" />
+
+    <TextView
+        android:id="@+id/tvLyricTranslation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="0dp"
+        android:textColor="#80FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="italic"
+        android:gravity="start"
+        android:alpha="0.45"
+        android:visibility="gone" />
+
+</LinearLayout>

@@ -20,6 +20,11 @@ interface ApiService {
         @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
 
+    @GET("api/search")
+    suspend fun searchSongs(
+        @Query("q") query: String
+    ): Response<LibraryResponse>
+
     @GET("api/auth/verify")
     suspend fun verify(@Query("userId") userId: String?): Response<LoginResponse>
 
@@ -170,6 +175,14 @@ interface ApiService {
     suspend fun getLyrics(
         @Path("id") songId: String
     ): Response<LyricsResponse>
+
+    data class SaveLyricsFileRequest(val content: String)
+
+    @POST("api/lyrics/{id}/save-file")
+    suspend fun saveLyricsFile(
+        @Path("id") songId: String,
+        @Body request: SaveLyricsFileRequest
+    ): Response<Unit>
 
     // --- Favorite Artists ---
 

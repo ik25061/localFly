@@ -128,15 +128,20 @@
         app:tint="#FFFFFF" />
 
     <!-- Progress -->
-    <SeekBar
-        android:id="@+id/seekBarProgress"
+    <com.masoudss.lib.WaveformSeekBar
+        android:id="@+id/waveformSeekBar"
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_height="64dp"
         android:layout_marginStart="16dp"
         android:layout_marginTop="24dp"
         android:layout_marginEnd="16dp"
-        android:progressTint="#1DB954"
-        android:thumbTint="#1DB954"
+        app:wave_width="3dp"
+        app:wave_gap="2dp"
+        app:wave_min_height="4dp"
+        app:wave_corner_radius="2dp"
+        app:wave_background_color="#33FFFFFF"
+        app:wave_progress_color="#1DB954"
+        app:wave_gravity="center"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/tvFullArtist" />
@@ -149,7 +154,7 @@
         android:textColor="#AAAAAA"
         android:textSize="12sp"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/seekBarProgress" />
+        app:layout_constraintTop_toBottomOf="@id/waveformSeekBar" />
 
     <TextView
         android:id="@+id/tvTotalTime"
@@ -159,7 +164,7 @@
         android:textColor="#AAAAAA"
         android:textSize="12sp"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/seekBarProgress" />
+        app:layout_constraintTop_toBottomOf="@id/waveformSeekBar" />
 
     <!-- Controls -->
     <LinearLayout
@@ -308,6 +313,22 @@
             android:letterSpacing="0.1"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/dividerQueue" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnSmartReorder"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="16dp"
+            android:text="DJ Smart"
+            android:textColor="#1DB954"
+            android:textSize="11sp"
+            app:icon="@drawable/ic_sparkles"
+            app:iconSize="14dp"
+            app:iconTint="#1DB954"
+            app:layout_constraintBottom_toBottomOf="@id/tvUpcomingHeader"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@id/tvUpcomingHeader" />
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvUpcomingSongs"

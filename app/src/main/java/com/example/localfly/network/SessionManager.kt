@@ -57,6 +57,12 @@ class SessionManager(context: Context) {
 
     fun isAutoDeleteEnabled(): Boolean = prefs.getBoolean("auto_delete_on_finish", false)
 
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("crossfade_enabled", enabled).apply()
+    }
+
+    fun isCrossfadeEnabled(): Boolean = prefs.getBoolean("crossfade_enabled", false)
+
     // --- Soporte Offline para Like/Dislike ---
 
     fun addPendingLike(songId: String, liked: Boolean) {
@@ -111,6 +117,32 @@ class SessionManager(context: Context) {
         val pending = getPendingDislikes().toMutableSet()
         pending.remove(songId)
         savePendingDislikes(pending)
+    }
+
+    fun addPendingLyricsUpload(songId: String, content: String) {
+        val pending = getPendingLyricsUploads().toMutableMap()
+        pending[songId] = content
+        savePendingLyricsUploads(pending)
+    }
+
+    fun getPendingLyricsUploads(): Map<String, String> {
+        val json = prefs.getString("pending_lyrics_uploads", null) ?: return emptyMap()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<Map<String, String>>() {}.type
+            com.google.gson.Gson().fromJson(json, type) ?: emptyMap()
+        } catch (e: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun removePendingLyricsUpload(songId: String) {
+        val pending = getPendingLyricsUploads().toMutableMap()
+        pending.remove(songId)
+        savePendingLyricsUploads(pending)
+    }
+
+    private fun savePendingLyricsUploads(map: Map<String, String>) {
+        prefs.edit().putString("pending_lyrics_uploads", com.google.gson.Gson().toJson(map)).apply()
     }
 
     fun saveFavoriteArtists(artistIds: Set<String>) {

@@ -4,6 +4,10 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Bundle
 import android.os.IBinder
 import android.view.View
@@ -20,9 +24,10 @@ import com.example.localfly.fragments.AIFragment
 import com.example.localfly.fragments.CollectionDetailFragment
 import com.example.localfly.fragments.DownloadsFragment
 import com.example.localfly.fragments.HomeFragment
-import com.example.localfly.fragments.LibraryFragment
+import com.example.localfly.fragments.SearchFragment
 import com.example.localfly.fragments.PlaylistsFragment
 import com.example.localfly.network.*
+import com.example.localfly.network.ServerReachability
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.launch
 
@@ -48,6 +53,12 @@ class MainActivity : AppCompatActivity() {
     var playbackService: PlaybackService? = null
         private set
     private var isBound = false
+
+    private lateinit var bottomNav: BottomNavigationView
+    private lateinit var connectivityManager: ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var isServerOnline = false // Cambiado a false para forzar la primera ejecución
+    private var connectivityPollJob: kotlinx.coroutines.Job? = null
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
     private val serverBaseUrl = ApiConfig.BASE_URL
@@ -135,15 +146,15 @@ class MainActivity : AppCompatActivity() {
         // rvSongs.adapter = adapter
 
         // ===== NAVEGACIÓN INFERIOR =====
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
+        bottomNav = findViewById(R.id.bottomNavigation)
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
                     replaceFragment(HomeFragment())
                     true
                 }
-                R.id.nav_library -> {
-                    replaceFragment(LibraryFragment())
+                R.id.nav_search -> {
+                    replaceFragment(SearchFragment())
                     true
                 }
                 R.id.nav_downloads -> {
@@ -165,6 +176,81 @@ class MainActivity : AppCompatActivity() {
         // Cargar fragmento inicial
         if (savedInstanceState == null) {
             handleIntent(intent)
+        }
+
+        setupServerConnectivityMonitoring()
+    }
+
+    /**
+     * Monitorea si el SERVIDOR es alcanzable (no "si hay internet"). Usa
+     * ConnectivityManager solo como disparador ("algo cambió en la red,
+     * vale la pena volver a comprobar"), pero la fuente de verdad siempre
+     * es un ping real a /api/config/ip con timeout corto. Además de
+     * reaccionar a cambios, hace polling cada 15s por si el servidor cae
+     * sin que cambie el estado de la red del móvil (p.ej. se apaga el PC).
+     */
+    private fun setupServerConnectivityMonitoring() {
+        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        lifecycleScope.launch { checkServerReachabilityNow() }
+
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+
+        networkCallback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                lifecycleScope.launch { checkServerReachabilityNow() }
+            }
+
+            override fun onLost(network: Network) {
+                runOnUiThread { updateBottomNavForServer(false) }
+            }
+        }
+        connectivityManager.registerNetworkCallback(request, networkCallback!!)
+
+        connectivityPollJob?.cancel()
+        connectivityPollJob = lifecycleScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(15000)
+                checkServerReachabilityNow()
+            }
+        }
+    }
+
+    private suspend fun checkServerReachabilityNow() {
+        val reachable = ServerReachability.isServerReachable()
+        updateBottomNavForServer(reachable)
+    }
+
+    /**
+     * Muestra/oculta pestañas del menú inferior según se pueda alcanzar el
+     * SERVIDOR o no. Solo "Descargas" queda siempre visible.
+     */
+    private fun updateBottomNavForServer(online: Boolean) {
+        if (isServerOnline == online) return
+        isServerOnline = online
+
+        val menu = bottomNav.menu
+        menu.findItem(R.id.nav_home)?.isVisible = online
+        menu.findItem(R.id.nav_search)?.isVisible = online
+        menu.findItem(R.id.nav_playlists)?.isVisible = online
+        menu.findItem(R.id.nav_ai)?.isVisible = online
+
+        if (!online && bottomNav.selectedItemId != R.id.nav_downloads) {
+            bottomNav.selectedItemId = R.id.nav_downloads
+            replaceFragment(DownloadsFragment())
+        }
+
+        if (online) {
+            // El servidor volvió: aprovechar para subir letras encontradas
+            // por internet directo mientras estaba caído (ver Parte C).
+            playbackService?.flushPendingLyricsUploads()
+
+            // Disparar auto-descarga inteligente para mantener el móvil lleno (hasta 500 temas)
+            lifecycleScope.launch {
+                downloadHelper.autoDownloadSmart(sessionManager)
+            }
         }
     }
 
@@ -202,10 +288,10 @@ class MainActivity : AppCompatActivity() {
     private fun openArtistByName(name: String) {
         lifecycleScope.launch {
             try {
-                // Seleccionar primero la pestaña de biblioteca para que el fragmento base sea el correcto
+                // Seleccionar primero la pestaña de buscador para que el fragmento base sea el correcto
                 val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-                if (bottomNav.selectedItemId != R.id.nav_library) {
-                    bottomNav.selectedItemId = R.id.nav_library
+                if (bottomNav.selectedItemId != R.id.nav_search) {
+                    bottomNav.selectedItemId = R.id.nav_search
                 }
 
                 val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = name)
@@ -311,6 +397,8 @@ class MainActivity : AppCompatActivity() {
                 album = null,
                 year = null,
                 duration = it.duration,
+                bpm = it.bpm,
+                key = it.key,
                 liked = it.liked,
                 hasCover = it.hasCover,
                 hasLyrics = it.hasLyrics
@@ -376,6 +464,18 @@ class MainActivity : AppCompatActivity() {
         if (isBound) {
             unbindService(connection)
             isBound = false
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        connectivityPollJob?.cancel()
+        networkCallback?.let {
+            try {
+                connectivityManager.unregisterNetworkCallback(it)
+            } catch (e: Exception) {
+                // Ya estaba desregistrado o la actividad se está destruyendo; ignorar
+            }
         }
     }
 

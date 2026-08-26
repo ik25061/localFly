@@ -24,6 +24,7 @@ class DownloadsFragment : Fragment() {
     private lateinit var tvDownloadCountHeader: TextView
     private lateinit var tvStorageInfo: TextView
     private lateinit var swAutoDelete: com.google.android.material.materialswitch.MaterialSwitch
+    private lateinit var swCrossfade: com.google.android.material.materialswitch.MaterialSwitch
     private lateinit var btnBack: android.widget.ImageButton
     private lateinit var ivInfo: android.widget.ImageView
     private lateinit var btnDeleteList: android.widget.ImageButton
@@ -48,6 +49,7 @@ class DownloadsFragment : Fragment() {
         tvDownloadCountHeader = view.findViewById(R.id.tvDownloadCountHeader)
         tvStorageInfo = view.findViewById(R.id.tvStorageInfo)
         swAutoDelete = view.findViewById(R.id.swAutoDelete)
+        swCrossfade = view.findViewById(R.id.swCrossfade)
         btnBack = view.findViewById(R.id.btnBack)
         ivInfo = view.findViewById(R.id.ivInfo)
         btnDeleteList = view.findViewById(R.id.btnDeleteList)
@@ -72,6 +74,13 @@ class DownloadsFragment : Fragment() {
         swAutoDelete.isChecked = sessionManager.isAutoDeleteEnabled()
         swAutoDelete.setOnCheckedChangeListener { _, isChecked ->
             sessionManager.setAutoDeleteEnabled(isChecked)
+        }
+
+        swCrossfade.isChecked = sessionManager.isCrossfadeEnabled()
+        swCrossfade.setOnCheckedChangeListener { _, isChecked ->
+            val activity = requireActivity() as? MainActivity
+            activity?.playbackService?.setCrossfadeEnabled(isChecked)
+                ?: sessionManager.setCrossfadeEnabled(isChecked) // por si el servicio aún no está conectado
         }
 
         ivInfo.setOnClickListener {

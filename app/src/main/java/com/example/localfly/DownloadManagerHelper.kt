@@ -30,6 +30,8 @@ data class DownloadedSong(
     val artist: String?,
     val filePath: String,
     val duration: Double? = null,
+    val bpm: Double? = null,
+    val key: String? = null,
     val hasCover: Boolean = false,
     val hasLyrics: Boolean = false,
     val liked: Boolean = false,
@@ -136,10 +138,9 @@ class DownloadManagerHelper private constructor(context: Context) {
                     return@withContext false
                 }
 
-                // Descargar letra si existe y no la tenemos
-                if (song.hasLyrics) {
-                    downloadLyrics(song)
-                }
+                // Intentar descargar letra siempre (respaldo offline)
+                downloadLyrics(song)
+                val hasLyricsNow = song.hasLyrics || File(downloadsDir(), "${song.id}.lrc").exists()
 
                 val current = getDownloadedSongs().toMutableList()
                 current.removeAll { it.id == song.id }
@@ -150,8 +151,10 @@ class DownloadManagerHelper private constructor(context: Context) {
                         artist = song.artist,
                         filePath = file!!.absolutePath,
                         duration = song.duration,
+                        bpm = song.bpm,
+                        key = song.key,
                         hasCover = song.hasCover,
-                        hasLyrics = song.hasLyrics,
+                        hasLyrics = hasLyricsNow,
                         liked = song.liked,
                         fileSize = file!!.length()
                     )
@@ -185,10 +188,41 @@ class DownloadManagerHelper private constructor(context: Context) {
     }
 
     private suspend fun downloadLyrics(song: Song) {
-        val baseUrl = com.example.localfly.network.ApiConfig.BASE_URL
-        val client = httpClient // Usar el OkHttpClient ya configurado en la clase
+        val lrcFile = File(downloadsDir(), "${song.id}.lrc")
+        
+        // 1. Intentar obtener del servidor vía API (puede traer sincronizada)
+        try {
+            val response = com.example.localfly.network.RetrofitClient.api.getLyrics(song.id)
+            if (response.isSuccessful && response.body() != null) {
+                val body = response.body()!!
+                // Preferimos la sincronizada si el servidor la devuelve como texto LRC
+                // El servidor guarda en synced_text el formato [mm:ss.xx]
+                // Nota: El endpoint /api/lyrics/:id en el servidor actual devuelve 'lyrics' (plain) 
+                // y 'syncedLines' (JSON). Para guardar un .lrc físico, necesitaríamos el RAW.
+                // Como respaldo, si hay plain lyrics, las guardamos.
+                val lyricsContent = body.lyrics
+                if (!lyricsContent.isNullOrBlank()) {
+                    lrcFile.writeText(lyricsContent)
+                    return
+                }
+            }
+        } catch (e: Exception) { }
 
-        // Intentamos varias variantes de nombre para asegurar que encontramos el archivo .lrc
+        // 2. Intentar buscar directo en LRCLIB (internet)
+        try {
+            val lrclibResponse = com.example.localfly.network.LrclibClient.api.getLyrics(song.title, song.artist)
+            if (lrclibResponse.isSuccessful && lrclibResponse.body() != null) {
+                val result = lrclibResponse.body()!!
+                val content = result.syncedLyrics ?: result.plainLyrics
+                if (!content.isNullOrBlank()) {
+                    lrcFile.writeText(content)
+                    return
+                }
+            }
+        } catch (e: Exception) { }
+
+        // 3. Fallback: buscar en /resources/ del servidor (patrón antiguo)
+        val baseUrl = com.example.localfly.network.ApiConfig.BASE_URL
         val variants = listOf(
             song.title,
             "${song.artist} - ${song.title}",
@@ -202,23 +236,18 @@ class DownloadManagerHelper private constructor(context: Context) {
                 val url = "$baseUrl/resources/$encoded.lrc"
                 val request = Request.Builder().url(url).build()
 
-                client.newCall(request).execute().use { response ->
+                httpClient.newCall(request).execute().use { response ->
                     val contentType = response.header("Content-Type")
                     if (response.isSuccessful && contentType?.contains("text/html") == false) {
                         val body = response.body ?: return@use
                         val content = body.string()
-                        
-                        // Verificar que no sea HTML (ej. página de error 404 personalizada)
                         if (content.isNotBlank() && !content.trim().startsWith("<")) {
-                            val lrcFile = File(downloadsDir(), "${song.id}.lrc")
                             lrcFile.writeText(content)
-                            return // Éxito, salimos del bucle de variantes
+                            return
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // Siguiente variante
-            }
+            } catch (e: Exception) { }
         }
     }
 
@@ -276,5 +305,33 @@ class DownloadManagerHelper private constructor(context: Context) {
         }
 
         _downloadProgress.value = DownloadProgress(false, 0, 0, "")
+    }
+
+    /**
+     * Algoritmo de auto-descarga inteligente: analiza gustos (vía IA) y mantiene
+     * el dispositivo lleno con hasta 500 canciones para uso offline.
+     */
+    suspend fun autoDownloadSmart(sessionManager: com.example.localfly.network.SessionManager) {
+        val currentCount = getDownloadedSongs().size
+        if (currentCount >= 500) {
+            android.util.Log.d("DownloadManager", "Auto-descarga: ya tienes $currentCount temas (límite 500).")
+            return
+        }
+
+        val limit = 500 - currentCount
+        android.util.Log.d("DownloadManager", "Auto-descarga: iniciando búsqueda de $limit temas nuevos...")
+        
+        val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
+        
+        // Obtener recomendaciones (la IA ya usa los likes y artistas favoritos)
+        val recommendations = aiManager.getRecommendations(limit = limit)
+        val toDownload = recommendations.filter { !isDownloaded(it.id) }
+
+        if (toDownload.isNotEmpty()) {
+            android.util.Log.d("DownloadManager", "Auto-descarga: descargando ${toDownload.size} canciones recomendadas.")
+            downloadAll(toDownload, com.example.localfly.network.ApiConfig.BASE_URL)
+        } else {
+            android.util.Log.d("DownloadManager", "Auto-descarga: no se encontraron temas nuevos para descargar.")
+        }
     }
 }

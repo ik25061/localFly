@@ -8,14 +8,22 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
 
-data class LyricLine(val timeMs: Long, val content: String)
+data class LyricLine(
+    val timeMs: Long,
+    val content: String,
+    val translation: String? = null
+)
 
-class LyricsAdapter(private val lines: List<LyricLine>) : RecyclerView.Adapter<LyricsAdapter.ViewHolder>() {
+class LyricsAdapter(
+    private val lines: List<LyricLine>,
+    private val onLineClick: (LyricLine) -> Unit
+) : RecyclerView.Adapter<LyricsAdapter.ViewHolder>() {
 
     private var activePosition = -1
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvLine: TextView = view.findViewById(R.id.tvLyricLine)
+        val tvTranslation: TextView = view.findViewById(R.id.tvLyricTranslation)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -26,23 +34,51 @@ class LyricsAdapter(private val lines: List<LyricLine>) : RecyclerView.Adapter<L
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val line = lines[position]
         holder.tvLine.text = line.content
+
+        if (!line.translation.isNullOrBlank()) {
+            holder.tvTranslation.text = line.translation
+            holder.tvTranslation.visibility = View.VISIBLE
+        } else {
+            holder.tvTranslation.visibility = View.GONE
+        }
+        
+        // Evitar que la primera letra se oculte al escalar
+        holder.tvLine.pivotX = 0f
+        holder.tvLine.post {
+            if (position < lines.size) {
+                holder.tvLine.pivotY = holder.tvLine.height / 2f
+            }
+        }
         
         if (position == activePosition) {
             holder.tvLine.setTextColor(Color.WHITE)
             holder.tvLine.alpha = 1.0f
-            holder.tvLine.scaleX = 1.05f
-            holder.tvLine.scaleY = 1.05f
+            holder.tvLine.animate()
+                .scaleX(1.08f)
+                .scaleY(1.08f)
+                .setDuration(250)
+                .start()
         } else {
             holder.tvLine.setTextColor(Color.parseColor("#80FFFFFF"))
             holder.tvLine.alpha = 0.6f
-            holder.tvLine.scaleX = 1.0f
-            holder.tvLine.scaleY = 1.0f
+            holder.tvLine.animate()
+                .scaleX(1.0f)
+                .scaleY(1.0f)
+                .setDuration(250)
+                .start()
+        }
+
+        holder.itemView.setOnClickListener {
+            onLineClick(line)
         }
     }
 
     override fun getItemCount() = lines.size
 
     fun updateActiveLine(currentTimeMs: Long): Int {
+        // Si no hay tiempos (letras en modo plano), no hacemos scroll automático
+        if (lines.all { it.timeMs == 0L }) return -1
+
         var newPosition = -1
         for (i in lines.indices) {
             if (lines[i].timeMs <= currentTimeMs) {

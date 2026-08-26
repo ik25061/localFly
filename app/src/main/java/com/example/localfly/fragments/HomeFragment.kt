@@ -39,6 +39,7 @@ class HomeFragment : Fragment() {
     private lateinit var genreAdapter: HorizontalCardAdapter
     private lateinit var yearAdapter: HorizontalCardAdapter
     private lateinit var recommendationsAdapter: LikedSongsAdapter
+    private lateinit var librarySectionAdapter: LikedSongsAdapter
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
@@ -72,6 +73,23 @@ class HomeFragment : Fragment() {
         }
         binding.tvSeeAllYears.setOnClickListener {
             openSeeAll(CollectionListFragment.Type.YEAR)
+        }
+        binding.tvSeeAllLibrary.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, LibraryFragment())
+                .addToBackStack(null)
+                .commit()
+        }
+
+        // Observar progreso de descargas (especialmente para la auto-descarga de 500 temas)
+        viewLifecycleOwner.lifecycleScope.launch {
+            DownloadManagerHelper.downloadProgress.collect { progress ->
+                if (progress.isDownloading) {
+                    binding.tvMonthlySummary.text = "🔄 Auto-descargando: ${progress.songTitle} (${progress.current}/${progress.total})"
+                } else {
+                    binding.tvMonthlySummary.text = "✅ Tu biblioteca offline está al día (500 temas recomendados)."
+                }
+            }
         }
     }
 
@@ -188,6 +206,30 @@ class HomeFragment : Fragment() {
         )
         binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
         binding.rvRecommendations.adapter = recommendationsAdapter
+
+        // Nueva Sección: Tu Biblioteca
+        librarySectionAdapter = LikedSongsAdapter(
+            mutableListOf(),
+            downloadHelper,
+            onLikeClick = { song -> toggleLike(song) },
+            onDislikeClick = { song -> hideSong(song) },
+            onItemClick = { song -> 
+                activity?.playbackService?.playSong(song)
+            },
+            onDownloadClick = { song -> toggleDownload(song) },
+            onPlayNextClick = { song ->
+                activity?.playbackService?.playNext(song)
+            },
+            onAddToQueueClick = { song ->
+                activity?.playbackService?.addToQueue(song)
+            },
+            onDeleteClick = { song -> removeSongFromHome(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
+            }
+        )
+        binding.rvLibrarySection.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvLibrarySection.adapter = librarySectionAdapter
     }
 
     private fun loadData() {
@@ -259,7 +301,15 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 8. Resumen mensual
+            // 8. Tu Biblioteca (previsualización de los primeros 10)
+            try {
+                val libResp = RetrofitClient.api.getLibrary(userId = userId, limit = 10)
+                if (libResp.isSuccessful && libResp.body() != null) {
+                    librarySectionAdapter.updateSongs(libResp.body()!!.songs)
+                }
+            } catch (e: Exception) { }
+
+            // 9. Resumen mensual
             if (isAdded) {
                 binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
             }
@@ -277,6 +327,10 @@ class HomeFragment : Fragment() {
         if (::recommendationsAdapter.isInitialized) {
             val idxRec = recommendationsAdapter.indexOf(song.id)
             if (idxRec != -1) recommendationsAdapter.updateSongAt(idxRec, updated)
+        }
+        if (::librarySectionAdapter.isInitialized) {
+            val idxLib = librarySectionAdapter.indexOf(song.id)
+            if (idxLib != -1) librarySectionAdapter.updateSongAt(idxLib, updated)
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -298,6 +352,7 @@ class HomeFragment : Fragment() {
     private fun hideSong(song: Song) {
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
         if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -340,6 +395,7 @@ class HomeFragment : Fragment() {
     private fun removeSongFromHome(song: Song) {
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
         if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
         Toast.makeText(requireContext(), "Canción eliminada de la lista", Toast.LENGTH_SHORT).show()
     }
 
@@ -347,6 +403,7 @@ class HomeFragment : Fragment() {
     private fun refreshDownloadStates() {
         if (::likedAdapter.isInitialized) likedAdapter.refreshDownloadStates()
         if (::recommendationsAdapter.isInitialized) recommendationsAdapter.refreshDownloadStates()
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.refreshDownloadStates()
     }
 
     override fun onResume() {

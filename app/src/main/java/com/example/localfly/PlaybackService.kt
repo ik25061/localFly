@@ -11,21 +11,30 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
+import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.media.app.NotificationCompat as MediaNotificationCompat
+import androidx.media3.session.MediaStyleNotificationHelper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.bumptech.glide.Glide
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.ApiService
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.RetrofitClient
@@ -45,6 +54,7 @@ import java.io.File
  * gestiona la cola de canciones (siguiente/anterior) y muestra una
  * notificación con controles (me gusta, reproducir/pausar, no me gusta).
  */
+@UnstableApi
 class PlaybackService : Service() {
 
     companion object {
@@ -57,6 +67,12 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "com.example.localfly.ACTION_NEXT"
         const val ACTION_PREV = "com.example.localfly.ACTION_PREV"
         const val ACTION_STOP = "com.example.localfly.ACTION_STOP"
+
+        const val FADE_DURATION_MS = 2500L
+        const val FADE_STEP_MS = 100L
+
+        const val COMMAND_LIKE = "com.example.localfly.COMMAND_LIKE"
+        const val COMMAND_DISLIKE = "com.example.localfly.COMMAND_DISLIKE"
     }
 
     inner class LocalBinder : Binder() {
@@ -71,6 +87,18 @@ class PlaybackService : Service() {
 
     var player: ExoPlayer? = null
         private set
+
+    private var crossfadeEnabled = false
+    private var fadeOutStartedForCurrentSong = false
+    private var fadeJob: kotlinx.coroutines.Job? = null
+
+    private val fadeTickerHandler = Handler(Looper.getMainLooper())
+    private val fadeTickerRunnable = object : Runnable {
+        override fun run() {
+            checkFadeOutTrigger()
+            fadeTickerHandler.postDelayed(this, 250)
+        }
+    }
 
     private var mediaSession: MediaSession? = null
 
@@ -93,13 +121,17 @@ class PlaybackService : Service() {
 
     private lateinit var sessionManager: SessionManager
 
+    @UnstableApi
     override fun onCreate() {
         super.onCreate()
         sessionManager = SessionManager(this)
         downloadHelper = DownloadManagerHelper.getInstance(this)
         createNotificationChannel()
 
+        crossfadeEnabled = sessionManager.isCrossfadeEnabled()
+
         player = ExoPlayer.Builder(this).build()
+        player?.skipSilenceEnabled = crossfadeEnabled
         player?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updateNotification()
@@ -113,10 +145,147 @@ class PlaybackService : Service() {
             }
         })
 
-        mediaSession = MediaSession.Builder(this, player!!).build()
+        setupMediaSession()
+
+        fadeTickerHandler.post(fadeTickerRunnable)
 
         // Sincronizar acciones offline al iniciar
         syncOfflineActions()
+    }
+
+    private fun setupMediaSession() {
+        val callback = object : MediaSession.Callback {
+            @UnstableApi
+            override fun onConnect(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ): MediaSession.ConnectionResult {
+                val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                    .add(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
+                    .add(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
+                    .build()
+                
+                val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_NEXT)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                    .build()
+                
+                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                    .setAvailableSessionCommands(sessionCommands)
+                    .setAvailablePlayerCommands(playerCommands)
+                    .build()
+            }
+
+            override fun onCustomCommand(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                customCommand: SessionCommand,
+                args: Bundle
+            ): ListenableFuture<SessionResult> {
+                when (customCommand.customAction) {
+                    COMMAND_LIKE -> toggleLike()
+                    COMMAND_DISLIKE -> dislikeCurrentSong()
+                }
+                return Futures.immediateFuture(
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                )
+            }
+
+            override fun onPlayerCommandRequest(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo,
+                playerCommand: Int
+            ): Int {
+                when (playerCommand) {
+                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                        next()
+                        return SessionResult.RESULT_SUCCESS
+                    }
+                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                        prev()
+                        return SessionResult.RESULT_SUCCESS
+                    }
+                }
+                return super.onPlayerCommandRequest(session, controller, playerCommand)
+            }
+        }
+
+        mediaSession = MediaSession.Builder(this, player!!)
+            .setCallback(callback)
+            .build()
+            
+        updateMediaSessionCustomLayout()
+    }
+
+    private fun updateMediaSessionCustomLayout() {
+        val song = currentSong
+        val likeIcon = if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off
+        
+        val likeButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
+            .setIconResId(likeIcon)
+            .setDisplayName("Me gusta")
+            .build()
+
+        val dislikeButton = CommandButton.Builder()
+            .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
+            .setIconResId(R.drawable.ic_dislike_off)
+            .setDisplayName("No me gusta")
+            .build()
+
+        val customLayout = listOf(likeButton, dislikeButton)
+        mediaSession?.setCustomLayout(customLayout)
+    }
+
+    /** Activa/desactiva en caliente el fundido + recorte de silencio desde la UI. */
+    @UnstableApi
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        crossfadeEnabled = enabled
+        sessionManager.setCrossfadeEnabled(enabled)
+        player?.skipSilenceEnabled = enabled
+        if (!enabled) {
+            fadeJob?.cancel()
+            player?.volume = 1f
+        }
+    }
+
+    /**
+     * Revisa en cada tick si quedan <= FADE_DURATION_MS para que termine la
+     * canción actual, y si es así arranca el fundido de salida. Solo
+     * aplica a la transición NATURAL (canción llega a su fin sola); un
+     * salto manual (Siguiente/Anterior) corta directo, sin esperar a este
+     * temporizador.
+     */
+    private fun checkFadeOutTrigger() {
+        if (!crossfadeEnabled) return
+        val p = player ?: return
+        if (!p.isPlaying) return
+        val duration = p.duration
+        if (duration <= 0) return
+        val remaining = duration - p.currentPosition
+        if (!fadeOutStartedForCurrentSong && remaining in 0..FADE_DURATION_MS) {
+            fadeOutStartedForCurrentSong = true
+            startFade(from = p.volume, to = 0f, durationMs = remaining.coerceAtMost(FADE_DURATION_MS))
+        }
+    }
+
+    private fun startFade(from: Float, to: Float, durationMs: Long) {
+        fadeJob?.cancel()
+        if (durationMs <= 0) {
+            player?.volume = to
+            return
+        }
+        fadeJob = serviceScope.launch {
+            val steps = (durationMs / FADE_STEP_MS).toInt().coerceAtLeast(1)
+            for (i in 1..steps) {
+                val progress = i / steps.toFloat()
+                player?.volume = from + (to - from) * progress
+                delay(FADE_STEP_MS)
+            }
+            player?.volume = to
+        }
     }
 
     private fun syncOfflineActions() {
@@ -346,6 +515,26 @@ class PlaybackService : Service() {
         onStateChanged?.invoke()
     }
 
+    /**
+     * Reemplaza la cola completa (p.ej. tras un Smart Reorder).
+     * Mantiene la canción actual intacta si se incluye en la nueva lista.
+     */
+    fun updateFullQueue(newSongs: List<Song>) {
+        val currentSongId = currentSong?.id
+        val mutablePaths = newSongs.map { downloadHelper.getLocalFilePath(it.id) }
+        
+        queue = newSongs
+        queueLocalPaths = mutablePaths
+        
+        if (currentSongId != null) {
+            val newIdx = newSongs.indexOfFirst { it.id == currentSongId }
+            if (newIdx != -1) {
+                currentIndex = newIdx
+            }
+        }
+        onStateChanged?.invoke()
+    }
+
     fun next() {
         val songToHandle = currentSong
         val indexToHandle = currentIndex
@@ -388,6 +577,7 @@ class PlaybackService : Service() {
         player?.seekTo(positionMs)
     }
 
+    @UnstableApi
     private fun playCurrentIndex() {
         val song = queue.getOrNull(currentIndex) ?: return
         val localPath = queueLocalPaths.getOrNull(currentIndex)
@@ -412,9 +602,42 @@ class PlaybackService : Service() {
             .build()
 
         player?.setMediaItem(mediaItem)
-        player?.prepare()
-        player?.play()
+        
+        // Añadir también la siguiente canción si existe, para que el sistema
+        // muestre el botón "Siguiente" nativo en Android 13+.
+        if (hasNext()) {
+            val nextSong = queue[currentIndex + 1]
+            val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
+            val nextMediaItem = MediaItem.Builder()
+                .setUri(
+                    if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath))
+                    else Uri.parse("$serverBaseUrl/audio/${nextSong.id}")
+                )
+                .setMediaMetadata(MediaMetadata.Builder()
+                    .setTitle(nextSong.title)
+                    .setArtist(nextSong.artist)
+                    .build()
+                )
+                .build()
+            player?.addMediaItem(nextMediaItem)
+        }
 
+        player?.prepare()
+        
+        fadeOutStartedForCurrentSong = false
+        fadeJob?.cancel()
+        if (crossfadeEnabled) {
+            player?.volume = 0f
+        } else {
+            player?.volume = 1f
+        }
+        player?.play()
+        
+        if (crossfadeEnabled) {
+            startFade(from = 0f, to = 1f, durationMs = FADE_DURATION_MS)
+        }
+
+        updateMediaSessionCustomLayout()
         startForeground(NOTIFICATION_ID, buildNotification())
         onStateChanged?.invoke()
     }
@@ -448,6 +671,7 @@ class PlaybackService : Service() {
         currentSong = song.copy(liked = newLiked)
         // Mantener el estado guardado de la descarga (si la canción está descargada)
         downloadHelper.updateLiked(song.id, newLiked)
+        updateMediaSessionCustomLayout()
         updateNotification()
         onStateChanged?.invoke()
 
@@ -485,6 +709,34 @@ class PlaybackService : Service() {
 
         // Avanzar a la siguiente (next ya maneja el auto-borrado de la actual)
         next()
+    }
+
+    /**
+     * Sube al servidor las letras que se encontraron vía LRCLIB directo
+     * mientras el servidor no era alcanzable, para que queden guardadas
+     * como archivo .lrc físico (ver endpoint del documento de mirepo).
+     * Se llama automáticamente desde MainActivity en cuanto detecta que el
+     * servidor volvió a estar disponible.
+     */
+    fun flushPendingLyricsUploads() {
+        val pending = sessionManager.getPendingLyricsUploads()
+        if (pending.isEmpty()) return
+
+        serviceScope.launch {
+            for ((songId, content) in pending) {
+                try {
+                    val response = RetrofitClient.api.saveLyricsFile(
+                        songId,
+                        ApiService.SaveLyricsFileRequest(content)
+                    )
+                    if (response.isSuccessful) {
+                        sessionManager.removePendingLyricsUpload(songId)
+                    }
+                } catch (e: Exception) {
+                    // Se reintentará en el próximo "servidor disponible"
+                }
+            }
+        }
     }
 
     private fun createNotificationChannel() {
@@ -543,26 +795,41 @@ class PlaybackService : Service() {
             pendingIntentFor(ACTION_LIKE)
         )
 
-        // Action 1: Play/Pausa
+        // Action 1: Anterior
+        builder.addAction(
+            android.R.drawable.ic_media_previous,
+            "Anterior",
+            pendingIntentFor(ACTION_PREV)
+        )
+
+        // Action 2: Play/Pausa
         builder.addAction(
             if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
             if (isPlaying) "Pausar" else "Reproducir",
             pendingIntentFor(ACTION_PLAY_PAUSE)
         )
 
-        // Action 2: No me gusta
+        // Action 3: Siguiente
+        builder.addAction(
+            android.R.drawable.ic_media_next,
+            "Siguiente",
+            pendingIntentFor(ACTION_NEXT)
+        )
+
+        // Action 4: No me gusta
         builder.addAction(
             R.drawable.ic_dislike_off,
             "No me gusta",
             pendingIntentFor(ACTION_DISLIKE)
         )
 
-        // Configuración MediaStyle (Standard para Android 12+)
-        builder.setStyle(
-            MediaNotificationCompat.MediaStyle()
-                .setShowActionsInCompactView(0, 1, 2) // Me gusta, Play/Pausa, No me gusta
-                .setMediaSession(mediaSession?.sessionCompatToken)
-        )
+        // Configuración MediaStyle para Media3
+        mediaSession?.let { session ->
+            builder.setStyle(
+                MediaStyleNotificationHelper.MediaStyle(session)
+                    .setShowActionsInCompactView(1, 2, 3) // Anterior, Play/Pausa, Siguiente
+            )
+        }
 
         return builder.build()
     }
@@ -635,6 +902,8 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        fadeTickerHandler.removeCallbacks(fadeTickerRunnable)
+        fadeJob?.cancel()
         // Detiene el bucle de sincronización offline para no acumular
         // corrutinas ni hacer llamadas redundantes al servidor.
         serviceScope.cancel()
