@@ -29,6 +29,7 @@ class SearchFragment : Fragment() {
 
     private lateinit var etSearch: EditText
     private lateinit var progressBar: ProgressBar
+    private lateinit var tvNoResults: android.widget.TextView
     private lateinit var rvResults: RecyclerView
     private lateinit var adapter: SongAdapter
     private lateinit var downloadHelper: DownloadManagerHelper
@@ -48,6 +49,7 @@ class SearchFragment : Fragment() {
 
         etSearch = view.findViewById(R.id.etSearch)
         progressBar = view.findViewById(R.id.progressSearch)
+        tvNoResults = view.findViewById(R.id.tvNoResults)
         rvResults = view.findViewById(R.id.rvSearchResults)
 
         adapter = SongAdapter(
@@ -84,19 +86,34 @@ class SearchFragment : Fragment() {
         if (query.trim().isEmpty()) {
             adapter.updateSongs(emptyList())
             progressBar.visibility = View.GONE
+            tvNoResults.visibility = View.GONE
             return
         }
 
         searchJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(400) // Debounce para no saturar el servidor
             progressBar.visibility = View.VISIBLE
+            tvNoResults.visibility = View.GONE
             try {
                 val response = RetrofitClient.api.searchSongs(query)
                 if (response.isSuccessful && response.body() != null) {
-                    adapter.updateSongs(response.body()!!.songs)
+                    val songs = response.body()!!.songs
+                    adapter.updateSongs(songs)
+                    if (songs.isEmpty()) {
+                        tvNoResults.visibility = View.VISIBLE
+                        tvNoResults.text = "No se encontraron resultados para \"$query\""
+                    } else {
+                        tvNoResults.visibility = View.GONE
+                    }
+                } else {
+                    tvNoResults.visibility = View.VISIBLE
+                    tvNoResults.text = "Error en el servidor de búsqueda"
                 }
             } catch (e: Exception) {
-                if (isAdded) Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                if (isAdded) {
+                    tvNoResults.visibility = View.VISIBLE
+                    tvNoResults.text = "El servidor no responde. ¿Está Meilisearch encendido?"
+                }
             } finally {
                 progressBar.visibility = View.GONE
             }
