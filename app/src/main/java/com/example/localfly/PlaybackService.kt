@@ -143,6 +143,21 @@ class PlaybackService : Service() {
                     next()
                 }
             }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // ExoPlayer trae precargada la siguiente canción como un
+                // segundo item de su propia playlist interna (para que la
+                // notificación de Android 13+ tenga botón "Siguiente"
+                // nativo). Cuando la canción actual termina SOLA, ExoPlayer
+                // avanza a ese segundo item por su cuenta, sin pasar por
+                // next(). Hay que detectarlo aquí y sincronizar currentIndex
+                // / currentSong / fundido / auto-borrado manualmente, o la
+                // app se queda "ciega" a ese cambio (bug de canción
+                // silenciosa que parece la misma canción).
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                    handleAutoAdvance()
+                }
+            }
         })
 
         setupMediaSession()
@@ -533,6 +548,63 @@ class PlaybackService : Service() {
             }
         }
         onStateChanged?.invoke()
+    }
+
+    /**
+     * Se llama cuando ExoPlayer avanzó SOLO a la canción precargada tras
+     * terminar la actual (ver comentario en onMediaItemTransition). Replica
+     * lo que hace next() para mantener currentIndex/currentSong, el
+     * fundido, el auto-borrado y la notificación sincronizados con lo que
+     * realmente está sonando.
+     */
+    private fun handleAutoAdvance() {
+        if (!hasNext()) return // por seguridad; si no hay siguiente, no debería haber pasado esto
+
+        val songToHandle = currentSong
+        val indexToHandle = currentIndex
+
+        currentIndex++
+        currentSong = queue.getOrNull(currentIndex)
+
+        // Reiniciar el fundido para la canción que ExoPlayer ya empezó a
+        // reproducir de verdad (arrancó en volumen 0 tras el fade-out de
+        // la anterior; aquí lo subimos de vuelta).
+        fadeOutStartedForCurrentSong = false
+        fadeJob?.cancel()
+        if (crossfadeEnabled) {
+            player?.volume = 0f
+            startFade(from = 0f, to = 1f, durationMs = FADE_DURATION_MS)
+        } else {
+            player?.volume = 1f
+        }
+
+        // Volver a precargar UNA canción más por delante, para que el
+        // botón "Siguiente" nativo del sistema siga funcionando en la
+        // próxima transición también (si no, solo funcionaría una vez).
+        if (hasNext()) {
+            val nextSong = queue[currentIndex + 1]
+            val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
+            val nextMediaItem = MediaItem.Builder()
+                .setUri(
+                    if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath))
+                    else Uri.parse("$serverBaseUrl/audio/${nextSong.id}")
+                )
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(nextSong.title)
+                        .setArtist(nextSong.artist)
+                        .build()
+                )
+                .build()
+            player?.addMediaItem(nextMediaItem)
+        }
+
+        startForeground(NOTIFICATION_ID, buildNotification())
+        onStateChanged?.invoke()
+
+        // Borrar la descarga de la canción que acaba de terminar, igual
+        // que en un "Siguiente" manual.
+        checkAutoDelete(songToHandle, indexToHandle)
     }
 
     fun next() {
