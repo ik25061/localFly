@@ -274,7 +274,7 @@ class NowPlayingActivity : AppCompatActivity() {
             if (pendingCount < 10) {
                 try {
                     val sessionManager = SessionManager(this@NowPlayingActivity)
-                    val aiManager = AIRecommendationManager(sessionManager)
+                    val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
                     val recommendations = aiManager.getRecommendations(
                         limit = 10 - pendingCount,
                         seedSong = service.currentSong

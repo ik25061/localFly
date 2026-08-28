@@ -46,6 +46,12 @@ class AIFragment : Fragment() {
         sessionManager = SessionManager(requireContext())
 
         rvArtists = view.findViewById(R.id.rvArtistSelection)
+        view.findViewById<View>(R.id.btnAiSettings).setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, AISettingsFragment())
+                .addToBackStack(null)
+                .commit()
+        }
         btnSave = view.findViewById(R.id.btnSaveAIPreferences)
         tvAIResult = view.findViewById(R.id.tvAIResult)
         etSearch = view.findViewById(R.id.etSearchArtists)
@@ -183,7 +189,7 @@ class AIFragment : Fragment() {
         // Ejecutar la IA local (en el dispositivo) con una pequeña demora para UX
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val aiManager = AIRecommendationManager(sessionManager)
+                val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(requireContext()))
                 val summary = aiManager.generateRecommendationSummary()
                 tvAIResult.text = summary
             } catch (e: Exception) {

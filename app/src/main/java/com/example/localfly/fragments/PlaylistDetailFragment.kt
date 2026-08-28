@@ -212,6 +212,11 @@ class PlaylistDetailFragment : Fragment() {
 
     private fun removeFromPlaylist(song: Song, position: Int) {
         val id = playlistId ?: return
+
+        // Aprendizaje en línea: si la sacaste de una lista de IA, es una
+        // señal de que esa sugerencia no encajó.
+        com.example.localfly.ai.AIWeightsStore(requireContext()).reinforce(song.id, -1f)
+
         adapter.removeAt(position)
         currentSongs = currentSongs.filter { it.id != song.id }
         tvCount.text = if (currentSongs.size == 1) "1 canción" else "${currentSongs.size} canciones"

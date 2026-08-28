@@ -321,7 +321,8 @@ class DownloadManagerHelper private constructor(context: Context) {
         val limit = 500 - currentCount
         android.util.Log.d("DownloadManager", "Auto-descarga: iniciando búsqueda de $limit temas nuevos...")
         
-        val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
+        val weightsStore = appContext?.let { com.example.localfly.ai.AIWeightsStore(it) }
+        val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, weightsStore)
         
         // Obtener recomendaciones (la IA ya usa los likes y artistas favoritos)
         val recommendations = aiManager.getRecommendations(limit = limit)

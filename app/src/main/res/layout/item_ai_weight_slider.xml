@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="8dp">
+
+    <TextView
+        android:id="@+id/tvWeightLabel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <SeekBar
+        android:id="@+id/seekWeight"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="23"
+        android:progress="8" />
+
+</LinearLayout>

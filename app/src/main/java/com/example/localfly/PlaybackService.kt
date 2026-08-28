@@ -741,6 +741,11 @@ class PlaybackService : Service() {
         val song = currentSong ?: return
         val newLiked = !song.liked
         currentSong = song.copy(liked = newLiked)
+
+        // Aprendizaje en línea: si esta canción vino de una sugerencia de
+        // la IA, "me gusta" refuerza positivamente las reglas que la
+        // sugirieron; quitar el "me gusta" las castiga un poco.
+        com.example.localfly.ai.AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
         // Mantener el estado guardado de la descarga (si la canción está descargada)
         downloadHelper.updateLiked(song.id, newLiked)
         updateMediaSessionCustomLayout()
@@ -766,6 +771,9 @@ class PlaybackService : Service() {
     /** "No me gusta": oculta la canción en el servidor y avanza a la siguiente */
     fun dislikeCurrentSong() {
         val songToHide = currentSong ?: return
+
+        // Aprendizaje en línea: señal negativa fuerte si la IA la sugirió.
+        com.example.localfly.ai.AIWeightsStore(this).reinforce(songToHide.id, -1f)
 
         serviceScope.launch {
             try {

@@ -82,8 +82,9 @@ class PlaylistsFragment : Fragment() {
         progressBar.visibility = View.VISIBLE
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
-                val recommendations = aiManager.getRecommendations(limit = 20)
+                val weightsStore = com.example.localfly.ai.AIWeightsStore(requireContext())
+                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, weightsStore)
+                val recommendations = aiManager.getRecommendations(limit = weightsStore.getPlaylistSongCount())
                 
                 if (recommendations.isEmpty()) {
                     progressBar.visibility = View.GONE

@@ -294,7 +294,7 @@ class HomeFragment : Fragment() {
 
             // 7. Recomendaciones con IA
             try {
-                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager)
+                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(requireContext()))
                 val recommendations = aiManager.getRecommendations()
                 if (isAdded) {
                     recommendationsAdapter.updateSongs(recommendations)

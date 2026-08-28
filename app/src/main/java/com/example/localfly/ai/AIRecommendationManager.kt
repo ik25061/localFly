@@ -14,7 +14,10 @@ import kotlinx.coroutines.withContext
  * los gustos del usuario (likes, artistas favoritos, años y portadas) y genera
  * recomendaciones y un resumen de texto personalizado.
  */
-class AIRecommendationManager(private val sessionManager: SessionManager) {
+class AIRecommendationManager(
+    private val sessionManager: SessionManager,
+    private val weightsStore: com.example.localfly.ai.AIWeightsStore? = null
+) {
 
     /**
      * Devuelve hasta [limit] canciones recomendadas usando puntuación local:
@@ -62,54 +65,65 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
         // Candidatos: canciones que aún no le gustan
         val candidates = allSongs.filter { it.id !in likedIds }
 
-        fun score(song: Song): Int {
-            var sc = 0
+        val w = weightsStore?.getWeights() ?: emptyMap()
+        fun weight(factor: String): Float = w[factor] ?: 1.0f
+
+        // Devuelve la puntuación total Y qué factores influyeron (para
+        // poder atribuir feedback más adelante si esta canción termina
+        // siendo elegida).
+        fun scoreWithFactors(song: Song): Pair<Int, List<String>> {
+            var sc = 0f
+            val firedFactors = mutableListOf<String>()
             val isFavArtist = song.artist in favArtistNames
             val hasLikedOtherSongsFromThisArtist = song.artist in likedArtists
-            
-            // Puntuación base
+
             if (isFavArtist) {
-                // Si es un artista favorito, tiene un peso importante pero no definitivo
-                sc += 25 
+                sc += 25 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_FAV_ARTIST)
+                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_FAV_ARTIST
             }
-            
+
             if (hasLikedOtherSongsFromThisArtist) {
-                // Si ya le gustan otras canciones de este artista, es una señal fuerte de gusto por su estilo
-                sc += 15
+                sc += 15 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_LIKED_ARTIST)
+                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_LIKED_ARTIST
             }
-            
-            // Si hay una canción semilla (p.ej. la que está sonando y ya
-            // no tiene más canciones propias en la cola), priorizar
-            // mismo artista y años cercanos como aproximación de "mismo
-            // estilo" (no hay campo de género disponible en el modelo).
+
             if (seedSong != null) {
-                if (song.artist != null && song.artist == seedSong.artist) sc += 40
+                if (song.artist != null && song.artist == seedSong.artist) {
+                    sc += 40 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST
+                }
                 val seedYear = seedSong.year
                 val songYear = song.year
                 if (seedYear != null && songYear != null && kotlin.math.abs(songYear - seedYear) <= 3) {
-                    sc += 15
+                    sc += 15 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_DECADE)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_DECADE
                 }
             }
-            
-            // El peso de la "era" musical (década) es fundamental para filtrar canciones que no encajan
+
             val songDecade = if (song.year != null) (song.year / 10) * 10 else -1
             if (topDecades.contains(songDecade)) {
-                // Si la canción es de una década que le gusta, sumamos puntos.
-                // Si además es un artista que le gusta, el bonus es mayor.
-                sc += if (isFavArtist || hasLikedOtherSongsFromThisArtist) 20 else 10
+                val base = if (isFavArtist || hasLikedOtherSongsFromThisArtist) 20 else 10
+                sc += base * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_DECADE_MATCH)
+                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_DECADE_MATCH
             }
-            
-            // Bonus por tener portada (calidad visual)
-            if (song.hasCover) sc += 5
 
-            // Aleatoriedad ligera (0-5) para que las recomendaciones varíen un poco
-            sc += (Math.random() * 5).toInt()
-            
-            return sc
+            if (song.hasCover) {
+                sc += 5 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_HAS_COVER)
+                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_HAS_COVER
+            }
+
+            sc += (Math.random() * 5).toFloat()
+
+            return sc.toInt() to firedFactors
         }
 
-        val scored = candidates.map { it to score(it) }
-            .sortedByDescending { it.second }
+        val scoredWithFactors = candidates.map { song ->
+            val (sc, factors) = scoreWithFactors(song)
+            Triple(song, sc, factors)
+        }.sortedByDescending { it.second }
+
+        val scored = scoredWithFactors.map { it.first to it.second }
+        val factorsBySongId = scoredWithFactors.associate { it.first.id to it.third }
 
         val diversified = mutableListOf<Song>()
         val artistCounts = mutableMapOf<String, Int>()
@@ -122,7 +136,16 @@ class AIRecommendationManager(private val sessionManager: SessionManager) {
             }
         }
 
-        return@withContext diversified.take(limit)
+        val result = diversified.take(limit)
+        if (weightsStore != null) {
+            for (song in result) {
+                val factors = factorsBySongId[song.id]
+                if (!factors.isNullOrEmpty()) {
+                    weightsStore.recordAttribution(song.id, factors)
+                }
+            }
+        }
+        return@withContext result
     }
     /**
      * Genera localmente un resumen de texto personalizado (sin conexión),
