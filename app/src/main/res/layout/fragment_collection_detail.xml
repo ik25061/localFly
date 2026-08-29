@@ -114,6 +114,16 @@
                         app:tint="#FFFFFF" />
 
                     <ImageButton
+                        android:id="@+id/btnFavoriteArtist"
+                        android:layout_width="48dp"
+                        android:layout_height="48dp"
+                        android:layout_marginStart="12dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_like_off"
+                        app:tint="#FFFFFF"
+                        android:visibility="gone" />
+
+                    <ImageButton
                         android:id="@+id/btnHideArtist"
                         android:layout_width="48dp"
                         android:layout_height="48dp"

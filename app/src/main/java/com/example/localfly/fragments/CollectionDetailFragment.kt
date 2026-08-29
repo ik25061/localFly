@@ -43,9 +43,14 @@ class CollectionDetailFragment : Fragment() {
     private lateinit var btnPlay: MaterialButton
     private lateinit var btnDownload: MaterialButton
     private lateinit var btnAddPlaylist: ImageButton
+    private lateinit var btnFavoriteArtist: ImageButton
     private lateinit var btnHideArtist: ImageButton
 
-    private var currentSongs: List<Song> = emptyList()
+    private var currentSongs: MutableList<Song> = mutableListOf()
+    private var currentOffset = 0
+    private val limit = 100
+    private var isLoading = false
+    private var hasMore = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +78,7 @@ class CollectionDetailFragment : Fragment() {
         btnPlay = view.findViewById(R.id.btnPlayCollection)
         btnDownload = view.findViewById(R.id.btnDownloadCollection)
         btnAddPlaylist = view.findViewById(R.id.btnAddCollectionToPlaylist)
+        btnFavoriteArtist = view.findViewById(R.id.btnFavoriteArtist)
         btnHideArtist = view.findViewById(R.id.btnHideArtist)
         rvSongs = view.findViewById(R.id.rvCollectionSongs)
 
@@ -84,6 +90,8 @@ class CollectionDetailFragment : Fragment() {
         tvType.text = when (itemType) {
             "ARTIST" -> {
                 btnHideArtist.visibility = View.VISIBLE
+                btnFavoriteArtist.visibility = View.VISIBLE
+                updateFavoriteArtistUi()
                 "ARTISTA"
             }
             "GENRE" -> "GÉNERO"
@@ -93,6 +101,10 @@ class CollectionDetailFragment : Fragment() {
 
         btnHideArtist.setOnClickListener {
             hideCurrentArtist()
+        }
+
+        btnFavoriteArtist.setOnClickListener {
+            toggleFavoriteArtist()
         }
 
         btnAddPlaylist.setOnClickListener {
@@ -155,6 +167,18 @@ class CollectionDetailFragment : Fragment() {
         rvSongs.layoutManager = LinearLayoutManager(requireContext())
         rvSongs.adapter = adapter
 
+        rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val layoutManager = rvSongs.layoutManager as LinearLayoutManager
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val total = layoutManager.itemCount
+                if (!isLoading && hasMore && lastVisible >= total - 10) {
+                    loadSongs(isNextPage = true)
+                }
+            }
+        })
+
         btnPlay.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
                 val activity = requireActivity() as? MainActivity
@@ -198,32 +222,94 @@ class CollectionDetailFragment : Fragment() {
         }
     }
 
-    private fun loadSongs() {
+    private fun updateFavoriteArtistUi() {
+        val aId = itemId ?: return
+        val favorites = sessionManager.getFavoriteArtists()
+        if (favorites.contains(aId)) {
+            btnFavoriteArtist.setImageResource(R.drawable.ic_like_on)
+        } else {
+            btnFavoriteArtist.setImageResource(R.drawable.ic_like_off)
+        }
+    }
+
+    private fun toggleFavoriteArtist() {
+        val aId = itemId ?: return
+        val currentFavs = sessionManager.getFavoriteArtists().toMutableSet()
+        val isLiked = currentFavs.contains(aId)
+        val newLiked = !isLiked
+
+        if (newLiked) {
+            currentFavs.add(aId)
+        } else {
+            currentFavs.remove(aId)
+        }
+        sessionManager.saveFavoriteArtists(currentFavs)
+        updateFavoriteArtistUi()
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                RetrofitClient.api.toggleFavoriteArtist(
+                    FavoriteArtistRequest(sessionManager.getUserId(), aId, newLiked)
+                )
+            } catch (e: Exception) {
+                // Fallback: si falla el servidor, el cambio local persiste para la IA
+            }
+        }
+    }
+
+    private fun loadSongs(isNextPage: Boolean = false) {
         val id = itemId ?: return
+        if (isLoading) return
+
+        if (isNextPage) {
+            currentOffset += limit
+        } else {
+            currentOffset = 0
+            hasMore = true
+            currentSongs.clear()
+        }
+
+        isLoading = true
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = when (itemType) {
-                    "ARTIST" -> RetrofitClient.api.getArtistSongs(id, sessionManager.getUserId())
-                    "GENRE" -> RetrofitClient.api.getGenreSongs(id, sessionManager.getUserId())
-                    "YEAR" -> RetrofitClient.api.getYearSongs(id.toInt(), sessionManager.getUserId())
+                    "ARTIST" -> RetrofitClient.api.getArtistSongs(id, sessionManager.getUserId(), limit, currentOffset)
+                    "GENRE" -> RetrofitClient.api.getGenreSongs(id, sessionManager.getUserId(), limit, currentOffset)
+                    "YEAR" -> RetrofitClient.api.getYearSongs(id.toInt(), sessionManager.getUserId(), limit, currentOffset)
                     else -> return@launch
                 }
                 if (response.isSuccessful && response.body() != null) {
-                    val songs = response.body()!!.songs
+                    val respBody = response.body()!!
+                    val newSongs = respBody.songs
+                    
+                    hasMore = respBody.pagination?.hasMore ?: (newSongs.size >= limit)
+
                     // Garantizar que el artista se muestre correctamente si estamos en modo ARTISTA
-                    currentSongs = if (itemType == "ARTIST") {
-                        songs.map { it.copy(artist = it.artist ?: itemName) }
+                    val processedSongs = if (itemType == "ARTIST") {
+                        newSongs.map { it.copy(artist = it.artist ?: itemName) }
                     } else {
-                        songs
+                        newSongs
                     }
-                    adapter.updateSongs(currentSongs)
+                    
+                    if (isNextPage) {
+                        currentSongs.addAll(processedSongs)
+                        adapter.addSongs(processedSongs)
+                    } else {
+                        currentSongs.addAll(processedSongs)
+                        adapter.updateSongs(currentSongs)
+                    }
                     
                     val totalDuration = currentSongs.sumOf { it.duration ?: 0.0 }
-                    tvInfo.text = "${currentSongs.size} canciones · ${formatDuration(totalDuration)}"
+                    val totalCount = respBody.pagination?.total ?: currentSongs.size
+                    tvInfo.text = "$totalCount canciones · ${formatDuration(totalDuration)}"
                     btnDownload.text = currentSongs.count { !downloadHelper.isDownloaded(it.id) }.toString()
                 }
             } catch (e: Exception) {
-                Toast.makeText(requireContext(), "Error al cargar canciones: ${e.message}", Toast.LENGTH_SHORT).show()
+                if (isAdded) {
+                    Toast.makeText(requireContext(), "Error al cargar canciones: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            } finally {
+                isLoading = false
             }
         }
     }

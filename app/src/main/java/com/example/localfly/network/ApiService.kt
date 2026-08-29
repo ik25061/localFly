@@ -102,25 +102,33 @@ interface ApiService {
     @GET("api/albums/{id}/songs")
     suspend fun getAlbumSongs(
         @Path("id") albumId: String,
-        @Query("userId") userId: String?
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
 
     @GET("api/artists/{id}/songs")
     suspend fun getArtistSongs(
         @Path("id") artistId: String,
-        @Query("userId") userId: String?
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
 
     @GET("api/genres/{id}/songs")
     suspend fun getGenreSongs(
         @Path("id") genreId: String,
-        @Query("userId") userId: String?
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
 
     @GET("api/years/{year}/songs")
     suspend fun getYearSongs(
         @Path("year") year: Int,
-        @Query("userId") userId: String?
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
     ): Response<LibraryResponse>
 
     // --- Playlists ---

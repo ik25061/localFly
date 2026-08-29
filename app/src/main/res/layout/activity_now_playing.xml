@@ -63,6 +63,18 @@
         app:strokeWidth="1dp" />
 
     <ImageButton
+        android:id="@+id/btnAddToPlaylist"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_playlist"
+        app:layout_constraintEnd_toStartOf="@id/btnLyrics"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="#FFFFFF" />
+
+    <ImageButton
         android:id="@+id/btnLyrics"
         android:layout_width="48dp"
         android:layout_height="48dp"

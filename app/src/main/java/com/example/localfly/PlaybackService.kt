@@ -599,7 +599,7 @@ class PlaybackService : Service() {
             player?.addMediaItem(nextMediaItem)
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         onStateChanged?.invoke()
 
         // Borrar la descarga de la canción que acaba de terminar, igual
@@ -710,7 +710,7 @@ class PlaybackService : Service() {
         }
 
         updateMediaSessionCustomLayout()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         onStateChanged?.invoke()
     }
 
@@ -820,15 +820,13 @@ class PlaybackService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Reproducción de música",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Reproducción de música",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(channel)
     }
 
     private fun pendingIntentFor(action: String): PendingIntent {
@@ -916,11 +914,10 @@ class PlaybackService : Service() {
 
     @UnstableApi
     private fun updateNotification() {
-        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ActivityCompat.checkSelfPermission(
-                    this,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
+        val hasPermission = ActivityCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
             // Publicar versión inicial (sin imagen o con la anterior)
@@ -967,11 +964,10 @@ class PlaybackService : Service() {
 
     @UnstableApi
     private fun showNotificationWithBitmap(bitmap: Bitmap) {
-        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ActivityCompat.checkSelfPermission(
-                    this,
-                    android.Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
+        val hasPermission = ActivityCompat.checkSelfPermission(
+            this,
+            android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 
         if (hasPermission) {
             NotificationManagerCompat.from(this@PlaybackService).notify(

@@ -147,7 +147,7 @@ class CollectionListFragment : Fragment() {
             originalItems = emptyList()
         }
 
-        val minSongs = if (normalized.isEmpty()) 2 else 0
+        val minSongs = 0
 
         isLoading = true
         searchJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -162,7 +162,7 @@ class CollectionListFragment : Fragment() {
                         minSongs = minSongs
                     )
                     Type.ARTIST -> RetrofitClient.api.getArtists(
-                        userId = null,
+                        userId = sessionManager.getUserId(),
                         limit = limit,
                         offset = currentOffset,
                         search = normalized.ifBlank { null },
@@ -310,7 +310,7 @@ class CollectionListFragment : Fragment() {
     private fun openDetail(item: Any) {
         val fragment = when (item) {
             is com.example.localfly.network.Playlist -> {
-                CollectionDetailFragment.newInstance(item.id, item.name, "PLAYLIST", item.coverId)
+                PlaylistDetailFragment.newInstance(item.id, item.name)
             }
             is Album -> AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             is Artist -> CollectionDetailFragment.newInstance(item.id, item.name, "ARTIST", item.coverId)

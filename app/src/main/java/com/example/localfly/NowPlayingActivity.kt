@@ -27,6 +27,7 @@ import com.example.localfly.network.LrclibClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
+import com.example.localfly.dialogs.AddToPlaylistDialog
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnPrev: ImageButton
     private lateinit var btnNext: ImageButton
     private lateinit var btnDeleteSong: ImageButton
+    private lateinit var btnAddToPlaylist: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
     private lateinit var btnShowQueue: ImageButton
@@ -91,6 +93,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private var sbLyricsMiniProgress: SeekBar? = null
 
     private lateinit var downloadHelper: DownloadManagerHelper
+    private lateinit var sessionManager: SessionManager
     private lateinit var amplituda: linc.com.amplituda.Amplituda
 
     private val progressHandler = Handler(Looper.getMainLooper())
@@ -122,6 +125,7 @@ class NowPlayingActivity : AppCompatActivity() {
         setContentView(R.layout.activity_now_playing)
 
         downloadHelper = DownloadManagerHelper.getInstance(this)
+        sessionManager = SessionManager(this)
         amplituda = linc.com.amplituda.Amplituda(this)
 
         ivCircularImage = findViewById(R.id.ivCircularImage)
@@ -137,6 +141,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPrev = findViewById(R.id.btnFullPrev)
         btnNext = findViewById(R.id.btnFullNext)
         btnDeleteSong = findViewById(R.id.btnDeleteSong)
+        btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
         btnShowQueue = findViewById(R.id.btnShowQueue)
@@ -166,6 +171,10 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
         btnLyrics.setOnClickListener { showLyrics() }
+        btnAddToPlaylist.setOnClickListener {
+            val song = playbackService?.currentSong ?: return@setOnClickListener
+            AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
+        }
         btnDeleteSong.setOnClickListener { onDeleteSongClicked() }
         btnRepeat.setOnClickListener { playbackService?.toggleRepeat() }
         btnShowQueue.setOnClickListener { toggleQueue() }
@@ -273,7 +282,6 @@ class NowPlayingActivity : AppCompatActivity() {
             val pendingCount = service.queue.size - (service.currentIndex + 1)
             if (pendingCount < 10) {
                 try {
-                    val sessionManager = SessionManager(this@NowPlayingActivity)
                     val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
                     val recommendations = aiManager.getRecommendations(
                         limit = 10 - pendingCount,
