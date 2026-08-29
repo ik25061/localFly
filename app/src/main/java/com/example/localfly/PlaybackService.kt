@@ -187,6 +187,8 @@ class PlaybackService : Service() {
                     .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                     .build()
                 
+                updateMediaSessionCustomLayout()
+
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(sessionCommands)
                     .setAvailablePlayerCommands(playerCommands)
@@ -238,13 +240,13 @@ class PlaybackService : Service() {
         val song = currentSong
         val likeIcon = if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off
         
-        val likeButton = CommandButton.Builder()
+        val likeButton = CommandButton.Builder(CommandButton.ICON_HEART_FILLED)
             .setSessionCommand(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
             .setIconResId(likeIcon)
             .setDisplayName("Me gusta")
             .build()
 
-        val dislikeButton = CommandButton.Builder()
+        val dislikeButton = CommandButton.Builder(CommandButton.ICON_BLOCK)
             .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
             .setIconResId(R.drawable.ic_dislike_off)
             .setDisplayName("No me gusta")

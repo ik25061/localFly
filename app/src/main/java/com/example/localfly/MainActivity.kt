@@ -1,9 +1,11 @@
 package com.example.localfly
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -15,7 +17,9 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -53,6 +57,10 @@ class MainActivity : AppCompatActivity() {
     var playbackService: PlaybackService? = null
         private set
     private var isBound = false
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* resultado ignorado a propósito: si lo deniega, la app sigue funcionando igual, solo sin notificación */ }
+
 
     private lateinit var bottomNav: BottomNavigationView
     private lateinit var connectivityManager: ConnectivityManager
@@ -94,28 +102,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Inicializar mini player
-        miniPlayer = findViewById(R.id.miniPlayer)
-        miniPlayerInfo = findViewById(R.id.miniPlayerInfo)
-        ivMiniCover = findViewById(R.id.ivMiniCover)
-        tvNowPlayingTitle = findViewById(R.id.tvNowPlayingTitle)
-        tvNowPlayingArtist = findViewById(R.id.tvNowPlayingArtist)
-        btnPlayPause = findViewById(R.id.btnPlayPause)
-        btnMiniLike = findViewById(R.id.btnMiniLike)
-        btnMiniDislike = findViewById(R.id.btnMiniDislike)
-        btnPrev = findViewById(R.id.btnPrev)
-        btnNext = findViewById(R.id.btnNext)
+        requestNotificationPermissionIfNeeded()
 
-        miniPlayerInfo.setOnClickListener {
-            if (playbackService?.currentSong != null) {
-                startActivity(Intent(this, NowPlayingActivity::class.java))
-            }
-        }
-        btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
-        btnMiniLike.setOnClickListener { playbackService?.toggleLike() }
-        btnMiniDislike.setOnClickListener { playbackService?.dislikeCurrentSong() }
-        btnPrev?.setOnClickListener { playbackService?.prev() }
-        btnNext.setOnClickListener { playbackService?.next() }
+        initMiniPlayer()
 
         // ===== CONFIGURAR ADAPTADOR =====
         adapter = SongAdapter(
@@ -137,13 +126,6 @@ class MainActivity : AppCompatActivity() {
                 AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
             }
         )
-
-        // Aquí debes asignar el adaptador a tu RecyclerView (rvSongs)
-        // Si no tienes rvSongs en activity_main.xml, agrégala o usa el contenedor que tengas.
-        // Por ahora, lo dejamos comentado para que no dé error.
-        // val rvSongs = findViewById<RecyclerView>(R.id.rvSongs)
-        // rvSongs.layoutManager = LinearLayoutManager(this)
-        // rvSongs.adapter = adapter
 
         // ===== NAVEGACIÓN INFERIOR =====
         bottomNav = findViewById(R.id.bottomNavigation)
@@ -179,6 +161,47 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupServerConnectivityMonitoring()
+    }
+
+    /**
+     * En Android 13+ (garantizado siempre, minSdk 34) las notificaciones
+     * son opt-in: si nunca se pide este permiso, la notificación de
+     * reproducción (con like/dislike/siguiente incluidos) no se muestra
+     * nunca, aunque el resto del código esté perfecto.
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun initMiniPlayer() {
+        // Inicializar mini player
+        miniPlayer = findViewById(R.id.miniPlayer)
+        miniPlayerInfo = findViewById(R.id.miniPlayerInfo)
+        ivMiniCover = findViewById(R.id.ivMiniCover)
+        tvNowPlayingTitle = findViewById(R.id.tvNowPlayingTitle)
+        tvNowPlayingArtist = findViewById(R.id.tvNowPlayingArtist)
+        btnPlayPause = findViewById(R.id.btnPlayPause)
+        btnMiniLike = findViewById(R.id.btnMiniLike)
+        btnMiniDislike = findViewById(R.id.btnMiniDislike)
+        btnPrev = findViewById(R.id.btnPrev)
+        btnNext = findViewById(R.id.btnNext)
+
+        miniPlayerInfo.setOnClickListener {
+            if (playbackService?.currentSong != null) {
+                startActivity(Intent(this, NowPlayingActivity::class.java))
+            }
+        }
+        btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
+        btnMiniLike.setOnClickListener { playbackService?.toggleLike() }
+        btnMiniDislike.setOnClickListener { playbackService?.dislikeCurrentSong() }
+        btnPrev?.setOnClickListener { playbackService?.prev() }
+        btnNext.setOnClickListener { playbackService?.next() }
     }
 
     /**

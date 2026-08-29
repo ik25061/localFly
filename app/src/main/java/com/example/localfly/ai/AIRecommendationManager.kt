@@ -38,7 +38,7 @@ class AIRecommendationManager(
         val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
 
         // 2. Toda la biblioteca disponible para recomendar
-        val libResp = RetrofitClient.api.getLibrary(userId, limit = 500)
+        val libResp = RetrofitClient.api.getLibrary(userId, limit = 2000)
         val allSongs = if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
 
         if (allSongs.isEmpty()) return@withContext emptyList()

@@ -94,9 +94,21 @@ class CollectionDetailFragment : Fragment() {
                 updateFavoriteArtistUi()
                 "ARTISTA"
             }
-            "GENRE" -> "GÉNERO"
-            "YEAR" -> "AÑO"
-            else -> "COLECCIÓN"
+            "GENRE" -> {
+                btnHideArtist.visibility = View.GONE
+                btnFavoriteArtist.visibility = View.GONE
+                "GÉNERO"
+            }
+            "YEAR" -> {
+                btnHideArtist.visibility = View.GONE
+                btnFavoriteArtist.visibility = View.GONE
+                "AÑO"
+            }
+            else -> {
+                btnHideArtist.visibility = View.GONE
+                btnFavoriteArtist.visibility = View.GONE
+                "COLECCIÓN"
+            }
         }
 
         btnHideArtist.setOnClickListener {
