@@ -31,7 +31,11 @@ class LikedSongsFragment : Fragment() {
     private lateinit var btnDownloadAll: MaterialButton
     private lateinit var btnAddPlaylist: ImageButton
 
-    private var currentSongs: List<Song> = emptyList()
+    private var currentSongs: MutableList<Song> = mutableListOf()
+    private var currentOffset = 0
+    private val pageSize = 100
+    private var isLoadingMore = false
+    private var hasMoreLiked = true
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_liked_songs, container, false)
@@ -79,6 +83,18 @@ class LikedSongsFragment : Fragment() {
         rvSongs.layoutManager = LinearLayoutManager(requireContext())
         rvSongs.adapter = adapter
 
+        rvSongs.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                super.onScrolled(recyclerView, dx, dy)
+                val layoutManager = rvSongs.layoutManager as LinearLayoutManager
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                val totalItems = layoutManager.itemCount
+                if (!isLoadingMore && hasMoreLiked && lastVisible >= totalItems - 5) {
+                    loadLikedSongs(isNextPage = true)
+                }
+            }
+        })
+
         btnPlayAll.setOnClickListener {
             if (currentSongs.isNotEmpty()) {
                 val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
@@ -116,18 +132,43 @@ class LikedSongsFragment : Fragment() {
         loadLikedSongs()
     }
 
-    private fun loadLikedSongs() {
+    private fun loadLikedSongs(isNextPage: Boolean = false) {
+        if (isLoadingMore) return
+        isLoadingMore = true
+
+        if (!isNextPage) {
+            currentOffset = 0
+            hasMoreLiked = true
+            currentSongs = mutableListOf()
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val userId = sessionManager.getUserId()
-                val response = RetrofitClient.api.getLikedSongs(userId, limit = 500)
+                val response = RetrofitClient.api.getLikedSongs(
+                    userId,
+                    limit = pageSize,
+                    offset = currentOffset
+                )
                 if (response.isSuccessful && response.body() != null) {
-                    currentSongs = response.body()!!.songs
+                    val body = response.body()!!
+                    if (isNextPage) {
+                        currentSongs.addAll(body.songs)
+                    } else {
+                        currentSongs = body.songs.toMutableList()
+                    }
                     adapter.updateSongs(currentSongs)
-                    tvCount.text = "${currentSongs.size} canciones"
+
+                    val total = body.pagination?.total ?: currentSongs.size
+                    tvCount.text = "${currentSongs.size} de $total canciones"
+
+                    hasMoreLiked = body.pagination?.hasMore ?: (body.songs.size >= pageSize)
+                    currentOffset += pageSize
                 }
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoadingMore = false
             }
         }
     }
@@ -138,7 +179,7 @@ class LikedSongsFragment : Fragment() {
         // If unliked, maybe remove from list?
         if (!newLiked) {
             adapter.removeAt(position)
-            currentSongs = currentSongs.filter { it.id != song.id }
+            currentSongs.removeAt(position)
             tvCount.text = "${currentSongs.size} canciones"
         }
         viewLifecycleOwner.lifecycleScope.launch {

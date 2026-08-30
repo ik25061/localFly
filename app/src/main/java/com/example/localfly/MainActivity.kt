@@ -476,7 +476,7 @@ class MainActivity : AppCompatActivity() {
     // ===== CICLO DE VIDA =====
     override fun onStart() {
         super.onStart()
-        Intent(this, PlaybackService::class.java).also { intent ->
+        Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_LOCAL_BIND }.also { intent ->
             startService(intent)
             bindService(intent, connection, Context.BIND_AUTO_CREATE)
         }

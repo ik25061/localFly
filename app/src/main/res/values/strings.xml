@@ -12,4 +12,5 @@
     <string name="notification_pause">Pausar</string>
     <string name="notification_next">Siguiente</string>
     <string name="notification_dislike">No me gusta</string>
+    <string name="notification_channel_name">Reproducción de música</string>
 </resources>

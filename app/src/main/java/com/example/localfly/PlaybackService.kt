@@ -1,10 +1,8 @@
 package com.example.localfly
 
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -21,6 +19,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.media3.session.MediaStyleNotificationHelper
+import androidx.media3.session.MediaSessionService
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -55,7 +55,7 @@ import java.io.File
  * notificación con controles (me gusta, reproducir/pausar, no me gusta).
  */
 @UnstableApi
-class PlaybackService : Service() {
+class PlaybackService : MediaSessionService() {
 
     companion object {
         const val CHANNEL_ID = "localfly_playback"
@@ -67,6 +67,7 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "com.example.localfly.ACTION_NEXT"
         const val ACTION_PREV = "com.example.localfly.ACTION_PREV"
         const val ACTION_STOP = "com.example.localfly.ACTION_STOP"
+        const val ACTION_LOCAL_BIND = "com.example.localfly.ACTION_LOCAL_BIND"
 
         const val FADE_DURATION_MS = 2500L
         const val FADE_STEP_MS = 100L
@@ -121,6 +122,10 @@ class PlaybackService : Service() {
 
     private lateinit var sessionManager: SessionManager
 
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+        return mediaSession
+    }
+
     @UnstableApi
     override fun onCreate() {
         super.onCreate()
@@ -134,8 +139,12 @@ class PlaybackService : Service() {
         player?.skipSilenceEnabled = crossfadeEnabled
         player?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                updateNotification()
                 onStateChanged?.invoke()
+                if (isPlaying) {
+                    fadeTickerHandler.post(fadeTickerRunnable)
+                } else {
+                    fadeTickerHandler.removeCallbacks(fadeTickerRunnable)
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -162,7 +171,13 @@ class PlaybackService : Service() {
 
         setupMediaSession()
 
-        fadeTickerHandler.post(fadeTickerRunnable)
+        // Configuración del proveedor de notificaciones de Media3
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
+            .setChannelId(CHANNEL_ID)
+            .setChannelName(R.string.notification_channel_name)
+            .build()
+        
+        setMediaNotificationProvider(notificationProvider)
 
         // Sincronizar acciones offline al iniciar
         syncOfflineActions()
@@ -229,8 +244,15 @@ class PlaybackService : Service() {
             }
         }
 
+        val sessionActivityIntent = Intent(this, MainActivity::class.java)
+        val sessionActivityPendingIntent = PendingIntent.getActivity(
+            this, 0, sessionActivityIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         mediaSession = MediaSession.Builder(this, player!!)
             .setCallback(callback)
+            .setSessionActivity(sessionActivityPendingIntent)
             .build()
             
         updateMediaSessionCustomLayout()
@@ -400,9 +422,23 @@ class PlaybackService : Service() {
         }
     }
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?): IBinder? {
+        // Tu propio enlace interno (MainActivity/NowPlayingActivity usan
+        // esto para llamar a playbackService?.algo() directamente) usa una
+        // acción específica. Cualquier otra petición de bind (el propio
+        // sistema conectando un MediaController para la pantalla de
+        // bloqueo, Android Auto, etc.) debe pasar por la implementación
+        // base de MediaSessionService, o esa integración deja de
+        // funcionar.
+        return if (intent?.action == ACTION_LOCAL_BIND) {
+            binder
+        } else {
+            super.onBind(intent)
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val result = super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_LIKE -> toggleLike()
@@ -411,11 +447,10 @@ class PlaybackService : Service() {
             ACTION_PREV -> prev()
             ACTION_STOP -> {
                 player?.stop()
-                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
-        return START_NOT_STICKY
+        return result
     }
 
     /**
@@ -586,22 +621,25 @@ class PlaybackService : Service() {
         if (hasNext()) {
             val nextSong = queue[currentIndex + 1]
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
+            
+            val nextMetaBuilder = MediaMetadata.Builder()
+                .setTitle(nextSong.title)
+                .setArtist(nextSong.artist)
+            
+            if (nextLocalPath == null) {
+                nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
+            }
+
             val nextMediaItem = MediaItem.Builder()
                 .setUri(
                     if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath))
                     else Uri.parse("$serverBaseUrl/audio/${nextSong.id}")
                 )
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(nextSong.title)
-                        .setArtist(nextSong.artist)
-                        .build()
-                )
+                .setMediaMetadata(nextMetaBuilder.build())
                 .build()
             player?.addMediaItem(nextMediaItem)
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         onStateChanged?.invoke()
 
         // Borrar la descarga de la canción que acaba de terminar, igual
@@ -630,7 +668,6 @@ class PlaybackService : Service() {
             
             currentSong = null
             currentIndex = -1
-            stopForeground(STOP_FOREGROUND_REMOVE)
             onStateChanged?.invoke()
         }
     }
@@ -682,16 +719,21 @@ class PlaybackService : Service() {
         if (hasNext()) {
             val nextSong = queue[currentIndex + 1]
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
+            
+            val nextMetaBuilder = MediaMetadata.Builder()
+                .setTitle(nextSong.title)
+                .setArtist(nextSong.artist)
+            
+            if (nextLocalPath == null) {
+                nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
+            }
+
             val nextMediaItem = MediaItem.Builder()
                 .setUri(
                     if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath))
                     else Uri.parse("$serverBaseUrl/audio/${nextSong.id}")
                 )
-                .setMediaMetadata(MediaMetadata.Builder()
-                    .setTitle(nextSong.title)
-                    .setArtist(nextSong.artist)
-                    .build()
-                )
+                .setMediaMetadata(nextMetaBuilder.build())
                 .build()
             player?.addMediaItem(nextMediaItem)
         }
@@ -712,7 +754,6 @@ class PlaybackService : Service() {
         }
 
         updateMediaSessionCustomLayout()
-        startForeground(NOTIFICATION_ID, buildNotification(), android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         onStateChanged?.invoke()
     }
 
@@ -751,7 +792,6 @@ class PlaybackService : Service() {
         // Mantener el estado guardado de la descarga (si la canción está descargada)
         downloadHelper.updateLiked(song.id, newLiked)
         updateMediaSessionCustomLayout()
-        updateNotification()
         onStateChanged?.invoke()
 
         serviceScope.launch {
@@ -824,159 +864,13 @@ class PlaybackService : Service() {
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Reproducción de música",
-            NotificationManager.IMPORTANCE_LOW
+            getString(R.string.notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT
         )
+        channel.description = "Controles de reproducción de localFly"
+        channel.setShowBadge(false)
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)
-    }
-
-    private fun pendingIntentFor(action: String): PendingIntent {
-        val intent = Intent(this, PlaybackService::class.java).apply { this.action = action }
-        return PendingIntent.getService(
-            this,
-            action.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    @UnstableApi
-    private fun buildNotification(largeIcon: Bitmap? = null): Notification {
-        val song = currentSong
-        val isPlaying = player?.isPlaying == true
-
-        val contentIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_sparkles)
-            .setContentTitle(song?.title ?: "localFly")
-            .setContentText(song?.artist ?: "Música para tus oídos")
-            .setContentIntent(contentIntent)
-            .setOngoing(isPlaying)
-            .setOnlyAlertOnce(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-
-        // IMPORTANTE: La imagen del álbum debe ir aquí
-        if (largeIcon != null) {
-            builder.setLargeIcon(largeIcon)
-        }
-
-        // Action 0: Like
-        builder.addAction(
-            if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off,
-            "Me gusta",
-            pendingIntentFor(ACTION_LIKE)
-        )
-
-        // Action 1: Anterior
-        builder.addAction(
-            android.R.drawable.ic_media_previous,
-            "Anterior",
-            pendingIntentFor(ACTION_PREV)
-        )
-
-        // Action 2: Play/Pausa
-        builder.addAction(
-            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-            if (isPlaying) "Pausar" else "Reproducir",
-            pendingIntentFor(ACTION_PLAY_PAUSE)
-        )
-
-        // Action 3: Siguiente
-        builder.addAction(
-            android.R.drawable.ic_media_next,
-            "Siguiente",
-            pendingIntentFor(ACTION_NEXT)
-        )
-
-        // Action 4: No me gusta
-        builder.addAction(
-            R.drawable.ic_dislike_off,
-            "No me gusta",
-            pendingIntentFor(ACTION_DISLIKE)
-        )
-
-        // Configuración MediaStyle para Media3
-        mediaSession?.let { session ->
-            builder.setStyle(
-                MediaStyleNotificationHelper.MediaStyle(session)
-                    .setShowActionsInCompactView(1, 2, 3) // Anterior, Play/Pausa, Siguiente
-            )
-        }
-
-        return builder.build()
-    }
-
-    @UnstableApi
-    private fun updateNotification() {
-        val hasPermission = ActivityCompat.checkSelfPermission(
-            this,
-            android.Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (hasPermission) {
-            // Publicar versión inicial (sin imagen o con la anterior)
-            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification())
-            // Cargar nueva imagen
-            loadLargeIcon()
-        }
-    }
-
-    @UnstableApi
-    private fun loadLargeIcon() {
-        val song = currentSong ?: return
-        serviceScope.launch {
-            val coverUrl = if (!song.album.isNullOrBlank()) {
-                val encodedAlbum = java.net.URLEncoder.encode(song.album, "UTF-8").replace("+", "%20")
-                "$serverBaseUrl/resources/album - $encodedAlbum.jpg"
-            } else {
-                "$serverBaseUrl/cover/${song.id}"
-            }
-
-            try {
-                val bitmap = withContext(Dispatchers.IO) {
-                    Glide.with(this@PlaybackService)
-                        .asBitmap()
-                        .load(coverUrl)
-                        .placeholder(R.drawable.ic_music_placeholder)
-                        .error(
-                            Glide.with(this@PlaybackService)
-                                .asBitmap()
-                                .load("$serverBaseUrl/cover/${song.id}")
-                                .submit(512, 512)
-                                .get()
-                        )
-                        .submit(512, 512)
-                        .get()
-                }
-
-                showNotificationWithBitmap(bitmap)
-            } catch (e: Exception) {
-                // Fallback silencioso
-            }
-        }
-    }
-
-    @UnstableApi
-    private fun showNotificationWithBitmap(bitmap: Bitmap) {
-        val hasPermission = ActivityCompat.checkSelfPermission(
-            this,
-            android.Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (hasPermission) {
-            NotificationManagerCompat.from(this@PlaybackService).notify(
-                NOTIFICATION_ID, 
-                buildNotification(bitmap)
-            )
-        }
     }
 
     override fun onDestroy() {

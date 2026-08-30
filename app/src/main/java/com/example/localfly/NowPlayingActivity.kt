@@ -862,7 +862,7 @@ class NowPlayingActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
-        Intent(this, PlaybackService::class.java).also { intent ->
+        Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_LOCAL_BIND }.also { intent ->
             bindService(intent, connection, Context.BIND_AUTO_CREATE)
         }
     }
