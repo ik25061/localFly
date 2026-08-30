@@ -1,8 +1,10 @@
 package com.example.localfly
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -55,7 +57,7 @@ import java.io.File
  * notificación con controles (me gusta, reproducir/pausar, no me gusta).
  */
 @UnstableApi
-class PlaybackService : MediaSessionService() {
+class PlaybackService : Service() {
 
     companion object {
         const val CHANNEL_ID = "localfly_playback"
@@ -122,7 +124,7 @@ class PlaybackService : MediaSessionService() {
 
     private lateinit var sessionManager: SessionManager
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
+    fun getSession(): MediaSession? {
         return mediaSession
     }
 
@@ -139,6 +141,7 @@ class PlaybackService : MediaSessionService() {
         player?.skipSilenceEnabled = crossfadeEnabled
         player?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                updateNotification()
                 onStateChanged?.invoke()
                 if (isPlaying) {
                     fadeTickerHandler.post(fadeTickerRunnable)
@@ -170,14 +173,6 @@ class PlaybackService : MediaSessionService() {
         })
 
         setupMediaSession()
-
-        // Configuración del proveedor de notificaciones de Media3
-        val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
-            .setChannelId(CHANNEL_ID)
-            .setChannelName(R.string.notification_channel_name)
-            .build()
-        
-        setMediaNotificationProvider(notificationProvider)
 
         // Sincronizar acciones offline al iniciar
         syncOfflineActions()
@@ -433,12 +428,11 @@ class PlaybackService : MediaSessionService() {
         return if (intent?.action == ACTION_LOCAL_BIND) {
             binder
         } else {
-            super.onBind(intent)
+            null
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val result = super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_LIKE -> toggleLike()
@@ -447,10 +441,11 @@ class PlaybackService : MediaSessionService() {
             ACTION_PREV -> prev()
             ACTION_STOP -> {
                 player?.stop()
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
         }
-        return result
+        return START_STICKY
     }
 
     /**
@@ -640,6 +635,7 @@ class PlaybackService : MediaSessionService() {
             player?.addMediaItem(nextMediaItem)
         }
 
+        updateNotification()
         onStateChanged?.invoke()
 
         // Borrar la descarga de la canción que acaba de terminar, igual
@@ -754,6 +750,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         updateMediaSessionCustomLayout()
+        updateNotification()
         onStateChanged?.invoke()
     }
 
@@ -865,12 +862,104 @@ class PlaybackService : MediaSessionService() {
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_LOW
         )
-        channel.description = "Controles de reproducción de localFly"
-        channel.setShowBadge(false)
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(channel)
+    }
+
+    private fun pendingIntentFor(action: String): PendingIntent {
+        val intent = Intent(this, PlaybackService::class.java).apply { this.action = action }
+        return PendingIntent.getService(
+            this,
+            action.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    @UnstableApi
+    private fun buildNotification(largeIcon: Bitmap? = null): Notification {
+        val song = currentSong
+        val isPlaying = player?.isPlaying == true
+
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_sparkles)
+            .setContentTitle(song?.title ?: "localFly")
+            .setContentText(song?.artist ?: "Música para tus oídos")
+            .setContentIntent(contentIntent)
+            .setOngoing(isPlaying)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+
+        if (largeIcon != null) {
+            builder.setLargeIcon(largeIcon)
+        }
+
+        // Acciones: Like, Anterior, Play/Pause, Siguiente, Dislike
+        builder.addAction(
+            if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off,
+            "Me gusta", pendingIntentFor(ACTION_LIKE)
+        )
+        builder.addAction(android.R.drawable.ic_media_previous, "Anterior", pendingIntentFor(ACTION_PREV))
+        builder.addAction(
+            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+            if (isPlaying) "Pausar" else "Reproducir", pendingIntentFor(ACTION_PLAY_PAUSE)
+        )
+        builder.addAction(android.R.drawable.ic_media_next, "Siguiente", pendingIntentFor(ACTION_NEXT))
+        builder.addAction(R.drawable.ic_dislike_off, "No me gusta", pendingIntentFor(ACTION_DISLIKE))
+
+        mediaSession?.let { session ->
+            builder.setStyle(
+                MediaStyleNotificationHelper.MediaStyle(session)
+                    .setShowActionsInCompactView(1, 2, 3)
+            )
+        }
+
+        return builder.build()
+    }
+
+    @UnstableApi
+    private fun updateNotification() {
+        val hasPermission = ActivityCompat.checkSelfPermission(
+            this, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasPermission) {
+            val notification = buildNotification()
+            startForeground(NOTIFICATION_ID, notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            loadLargeIcon()
+        }
+    }
+
+    @UnstableApi
+    private fun loadLargeIcon() {
+        val song = currentSong ?: return
+        serviceScope.launch {
+            val coverUrl = "$serverBaseUrl/cover/${song.id}"
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    Glide.with(this@PlaybackService)
+                        .asBitmap().load(coverUrl)
+                        .placeholder(R.drawable.ic_music_placeholder)
+                        .submit(512, 512).get()
+                }
+                val hasPermission = ActivityCompat.checkSelfPermission(
+                    this@PlaybackService, android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPermission) {
+                    NotificationManagerCompat.from(this@PlaybackService).notify(NOTIFICATION_ID, buildNotification(bitmap))
+                }
+            } catch (e: Exception) {}
+        }
     }
 
     override fun onDestroy() {
