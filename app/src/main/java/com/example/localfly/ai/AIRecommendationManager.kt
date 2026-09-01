@@ -38,7 +38,7 @@ class AIRecommendationManager(
         val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
 
         // 2. Toda la biblioteca disponible para recomendar
-        val libResp = RetrofitClient.api.getLibrary(userId, limit = 2000)
+        val libResp = RetrofitClient.api.getLibrary(userId, limit = 5000)
         val allSongs = if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
 
         if (allSongs.isEmpty()) return@withContext emptyList()
@@ -127,10 +127,13 @@ class AIRecommendationManager(
 
         val diversified = mutableListOf<Song>()
         val artistCounts = mutableMapOf<String, Int>()
+        // Ajustar límite por artista según el total pedido para no quedarnos cortos
+        val maxPerArtist = if (limit > 50) (limit / 20).coerceAtLeast(5) else 2
+
         for ((song, _) in scored) {
             val key = song.artist ?: song.id
             val count = artistCounts[key] ?: 0
-            if (count < 2) { 
+            if (count < maxPerArtist) { 
                 diversified.add(song)
                 artistCounts[key] = count + 1
             }

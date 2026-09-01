@@ -209,4 +209,7 @@ interface ApiService {
     @GET("api/config/ip")
     suspend fun getIpConfig(): Response<IpConfigResponse>
 
+    @POST("api/rescan")
+    suspend fun rescanLibrary(): Response<Unit>
+
 }

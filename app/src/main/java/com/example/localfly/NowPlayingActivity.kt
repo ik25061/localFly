@@ -28,6 +28,7 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.dialogs.AddToPlaylistDialog
+import com.example.localfly.utils.LocalLogger
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
@@ -121,11 +122,14 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        sessionManager = SessionManager(this)
+        applyAppSettings()
+        LocalLogger.log(this, "NowPlayingActivity iniciada")
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_now_playing)
 
         downloadHelper = DownloadManagerHelper.getInstance(this)
-        sessionManager = SessionManager(this)
         amplituda = linc.com.amplituda.Amplituda(this)
 
         ivCircularImage = findViewById(R.id.ivCircularImage)
@@ -212,6 +216,40 @@ class NowPlayingActivity : AppCompatActivity() {
             view.performClick()
             false
         }
+
+        setupQueue()
+
+        if (playbackService != null) {
+            refreshUi()
+        }
+    }
+
+    private fun applyAppSettings() {
+        // 1. Aplicar Tema de color
+        when (sessionManager.getAppColor()) {
+            "Azul" -> setTheme(R.style.Theme_Localfly_Blue)
+            "Rojo" -> setTheme(R.style.Theme_Localfly_Red)
+            "Púrpura" -> setTheme(R.style.Theme_Localfly_Purple)
+            else -> setTheme(R.style.Theme_Localfly) // Verde por defecto
+        }
+
+        // 2. Aplicar Tamaño de fuente
+        val scale = when (sessionManager.getTextSize()) {
+            "Pequeño" -> 0.85f
+            "Grande" -> 1.15f
+            else -> 1.0f
+        }
+        
+        val configuration = resources.configuration
+        configuration.fontScale = scale
+        val metrics = resources.displayMetrics
+        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getMetrics(metrics)
+        @Suppress("DEPRECATION")
+        metrics.scaledDensity = configuration.fontScale * metrics.density
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(configuration, metrics)
     }
 
     private fun toggleQueue() {
@@ -586,6 +624,13 @@ class NowPlayingActivity : AppCompatActivity() {
         }
     }
 
+    private fun formatTime(ms: Long): String {
+        val totalSeconds = ms / 1000
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+    }
+
     private suspend fun fetchLyrics(song: Song): List<LyricLine>? = withContext(Dispatchers.IO) {
         // 0. Archivo local (canción descargada). Puede ser LRC real
         //    (con timestamps) o texto plano guardado previamente.
@@ -822,13 +867,6 @@ class NowPlayingActivity : AppCompatActivity() {
             tvCurrentTime.text = formatTime(progress)
             sbLyricsMiniProgress?.progress = progress.toInt()
         }
-    }
-
-    private fun formatTime(ms: Long): String {
-        val totalSeconds = ms / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
 
     private fun toTitleCase(text: String?): String? {

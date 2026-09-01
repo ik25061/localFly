@@ -53,7 +53,15 @@ class HomeFragment : Fragment() {
 
         setupGreeting()
         setupAdapters()
+        setupSettingsButton()
         loadData()
+
+        binding.btnSettings.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, SettingsFragment())
+                .addToBackStack(null)
+                .commit()
+        }
 
         // Listeners "Ver todo"
         binding.tvSeeAllLiked.setOnClickListener {
@@ -87,7 +95,8 @@ class HomeFragment : Fragment() {
                 if (progress.isDownloading) {
                     binding.tvMonthlySummary.text = "🔄 Auto-descargando: ${progress.songTitle} (${progress.current}/${progress.total})"
                 } else {
-                    binding.tvMonthlySummary.text = "✅ Tu biblioteca offline está al día (500 temas recomendados)."
+                    val count = downloadHelper.getDownloadedSongs().size
+                    binding.tvMonthlySummary.text = "✅ Biblioteca offline: $count de 500 temas recomendados."
                 }
             }
         }
@@ -309,10 +318,7 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 9. Resumen mensual
-            if (isAdded) {
-                binding.tvMonthlySummary.text = "¡La IA ha seleccionado música nueva basada en tus gustos!"
-            }
+            // 9. Resumen mensual (se maneja vía DownloadManagerHelper.downloadProgress)
         }
     }
     // Funciones de interacción (delegar a la actividad o al servicio)
@@ -438,6 +444,20 @@ class HomeFragment : Fragment() {
                 .addToBackStack(null)
                 .commit()
         }
+    }
+
+    private fun setupSettingsButton() {
+        val username = sessionManager.getUsername() ?: "User"
+        val firstLetter = username.take(1).uppercase()
+        binding.tvSettingsAvatar.text = firstLetter
+        
+        // Generar un color persistente basado en el nombre
+        val colors = listOf("#E91E63", "#9C27B0", "#673AB7", "#3F51B5", "#2196F3", "#009688", "#4CAF50", "#FF9800", "#FF5722")
+        val colorIndex = Math.abs(username.hashCode()) % colors.size
+        val color = android.graphics.Color.parseColor(colors[colorIndex])
+        
+        val background = binding.btnSettings.background as android.graphics.drawable.GradientDrawable
+        background.setColor(color)
     }
 
     override fun onDestroyView() {

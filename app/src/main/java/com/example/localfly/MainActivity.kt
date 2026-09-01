@@ -32,9 +32,11 @@ import com.example.localfly.fragments.SearchFragment
 import com.example.localfly.fragments.PlaylistsFragment
 import com.example.localfly.network.*
 import com.example.localfly.network.ServerReachability
+import com.example.localfly.utils.LocalLogger
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.launch
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class MainActivity : AppCompatActivity() {
 
     // ===== VARIABLES =====
@@ -89,10 +91,15 @@ class MainActivity : AppCompatActivity() {
 
     // ===== ON CREATE =====
     override fun onCreate(savedInstanceState: Bundle?) {
+        LocalLogger.initCrashHandler(this)
+        LocalLogger.log(this, "App iniciada (onCreate)")
+        
+        sessionManager = SessionManager(this)
+        applyAppSettings()
+        
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        sessionManager = SessionManager(this)
         downloadHelper = DownloadManagerHelper.getInstance(this)
 
         // Verificar sesión
@@ -161,7 +168,87 @@ class MainActivity : AppCompatActivity() {
         }
 
         setupServerConnectivityMonitoring()
+        setupRescanObserver()
     }
+
+    private fun setupRescanObserver() {
+        val layoutRescan = findViewById<View>(R.id.layoutRescanProgress)
+        val tvRescan = findViewById<TextView>(R.id.tvRescanMessage)
+        val pbRescan = findViewById<android.widget.ProgressBar>(R.id.pbRescan)
+
+        lifecycleScope.launch {
+            RescanManager.progress.collect { progress ->
+                if (progress.phase == "idle") {
+                    layoutRescan.visibility = View.GONE
+                    layoutRescan.clearAnimation()
+                } else {
+                    if (layoutRescan.visibility != View.VISIBLE) {
+                        layoutRescan.visibility = View.VISIBLE
+                        startRescanPulseAnimation(layoutRescan)
+                    }
+                    tvRescan.text = progress.message.ifBlank { "Reescaneando sistema..." }
+                    pbRescan.progress = progress.pct
+                    pbRescan.isIndeterminate = progress.total == 0 && progress.pct < 100
+                }
+            }
+        }
+        
+        // Iniciar monitoreo por si ya había uno en curso en el server
+        RescanManager.startMonitoring(lifecycleScope)
+    }
+
+    private fun startRescanPulseAnimation(view: View) {
+        view.alpha = 1.0f
+        view.animate()
+            .alpha(0.6f)
+            .setDuration(1200)
+            .withEndAction {
+                if (view.visibility == View.VISIBLE) {
+                    view.animate()
+                        .alpha(1.0f)
+                        .setDuration(1200)
+                        .withEndAction { startRescanPulseAnimation(view) }
+                        .start()
+                }
+            }
+            .start()
+    }
+
+
+
+    private fun applyAppSettings() {
+        // 1. Aplicar Tema de color
+        when (sessionManager.getAppColor()) {
+            "Azul" -> setTheme(R.style.Theme_Localfly_Blue)
+            "Rojo" -> setTheme(R.style.Theme_Localfly_Red)
+            "Púrpura" -> setTheme(R.style.Theme_Localfly_Purple)
+            else -> setTheme(R.style.Theme_Localfly) // Verde por defecto
+        }
+        
+        // Forzar fondo negro o color del tema para evitar que Android use colores dinámicos del sistema
+        window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
+
+        // 2. Aplicar Tamaño de fuente
+        val scale = when (sessionManager.getTextSize()) {
+            "Extra pequeño" -> 0.75f
+            "Normal" -> 1.0f
+            "Grande" -> 1.25f
+            "Extra grande" -> 1.45f
+            else -> 1.0f
+        }
+        
+        val configuration = resources.configuration
+        configuration.fontScale = scale
+        val metrics = resources.displayMetrics
+        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+        @Suppress("DEPRECATION")
+        wm.defaultDisplay.getMetrics(metrics)
+        @Suppress("DEPRECATION")
+        metrics.scaledDensity = configuration.fontScale * metrics.density
+        @Suppress("DEPRECATION")
+        resources.updateConfiguration(configuration, metrics)
+    }
+
 
     /**
      * En Android 13+ (garantizado siempre, minSdk 34) las notificaciones

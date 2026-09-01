@@ -326,6 +326,8 @@ class DownloadManagerHelper private constructor(context: Context) {
         
         // Obtener recomendaciones (la IA ya usa los likes y artistas favoritos)
         val recommendations = aiManager.getRecommendations(limit = limit)
+        android.util.Log.d("DownloadManager", "Auto-descarga: IA devolvió ${recommendations.size} recomendaciones.")
+        
         val toDownload = recommendations.filter { !isDownloaded(it.id) }
 
         if (toDownload.isNotEmpty()) {

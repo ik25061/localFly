@@ -148,6 +148,25 @@ data class SongsByIdsResponse(
     val songs: List<Song>
 )
 
+// --- Rescan Status ---
+
+data class RescanProgress(
+    val phase: String = "idle",
+    val pct: Int = 0,
+    val processed: Int = 0,
+    val total: Int = 0,
+    val message: String = ""
+)
+
+data class RescanStreamEvent(
+    val type: String,
+    val phase: String? = null,
+    val pct: Int? = null,
+    val processed: Int? = null,
+    val total: Int? = null,
+    val message: String? = null
+)
+
 // --- Lyrics ---
 
 data class SyncedLyricLine(

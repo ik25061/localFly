@@ -6,6 +6,39 @@
     android:orientation="vertical"
     android:background="#121212">
 
+    <!-- Banner de reescaneo -->
+    <LinearLayout
+        android:id="@+id/layoutRescanProgress"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#1DB954"
+        android:paddingVertical="10dp"
+        android:paddingHorizontal="16dp"
+        android:elevation="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvRescanMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Reescaneando sistema..."
+            android:textColor="#000000"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <ProgressBar
+            android:id="@+id/pbRescan"
+            style="@android:style/Widget.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="6dp"
+            android:layout_marginTop="6dp"
+            android:progress="0"
+            android:progressTint="#000000"
+            android:progressBackgroundTint="#33000000" />
+    </LinearLayout>
+
     <FrameLayout
         android:id="@+id/container"
         android:layout_width="match_parent"

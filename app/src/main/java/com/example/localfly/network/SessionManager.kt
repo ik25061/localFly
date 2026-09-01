@@ -159,4 +159,14 @@ class SessionManager(context: Context) {
             emptySet()
         }
     }
+
+    // --- Ajustes de App ---
+
+    fun getTextSize(): String = prefs.getString("app_text_size", "Normal") ?: "Normal"
+    fun setTextSize(size: String) = prefs.edit().putString("app_text_size", size).apply()
+
+    fun getAppColor(): String = prefs.getString("app_color", "Green") ?: "Green"
+    fun setAppColor(color: String) = prefs.edit().putString("app_color", color).apply()
+
+    fun isAdmin(): Boolean = getUsername()?.equals("Rafael", ignoreCase = true) == true
 }

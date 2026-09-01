@@ -42,6 +42,7 @@ import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
+import com.example.localfly.utils.LocalLogger
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -131,6 +132,7 @@ class PlaybackService : Service() {
     @UnstableApi
     override fun onCreate() {
         super.onCreate()
+        LocalLogger.log(this, "PlaybackService iniciado (onCreate)")
         sessionManager = SessionManager(this)
         downloadHelper = DownloadManagerHelper.getInstance(this)
         createNotificationChannel()
@@ -226,12 +228,14 @@ class PlaybackService : Service() {
                 playerCommand: Int
             ): Int {
                 when (playerCommand) {
-                    Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
-                        next()
+                    Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
+                        // Remapear botón de "Adelante" a "No me gusta" (dislike)
+                        dislikeCurrentSong()
                         return SessionResult.RESULT_SUCCESS
                     }
-                    Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
-                        prev()
+                    Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
+                        // Remapear botón de "Atrás" a "Me gusta" (like)
+                        toggleLike()
                         return SessionResult.RESULT_SUCCESS
                     }
                 }
@@ -433,6 +437,7 @@ class PlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        LocalLogger.log(this, "PlaybackService onStartCommand: action=${intent?.action}")
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_LIKE -> toggleLike()
@@ -904,23 +909,31 @@ class PlaybackService : Service() {
             builder.setLargeIcon(largeIcon)
         }
 
-        // Acciones: Like, Anterior, Play/Pause, Siguiente, Dislike
+        // Botón 0: Anterior (original, oculto en compacta)
+        builder.addAction(android.R.drawable.ic_media_previous, "Anterior", pendingIntentFor(ACTION_PREV))
+        
+        // Botón 1: Like (posicionado donde iría "Atrás")
         builder.addAction(
             if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off,
             "Me gusta", pendingIntentFor(ACTION_LIKE)
         )
-        builder.addAction(android.R.drawable.ic_media_previous, "Anterior", pendingIntentFor(ACTION_PREV))
+        
+        // Botón 2: Play/Pause (Central)
         builder.addAction(
             if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
             if (isPlaying) "Pausar" else "Reproducir", pendingIntentFor(ACTION_PLAY_PAUSE)
         )
-        builder.addAction(android.R.drawable.ic_media_next, "Siguiente", pendingIntentFor(ACTION_NEXT))
+        
+        // Botón 3: Dislike (posicionado donde iría "Adelante")
         builder.addAction(R.drawable.ic_dislike_off, "No me gusta", pendingIntentFor(ACTION_DISLIKE))
+        
+        // Botón 4: Siguiente (original, oculto en compacta)
+        builder.addAction(android.R.drawable.ic_media_next, "Siguiente", pendingIntentFor(ACTION_NEXT))
 
         mediaSession?.let { session ->
             builder.setStyle(
                 MediaStyleNotificationHelper.MediaStyle(session)
-                    .setShowActionsInCompactView(1, 2, 3)
+                    .setShowActionsInCompactView(1, 2, 3) // Muestra Like, Play, Dislike en los botones principales
             )
         }
 

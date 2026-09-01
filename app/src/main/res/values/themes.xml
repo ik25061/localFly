@@ -2,11 +2,32 @@
     <!-- Base application theme. -->
     <style name="Base.Theme.Localfly" parent="Theme.Material3.DayNight.NoActionBar">
         <!-- Customize your light theme here. -->
-        <item name="android:fontFamily">sans-serif-light</item>
-        <item name="fontFamily">sans-serif-light</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="fontFamily">sans-serif</item>
     </style>
 
-    <style name="Theme.Localfly" parent="Base.Theme.Localfly" />
+    <style name="Theme.Localfly" parent="Base.Theme.Localfly">
+        <item name="colorPrimary">#1DB954</item>
+        <item name="colorSecondary">#191414</item>
+    </style>
+
+    <style name="Theme.Localfly.Blue" parent="Base.Theme.Localfly">
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorSecondary">#0D47A1</item>
+        <item name="android:windowBackground">#001020</item>
+    </style>
+
+    <style name="Theme.Localfly.Red" parent="Base.Theme.Localfly">
+        <item name="colorPrimary">#F44336</item>
+        <item name="colorSecondary">#B71C1C</item>
+        <item name="android:windowBackground">#1A0505</item>
+    </style>
+
+    <style name="Theme.Localfly.Purple" parent="Base.Theme.Localfly">
+        <item name="colorPrimary">#9C27B0</item>
+        <item name="colorSecondary">#4A148C</item>
+        <item name="android:windowBackground">#10051A</item>
+    </style>
 
     <style name="RoundedCorners4" parent="">
         <item name="cornerFamily">rounded</item>
