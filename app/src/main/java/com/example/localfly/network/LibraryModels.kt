@@ -155,7 +155,9 @@ data class RescanProgress(
     val pct: Int = 0,
     val processed: Int = 0,
     val total: Int = 0,
-    val message: String = ""
+    val message: String = "",
+    val totalSongsLibrary: Int = 0,
+    val durationSec: Int = 0
 )
 
 data class RescanStreamEvent(
@@ -164,7 +166,9 @@ data class RescanStreamEvent(
     val pct: Int? = null,
     val processed: Int? = null,
     val total: Int? = null,
-    val message: String? = null
+    val message: String? = null,
+    val totalSongsLibrary: Int? = null,
+    val durationSec: Int? = null
 )
 
 // --- Lyrics ---

@@ -74,8 +74,8 @@ class SettingsFragment : Fragment() {
     private fun setupFontSizeSpinner(root: View) {
         val spinner = root.findViewById<Spinner>(R.id.spinnerFontSize)
         val options = arrayOf("Extra pequeño", "Normal", "Grande", "Extra grande")
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
+        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
         spinner.adapter = adapter
 
         val currentSize = sessionManager.getTextSize()
@@ -98,8 +98,8 @@ class SettingsFragment : Fragment() {
     private fun setupAppColorSpinner(root: View) {
         val spinner = root.findViewById<Spinner>(R.id.spinnerAppColor)
         val options = arrayOf("Verde", "Azul", "Rojo", "Púrpura")
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
+        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
         spinner.adapter = adapter
 
         val currentColor = sessionManager.getAppColor()

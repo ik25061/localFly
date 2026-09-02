@@ -81,9 +81,14 @@ object RescanManager {
             } catch (e: Exception) {
                 // El stream puede cerrarse al terminar o por timeout
             } finally {
+                monitoringJob = null
                 // Si terminamos y la fase no es error o done, lo ponemos a idle tras un rato
                 if (_progress.value.phase != "error" && _progress.value.phase != "done") {
-                    _progress.value = RescanProgress(phase = "idle")
+                    // La conexión se cerró pero no vimos un final real (done/error):
+                    // probablemente fue el timeout de la propia conexión HTTP, no del
+                    // reescaneo. Reconectar en vez de dar por hecho que ya acabó.
+                    delay(2000)
+                    startMonitoring(scope)
                 }
             }
         }
@@ -103,10 +108,16 @@ object RescanManager {
                 pct = event.pct ?: 0,
                 processed = event.processed ?: 0,
                 total = event.total ?: 0,
-                message = msg
+                message = msg,
+                totalSongsLibrary = event.totalSongsLibrary ?: 0,
+                durationSec = event.durationSec ?: 0
             )
         } else if (event.type == "done") {
-            _progress.value = RescanProgress(phase = "done", pct = 100, message = "¡Escaneo completado!")
+            _progress.value = _progress.value.copy(
+                phase = "done", 
+                pct = 100, 
+                message = "¡Escaneo completado!"
+            )
             // No limpiar inmediatamente para que el usuario vea el éxito
             GlobalScope.launch {
                 delay(10000)

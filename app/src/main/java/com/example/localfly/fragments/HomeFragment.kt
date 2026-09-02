@@ -269,36 +269,36 @@ class HomeFragment : Fragment() {
 
             // 3. Álbumes
             try {
-                val albumsResp = RetrofitClient.api.getAlbums(userId = userId, limit = 20)
+                val albumsResp = RetrofitClient.api.getAlbums(userId = userId, limit = 100)
                 if (albumsResp.isSuccessful && albumsResp.body() != null) {
-                    albumAdapter.updateItems(albumsResp.body()!!.items)
+                    albumAdapter.updateItems(albumsResp.body()!!.items.shuffled().take(20))
                 }
             } catch (e: Exception) { }
 
             // 4. Artistas
             try {
-                val artistsResp = RetrofitClient.api.getArtists(userId = userId, limit = 20)
+                val artistsResp = RetrofitClient.api.getArtists(userId = userId, limit = 100)
                 if (artistsResp.isSuccessful && artistsResp.body() != null) {
-                    artistAdapter.updateItems(artistsResp.body()!!.items)
+                    artistAdapter.updateItems(artistsResp.body()!!.items.shuffled().take(20))
                 }
             } catch (e: Exception) { }
 
             // 5. Géneros
             try {
-                val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 40)
+                val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 100)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
                     val rawGenres = genresResp.body()!!.items
                     // Usar utilidad compartida para aplanar géneros legacy
-                    val flattenedGenres = GenreUtils.flattenLegacyGenres(rawGenres)
-                    genreAdapter.updateItems(flattenedGenres.take(20))
+                    val flattenedGenres = com.example.localfly.utils.GenreUtils.flattenLegacyGenres(rawGenres)
+                    genreAdapter.updateItems(flattenedGenres.shuffled().take(20))
                 }
             } catch (e: Exception) { }
 
             // 6. Años
             try {
-                val yearsResp = RetrofitClient.api.getYears(userId = userId, limit = 20)
+                val yearsResp = RetrofitClient.api.getYears(userId = userId, limit = 100)
                 if (yearsResp.isSuccessful && yearsResp.body() != null) {
-                    yearAdapter.updateItems(yearsResp.body()!!.items)
+                    yearAdapter.updateItems(yearsResp.body()!!.items.shuffled().take(20))
                 }
             } catch (e: Exception) { }
 

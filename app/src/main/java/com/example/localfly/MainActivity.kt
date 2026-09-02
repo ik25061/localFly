@@ -175,6 +175,7 @@ class MainActivity : AppCompatActivity() {
         val layoutRescan = findViewById<View>(R.id.layoutRescanProgress)
         val tvRescan = findViewById<TextView>(R.id.tvRescanMessage)
         val pbRescan = findViewById<android.widget.ProgressBar>(R.id.pbRescan)
+        var previousPhase = "idle"
 
         lifecycleScope.launch {
             RescanManager.progress.collect { progress ->
@@ -190,8 +191,27 @@ class MainActivity : AppCompatActivity() {
                     pbRescan.progress = progress.pct
                     pbRescan.isIndeterminate = progress.total == 0 && progress.pct < 100
                 }
+
+                if (progress.phase == "done" && previousPhase != "done") {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Reescaneo completado")
+                        .setMessage(
+                            "Biblioteca actualizada: ${progress.totalSongsLibrary} canciones en total.\n" +
+                            "Tiempo empleado: ${progress.durationSec / 60} min ${progress.durationSec % 60} s."
+                        )
+                        .setPositiveButton("Aceptar", null)
+                        .show()
+                } else if (progress.phase == "error" && previousPhase != "error") {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Error en el reescaneo")
+                        .setMessage(progress.message.ifBlank { "Ocurrió un error durante el reescaneo." })
+                        .setPositiveButton("Aceptar", null)
+                        .show()
+                }
+                previousPhase = progress.phase
             }
         }
+
         
         // Iniciar monitoreo por si ya había uno en curso en el server
         RescanManager.startMonitoring(lifecycleScope)
