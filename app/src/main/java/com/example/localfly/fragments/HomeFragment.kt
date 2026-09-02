@@ -20,6 +20,7 @@ import com.example.localfly.utils.GenreUtils
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
+@androidx.media3.common.util.UnstableApi
 class HomeFragment : Fragment() {
 
     private var _binding: FragmentHomeBinding? = null

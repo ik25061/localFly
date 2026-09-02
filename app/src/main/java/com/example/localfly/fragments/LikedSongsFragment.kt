@@ -20,6 +20,7 @@ import com.example.localfly.network.*
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 
+@androidx.media3.common.util.UnstableApi
 class LikedSongsFragment : Fragment() {
 
     private lateinit var rvSongs: RecyclerView
@@ -181,6 +182,11 @@ class LikedSongsFragment : Fragment() {
             adapter.removeAt(position)
             currentSongs.removeAt(position)
             tvCount.text = "${currentSongs.size} canciones"
+            // Compensar el desplazamiento en el servidor: esta canción ya no
+            // aparecerá en el ORDER BY del backend, así que la siguiente
+            // página debe pedirse una posición antes para no saltarse ni
+            // repetir la que le sigue.
+            currentOffset = (currentOffset - 1).coerceAtLeast(0)
         }
         viewLifecycleOwner.lifecycleScope.launch {
             try {
