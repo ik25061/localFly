@@ -61,7 +61,15 @@ class MainActivity : AppCompatActivity() {
     private var isBound = false
 
     private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* resultado ignorado a propósito: si lo deniega, la app sigue funcionando igual, solo sin notificación */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+            LocalLogger.log(
+                this,
+                "Resultado permiso POST_NOTIFICATIONS → concedido=$isGranted " +
+                    "(en Android 13+ la notificación de MediaSession está exenta, pero conviene tenerlo)"
+            )
+            // Aunque se deniegue, la app sigue funcionando: la notificación de
+            // reproducción (MediaSession) está exenta del permiso, según la doc oficial.
+        }
 
 
     private lateinit var bottomNav: BottomNavigationView

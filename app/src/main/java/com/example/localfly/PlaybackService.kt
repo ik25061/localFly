@@ -142,6 +142,29 @@ class PlaybackService : MediaSessionService() {
             DefaultMediaNotificationProvider.Builder(this).build()
         )
 
+        // ===== IMPORTANTE PARA REPRODUCCIÓN EN SEGUNDO PLANO =====
+        // Nuestras Activities (MainActivity/NowPlayingActivity) se vinculan con el
+        // binder local (ACTION_LOCAL_BIND), por lo que el framework NUNCA registra
+        // la sesión por sí solo (eso solo ocurre cuando un MediaController real
+        // conecta contra androidx.media3.session.MediaSessionService).
+        //
+        // Sin este registro, Media3 no muestra la notificación de reproducción ni
+        // promueve el servicio a foreground. Entonces, al bloquear la pantalla se
+        // llama a onStop() -> unbindService(), y como el servicio ni está "started"
+        // ni en foreground ni tiene sesión registrada, el sistema lo DESTRUYE y la
+        // música se detiene (además de perderse la cola, por eso al desbloquear no
+        // aparece nada reproduciéndose).
+        //
+        // addSession() es idempotente (si la sesión ya estaba registrada no hace
+        // nada) y hace que Media3 cree el controlador interno de notificación, que
+        // es justo el disparador del auto-foreground: en cuanto el player empiece a
+        // sonar (STATE_READY + playWhenReady), la notificación sale y el servicio
+        // pasa a foreground, sobreviviendo al bloqueo de pantalla y a los unbind.
+        mediaSession?.let { session ->
+            addSession(session)
+            LocalLogger.log(this, "PlaybackService: sesión registrada con MediaSessionService (addSession)")
+        }
+
         syncOfflineActions()
     }
 
@@ -337,6 +360,10 @@ class PlaybackService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        LocalLogger.log(
+            this,
+            "PlaybackService onStartCommand flags=$flags startId=$startId action=${intent?.action ?: "null"}"
+        )
         return START_STICKY
     }
 
