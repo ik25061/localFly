@@ -11,7 +11,6 @@ import java.io.InputStreamReader
 
 /**
  * Gestiona el monitoreo del reescaneo de la biblioteca en tiempo real.
- * Se conecta al endpoint SSE /api/rescan-stream del servidor.
  */
 object RescanManager {
     private val _progress = MutableStateFlow(RescanProgress())
@@ -20,14 +19,21 @@ object RescanManager {
     private var monitoringJob: Job? = null
     private val client = OkHttpClient()
     private val gson = Gson()
+    
+    private var lastUpdateMs = 0L
+    private var lastProcessedCount = -1
+    
+    // Almacenamos el último scope recibido para tareas diferidas (ej: auto-hide)
+    private var activeScope: CoroutineScope? = null
 
-    /**
-     * Inicia la orden de reescaneo en el servidor y arranca el monitoreo
-     * del progreso a través del stream.
-     */
     fun triggerRescan(scope: CoroutineScope) {
-        if (_progress.value.phase != "idle" && _progress.value.phase != "done" && _progress.value.phase != "error") {
-            return // Ya hay uno en curso
+        activeScope = scope
+        val current = _progress.value
+        val isStuck = (current.phase == "scanning" || current.phase == "building") && 
+                      (System.currentTimeMillis() - lastUpdateMs > 30000)
+
+        if (current.phase != "idle" && current.phase != "done" && current.phase != "error" && !isStuck) {
+            return 
         }
 
         startMonitoring(scope)
@@ -35,21 +41,15 @@ object RescanManager {
         scope.launch(Dispatchers.IO) {
             try {
                 _progress.value = RescanProgress(phase = "building", message = "Iniciando escaneo...")
-                val response = RetrofitClient.api.rescanLibrary()
-                if (!response.isSuccessful) {
-                    _progress.value = RescanProgress(phase = "error", message = "El servidor rechazó la orden.")
-                }
+                RetrofitClient.api.rescanLibrary()
             } catch (e: Exception) {
                 _progress.value = RescanProgress(phase = "error", message = "Fallo de conexión: ${e.message}")
             }
         }
     }
 
-    /**
-     * Se conecta al stream de eventos del servidor para recibir el progreso
-     * segundo a segundo.
-     */
     fun startMonitoring(scope: CoroutineScope) {
+        activeScope = scope
         if (monitoringJob?.isActive == true) return
 
         monitoringJob = scope.launch(Dispatchers.IO) {
@@ -58,10 +58,7 @@ object RescanManager {
 
             try {
                 client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        if (_progress.value.phase == "idle") _progress.value = RescanProgress(phase = "idle")
-                        return@use
-                    }
+                    if (!response.isSuccessful) return@use
 
                     val reader = BufferedReader(InputStreamReader(response.body!!.byteStream()))
                     var line: String?
@@ -72,21 +69,14 @@ object RescanManager {
                             try {
                                 val event = gson.fromJson(json, RescanStreamEvent::class.java)
                                 updateFromEvent(event)
-                            } catch (e: Exception) {
-                                // Ignorar líneas corruptas o latidos del corazón (heartbeats)
-                            }
+                            } catch (e: Exception) {}
                         }
                     }
                 }
             } catch (e: Exception) {
-                // El stream puede cerrarse al terminar o por timeout
             } finally {
                 monitoringJob = null
-                // Si terminamos y la fase no es error o done, lo ponemos a idle tras un rato
                 if (_progress.value.phase != "error" && _progress.value.phase != "done") {
-                    // La conexión se cerró pero no vimos un final real (done/error):
-                    // probablemente fue el timeout de la propia conexión HTTP, no del
-                    // reescaneo. Reconectar en vez de dar por hecho que ya acabó.
                     delay(2000)
                     startMonitoring(scope)
                 }
@@ -97,10 +87,13 @@ object RescanManager {
     private fun updateFromEvent(event: RescanStreamEvent) {
         if (event.type == "progress") {
             var msg = event.message ?: ""
-            
-            // Si el servidor nos da números (procesados/total), creamos un mensaje más detallado
             if (event.total != null && event.total > 0 && event.processed != null) {
                 msg = "Revisando canción ${event.processed} de ${event.total}"
+                
+                if (event.processed != lastProcessedCount) {
+                    lastProcessedCount = event.processed
+                    lastUpdateMs = System.currentTimeMillis()
+                }
             }
 
             _progress.value = RescanProgress(
@@ -113,14 +106,11 @@ object RescanManager {
                 durationSec = event.durationSec ?: 0
             )
         } else if (event.type == "done") {
-            _progress.value = _progress.value.copy(
-                phase = "done", 
-                pct = 100, 
-                message = "¡Escaneo completado!"
-            )
-            // No limpiar inmediatamente para que el usuario vea el éxito
-            GlobalScope.launch {
-                delay(10000)
+            _progress.value = _progress.value.copy(phase = "done", pct = 100, message = "¡Escaneo completado!")
+            
+            // Auto-ocultar banner tras unos segundos de éxito
+            activeScope?.launch {
+                delay(8000)
                 if (_progress.value.phase == "done") {
                     _progress.value = RescanProgress(phase = "idle")
                 }

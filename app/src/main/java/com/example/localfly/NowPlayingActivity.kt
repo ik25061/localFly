@@ -60,7 +60,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnAddToPlaylist: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
-    private lateinit var btnShowQueue: ImageButton
+    private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvUpcomingHeader: TextView
     private lateinit var btnSmartReorder: com.google.android.material.button.MaterialButton
@@ -110,8 +110,19 @@ class NowPlayingActivity : AppCompatActivity() {
             val binder = service as PlaybackService.LocalBinder
             playbackService = binder.getService()
             isBound = true
-            playbackService?.onStateChanged = { refreshUi() }
+            playbackService?.onStateChanged = { 
+                refreshUi()
+                // Verificar si la cola se está vaciando y rellenar si es necesario
+                val service = playbackService
+                if (service != null) {
+                    val pending = service.queue.size - (service.currentIndex + 1)
+                    if (pending < 5) {
+                        setupQueue()
+                    }
+                }
+            }
             if (queueIsVisible) updateQueueUI()
+            setupQueue() // Asegurar canciones al entrar
             refreshUi()
         }
 
@@ -148,7 +159,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
-        btnShowQueue = findViewById(R.id.btnShowQueue)
+        btnShowQueueTop = findViewById(R.id.btnShowQueueTop)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         tvUpcomingHeader = findViewById(R.id.tvUpcomingHeader)
         btnSmartReorder = findViewById(R.id.btnSmartReorder)
@@ -181,7 +192,7 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         btnDeleteSong.setOnClickListener { onDeleteSongClicked() }
         btnRepeat.setOnClickListener { playbackService?.toggleRepeat() }
-        btnShowQueue.setOnClickListener { toggleQueue() }
+        btnShowQueueTop.setOnClickListener { toggleQueue() }
 
         tvArtist.setOnClickListener {
             val artistName = playbackService?.currentSong?.artist
@@ -289,7 +300,7 @@ class NowPlayingActivity : AppCompatActivity() {
             .setDuration(280)
             .start()
 
-        btnShowQueue.rotation = 0f
+        btnShowQueueTop.rotation = 0f
         setupQueue()
     }
 
@@ -308,21 +319,23 @@ class NowPlayingActivity : AppCompatActivity() {
             .setDuration(220)
             .start()
 
-        btnShowQueue.rotation = 180f
+        btnShowQueueTop.rotation = 180f
     }
 
     private fun setupQueue() {
         val service = playbackService ?: return
 
         lifecycleScope.launch {
-            // Si hay menos de 10 canciones pendientes, rellenar con IA y
-            // AÑADIRLAS de verdad a la cola real (no solo mostrarlas).
+            // Garantizar SIEMPRE al menos 10 canciones por delante.
+            // Si la cola está vacía o quedan pocas, generar recomendaciones.
             val pendingCount = service.queue.size - (service.currentIndex + 1)
+            
             if (pendingCount < 10) {
                 try {
                     val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
+                    // Si no hay ninguna canción sonando, seedSong será null, la IA usará gustos generales
                     val recommendations = aiManager.getRecommendations(
-                        limit = 10 - pendingCount,
+                        limit = 10,
                         seedSong = service.currentSong
                     )
                     val existingIds = service.queue.map { it.id }.toSet()
@@ -331,7 +344,7 @@ class NowPlayingActivity : AppCompatActivity() {
                         service.addListToQueue(filteredRecs)
                     }
                 } catch (e: Exception) {
-                    // Fallback silencioso si falla la IA
+                    LocalLogger.log(this@NowPlayingActivity, "Error auto-generando cola", e)
                 }
             }
 

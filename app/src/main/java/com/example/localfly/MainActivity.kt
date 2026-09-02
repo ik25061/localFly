@@ -447,13 +447,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false) {
+        if (isFinishing || isDestroyed) return
+        
         val transaction = supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
         
         if (addToBackStack) {
             transaction.addToBackStack(null)
         }
-        transaction.commit()
+        // Usar commitAllowingStateLoss para evitar el crash IllegalStateException
+        // cuando el servidor cambia de estado (online/offline) mientras la app está en fondo.
+        transaction.commitAllowingStateLoss()
     }
 
     private fun refreshMiniPlayer() {

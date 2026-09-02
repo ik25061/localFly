@@ -63,6 +63,18 @@
         app:strokeWidth="1dp" />
 
     <ImageButton
+        android:id="@+id/btnShowQueueTop"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_menu_sort_by_size"
+        app:layout_constraintEnd_toStartOf="@id/btnAddToPlaylist"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="#FFFFFF" />
+
+    <ImageButton
         android:id="@+id/btnAddToPlaylist"
         android:layout_width="48dp"
         android:layout_height="48dp"
@@ -233,21 +245,7 @@
 
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/btnShowQueue"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/bg_circle_green"
-        android:padding="12dp"
-        android:scaleType="centerInside"
-        android:src="@android:drawable/arrow_down_float"
-        android:rotation="180"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/llControls"
-        app:tint="#000000" />
+    <!-- Eliminado el botón flotante inferior de cola por redundancia -->
 
     <!-- Panel de cola de reproducción: oculto por defecto, sube desde abajo -->
     <androidx.constraintlayout.widget.ConstraintLayout
