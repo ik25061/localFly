@@ -587,9 +587,19 @@ class MainActivity : AppCompatActivity() {
     // ===== CICLO DE VIDA =====
     override fun onStart() {
         super.onStart()
+        if (isBound) return // Ya estamos conectados
+        
         Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_LOCAL_BIND }.also { intent ->
-            startService(intent)
-            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            // Usamos un Handler para retrasar ligeramente el bind. 
+            // Esto ayuda en algunos dispositivos Android 13/14 a que el sistema 
+            // reconozca que la actividad ya está en primer plano y permita el bind/start.
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                    bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                } catch (e: Exception) {
+                    com.example.localfly.utils.LocalLogger.log(this, "Error bindeando PlaybackService en onStart", e)
+                }
+            }, 100)
         }
     }
 

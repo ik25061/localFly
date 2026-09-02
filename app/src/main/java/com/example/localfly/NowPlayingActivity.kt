@@ -913,8 +913,16 @@ class NowPlayingActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (isBound) return
+        
         Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_LOCAL_BIND }.also { intent ->
-            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                try {
+                    bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                } catch (e: Exception) {
+                    LocalLogger.log(this, "Error bindeando PlaybackService en onStart (NowPlaying)", e)
+                }
+            }, 100)
         }
     }
     override fun onResume() {
