@@ -13,6 +13,7 @@ import com.bumptech.glide.Glide
 import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.utils.CoverPlaceholder
 import com.example.localfly.network.Song
 
 class LikedSongsAdapter(
@@ -70,15 +71,16 @@ class LikedSongsAdapter(
         // Carga de portada con fallback inteligente
         val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
         val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+val seed = song.id
 
         Glide.with(context)
             .load("$serverBaseUrl/cover/${song.id}")
-            .placeholder(R.drawable.ic_music_placeholder)
+            .placeholder(CoverPlaceholder.drawable(seed))
             .error(
                 Glide.with(context)
                     .load(artistImageUrl)
-                    .placeholder(R.drawable.ic_music_placeholder)
-                    .error(R.drawable.ic_music_placeholder)
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                    .error(CoverPlaceholder.drawable(seed))
                     .centerCrop()
             )
             .centerCrop()

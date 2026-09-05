@@ -33,6 +33,7 @@ import com.example.localfly.fragments.PlaylistsFragment
 import com.example.localfly.network.*
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.utils.CoverPlaceholder
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.launch
 
@@ -481,10 +482,12 @@ class MainActivity : AppCompatActivity() {
         tvNowPlayingArtist.text = if (song.artist != null) "Artista: ${song.artist}" else "Artista desconocido"
 
         val coverUrl = "$serverBaseUrl/cover/${song.id}"
+        val seed = song.id
 
         Glide.with(this)
             .load(coverUrl)
-            .placeholder(R.drawable.ic_music_placeholder)
+            .placeholder(CoverPlaceholder.drawable(seed))
+            .error(CoverPlaceholder.drawable(seed))
             .centerCrop()
             .into(ivMiniCover)
 

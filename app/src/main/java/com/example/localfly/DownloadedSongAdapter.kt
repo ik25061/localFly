@@ -8,6 +8,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.example.localfly.utils.CoverPlaceholder
 import java.util.Locale
 
 class DownloadedSongAdapter(
@@ -46,15 +47,16 @@ class DownloadedSongAdapter(
         // Carga de portada con fallback inteligente
         val artistEncoded = java.net.URLEncoder.encode(item.artist ?: "", "UTF-8").replace("+", "%20")
         val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+val seed = item.id
 
         Glide.with(holder.itemView.context)
             .load("$serverBaseUrl/cover/${item.id}")
-            .placeholder(R.drawable.ic_music_placeholder)
+            .placeholder(CoverPlaceholder.drawable(seed))
             .error(
                 Glide.with(holder.itemView.context)
                     .load(artistImageUrl)
-                    .placeholder(R.drawable.ic_music_placeholder)
-                    .error(R.drawable.ic_music_placeholder)
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                    .error(CoverPlaceholder.drawable(seed))
                     .centerCrop()
             )
             .centerCrop()

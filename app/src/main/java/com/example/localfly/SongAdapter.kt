@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.network.Song
+import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
 import java.util.Locale
 
@@ -42,15 +43,16 @@ class SongAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): SongViewHolder {
+ 
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_song, parent, false)
         return SongViewHolder(view)
     }
-
+ 
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
-        val song = songs[position]
-        holder.tvIndex.text = (position + 1).toString()
-        
+         val song = songs[position]
+        holder.tvIndex.text = (position +  1).toString()
+ 
         // Highlight current song
         if (song.id == playingSongId) {
             holder.tvIndex.setTextColor(android.graphics.Color.parseColor("#1DB954"))
@@ -59,48 +61,51 @@ class SongAdapter(
             holder.tvIndex.setTextColor(android.graphics.Color.parseColor("#888888"))
             holder.tvTitle.setTextColor(android.graphics.Color.parseColor("#FFFFFF"))
         }
-
+ 
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(song.duration)
-
+ 
         // Lyrics Indicator
         holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
-
+ 
         // Acciones visibles
         holder.btnLike.setImageResource(
             if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song, holder.bindingAdapterPosition) }
         holder.btnDislike.setOnClickListener { onDislikeClick(song, holder.bindingAdapterPosition) }
-
+ 
         // Menú (hamburguesa) con las acciones anidadas
         holder.btnSongMenu.setOnClickListener { showSongMenu(holder, song) }
-
-        // Carga de portada con fallback inteligente:
-        // 1. Intentar cargar la portada del álbum/canción (/cover/{id})
-        // 2. Si falla, intentar cargar la foto del artista (/artist-cover/{nombre})
-        val artistEncoded = URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
+ 
+        // Carga de portada con fallback inteligente
+        val artistEncoded = URLEncoder.encode(song.artist ?:"", "UTF-8").replace("+", "%20")
         val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
-
+        val seed = song.id
+ 
         Glide.with(holder.itemView.context)
             .load("$serverBaseUrl/cover/${song.id}")
-            .placeholder(R.drawable.ic_music_placeholder)
+            .placeholder(CoverPlaceholder.drawable(seed))
             .error(
                 Glide.with(holder.itemView.context)
                     .load(artistImageUrl)
-                    .placeholder(R.drawable.ic_music_placeholder)
-                    .error(R.drawable.ic_music_placeholder)
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                    .error(CoverPlaceholder.drawable(seed))
                     .centerCrop()
             )
             .centerCrop()
             .into(holder.ivCover)
-
+ 
         holder.itemView.setOnClickListener { onSongClick(song, holder.bindingAdapterPosition) }
     }
 
     private fun showSongMenu(holder: SongViewHolder, song: Song) {
+
         val popup = PopupMenu(holder.itemView.context, holder.btnSongMenu)
+
+
+
         if (onDeleteClick != null) {
             popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
         }
@@ -149,6 +154,7 @@ class SongAdapter(
         val startPos = songs.size
         songs.addAll(newSongs)
         notifyItemRangeInserted(startPos, newSongs.size)
+
     }
 
     fun setPlayingSongId(id: String?) {

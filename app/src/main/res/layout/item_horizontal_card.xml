@@ -12,7 +12,6 @@
         android:layout_width="100dp"
         android:layout_height="100dp"
         android:scaleType="centerCrop"
-        android:src="@drawable/ic_music_placeholder"
         android:layout_marginBottom="4dp" />
 
     <TextView

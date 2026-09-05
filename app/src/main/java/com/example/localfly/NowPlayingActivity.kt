@@ -29,6 +29,7 @@ import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.utils.CoverPlaceholder
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
@@ -278,7 +279,8 @@ class NowPlayingActivity : AppCompatActivity() {
             tvQueueMiniInfo.text = "Reproduciendo ahora: ${song.title}"
             Glide.with(this)
                 .load("$serverBaseUrl/cover/${song.id}")
-                .placeholder(R.drawable.ic_music_placeholder)
+                .placeholder(CoverPlaceholder.drawable(song.id))
+                .error(CoverPlaceholder.drawable(song.id))
                 .centerCrop()
                 .into(ivQueueMiniThumb)
         }
@@ -829,7 +831,8 @@ class NowPlayingActivity : AppCompatActivity() {
         ivLyricsMiniCover?.let { iv ->
             Glide.with(this)
                 .load("$serverBaseUrl/cover/${song.id}")
-                .placeholder(R.drawable.ic_music_placeholder)
+                .placeholder(CoverPlaceholder.drawable(song.id))
+                .error(CoverPlaceholder.drawable(song.id))
                 .centerCrop()
                 .into(iv)
         }
@@ -854,8 +857,10 @@ class NowPlayingActivity : AppCompatActivity() {
         val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
         val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
         val albumImageUrl = "$serverBaseUrl/cover/${song.id}"
-        Glide.with(this).load(albumImageUrl).placeholder(R.drawable.ic_music_placeholder).centerCrop().override(100, 100).into(ivBlurredBackground)
-        Glide.with(this).load(artistImageUrl).placeholder(R.drawable.ic_music_placeholder).error(Glide.with(this).load(albumImageUrl).centerCrop()).centerCrop().into(ivCircularImage)
+        val albumSeed = song.id
+        val artistSeed = song.artist ?: song.id
+        Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop().override(100, 100).into(ivBlurredBackground)
+        Glide.with(this).load(artistImageUrl).placeholder(CoverPlaceholder.drawable(artistSeed)).error(CoverPlaceholder.drawable(artistSeed)).error(Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop()).centerCrop().into(ivCircularImage)
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)

@@ -19,6 +19,7 @@ import com.example.localfly.R
 import com.example.localfly.SongAdapter
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.*
+import com.example.localfly.utils.CoverPlaceholder
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -79,12 +80,17 @@ class AlbumDetailFragment : Fragment() {
         
         val serverBaseUrl = ApiConfig.BASE_URL
         val coverUrl = "$serverBaseUrl/cover/$coverId"
+        val seed = albumName ?: albumId ?: "Álbum"
 
         Glide.with(this)
             .load(coverUrl)
-            .placeholder(R.drawable.ic_music_placeholder)
+            .placeholder(CoverPlaceholder.drawable(seed))
             .error(
-                Glide.with(this).load("$serverBaseUrl/cover/$coverId").centerCrop()
+                Glide.with(this)
+                    .load("$serverBaseUrl/cover/$coverId")
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                    .error(CoverPlaceholder.drawable(seed))
+                    .centerCrop()
             )
             .into(ivCover)
 

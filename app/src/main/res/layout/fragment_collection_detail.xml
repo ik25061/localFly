@@ -36,7 +36,6 @@
                     android:layout_width="220dp"
                     android:layout_height="220dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_music_placeholder"
                     app:shapeAppearanceOverlay="@style/RoundedCorners4"
                     android:layout_marginTop="8dp" />
 

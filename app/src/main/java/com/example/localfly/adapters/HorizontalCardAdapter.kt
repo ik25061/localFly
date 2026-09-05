@@ -14,6 +14,7 @@ import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
 import com.example.localfly.network.Playlist
 import com.example.localfly.network.Year
+import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
 
 class HorizontalCardAdapter(
@@ -28,91 +29,119 @@ class HorizontalCardAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+ 
+ 
         val view = LayoutInflater.from(parent.context)
             .inflate(R.layout.item_horizontal_card, parent, false)
         return ViewHolder(view)
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+ 
         val item = items[position]
         val context = holder.itemView.context
         val serverBaseUrl = ApiConfig.BASE_URL
-
+ 
         when (item) {
-            is Playlist -> {
+            is Playlist ->{
                 holder.tvTitle.text = item.name
                 val count = item.songIds.size
                 holder.tvSubtitle.text = if (count == 1) "1 canción" else "$count canciones"
+                val seed = item.name ?: item.id
                 if (!item.coverId.isNullOrBlank()) {
+
                     Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
                         .centerCrop()
                         .into(holder.ivCover)
                 } else {
-                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
                 }
             }
-            is Album -> {
+            is Album ->{
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = item.artist ?: "Álbum"
+                val seed = item.name ?: item.id
                 if (item.coverId != null) {
+ 
+ 
                     Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
                         .centerCrop()
                         .into(holder.ivCover)
                 } else {
-                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
                 }
             }
-            is Artist -> {
+            is Artist ->{
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-
+ 
                 // El servidor sirve la foto del artista en /artist-cover/{nombre}
+                val seed = item.name
                 val encodedName = URLEncoder.encode(item.name, "UTF-8").replace("+", "%20")
                 val primary = "$serverBaseUrl/artist-cover/$encodedName"
-                val fallback = item.coverId?.let {
-                    Glide.with(context).load("$serverBaseUrl/cover/$it").centerCrop()
-                } ?: Glide.with(context).load(R.drawable.ic_music_placeholder)
-
-                Glide.with(context)
-                    .load(primary)
-                    .placeholder(R.drawable.ic_music_placeholder)
-                    .error(fallback)
-                    .centerCrop()
-                    .into(holder.ivCover)
-            }
-            is Genre -> {
-                holder.tvTitle.text = item.name
-                holder.tvSubtitle.text = "${item.songCount} canciones"
-                if (item.coverId != null) {
-                    Glide.with(context)
+                if (item.coverId == null) {
+ 
+ 
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
+                } else {
+                    val fallback = Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
+                        .centerCrop()
+                    Glide.with(context)
+                        .load(primary)
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(fallback)
                         .centerCrop()
                         .into(holder.ivCover)
-                } else {
-                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
                 }
             }
-            is Year -> {
-                holder.tvTitle.text = item.year.toString()
+            is Genre ->{
+                holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
+                val seed = item.name ?: item.id
                 if (item.coverId != null) {
+
                     Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
                         .centerCrop()
                         .into(holder.ivCover)
                 } else {
-                    holder.ivCover.setImageResource(R.drawable.ic_music_placeholder)
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
+                }
+            }
+            is Year ->{
+                holder.tvTitle.text = item.year.toString()
+                holder.tvSubtitle.text = "${item.songCount} canciones"
+                val seed = item.year.toString()
+                if (item.coverId != null) {
+ 
+                    Glide.with(context)
+                        .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
+                        .centerCrop()
+                        .into(holder.ivCover)
+                } else {
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
                 }
             }
         }
-
+ 
         holder.itemView.setOnClickListener { onItemClick(item) }
     }
-
+ 
     override fun getItemCount() = items.size
-
+ 
     fun updateItems(newItems: List<Any>) {
         items = newItems
         notifyDataSetChanged()

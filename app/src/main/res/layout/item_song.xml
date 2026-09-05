@@ -29,7 +29,6 @@
             android:layout_height="match_parent"
             android:scaleType="centerCrop"
             android:background="#1DB954"
-            android:src="@drawable/ic_music_placeholder"
             app:shapeAppearanceOverlay="@style/RoundedCorners4"
             android:contentDescription="@string/cover_placeholder" />
 
