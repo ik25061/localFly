@@ -17,6 +17,7 @@ import com.example.localfly.network.PendingPlaylistCreation
 import com.example.localfly.network.Playlist
 import com.example.localfly.network.PlaylistSongRequest
 import com.example.localfly.network.RetrofitClient
+import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -80,24 +81,42 @@ object AddToPlaylistDialog {
         // Bandera para evitar que tocar varias veces "Crear y añadir" duplique listas.
         var creatingPlaylist = false
 
-        val adapter = PlaylistPickAdapter(emptyList()) { playlist ->
+        lateinit var adapter: PlaylistPickAdapter
+        adapter = PlaylistPickAdapter(emptyList()) { playlist ->
             scope.launch {
-                // Lista creada offline y aún sin sincronizar: encolar como parte de esa creación pendiente.
-                if (playlist.id.startsWith("local_")) {
-                    val pending = sessionManager.getPendingPlaylistCreations().toMutableList()
-                    val idx = pending.indexOfFirst { it.localId == playlist.id }
-                    if (idx >= 0) {
-                        val current = pending[idx]
-                        songs.forEach { song -> if (song.id !in current.songIds) current.songIds.add(song.id) }
-                        sessionManager.updatePendingPlaylistCreation(current.localId, current)
-                    }
-                    Toast.makeText(context, "Añadidas a \"${playlist.name}\" (se subirá al reconectar)", Toast.LENGTH_SHORT).show()
-                    onAdded?.invoke()
-                    dialog.dismiss()
-                    return@launch
-                }
-
+                adapter.setAdding(playlist.id) // <- feedback inmediato al tocar
                 try {
+                    // Lista creada offline y aún sin sincronizar: siempre va a la cola local, no depende de la red.
+                    if (playlist.id.startsWith("local_")) {
+                        val pending = sessionManager.getPendingPlaylistCreations().toMutableList()
+                        val idx = pending.indexOfFirst { it.localId == playlist.id }
+                        if (idx >= 0) {
+                            val current = pending[idx]
+                            songs.forEach { song -> if (song.id !in current.songIds) current.songIds.add(song.id) }
+                            sessionManager.updatePendingPlaylistCreation(current.localId, current)
+                        }
+                        Toast.makeText(context, "Añadidas a \"${playlist.name}\" (se subirá al reconectar)", Toast.LENGTH_SHORT).show()
+                        onAdded?.invoke()
+                        dialog.dismiss()
+                        return@launch
+                    }
+
+                    // Comprobación rápida (2,5s máx.) antes de intentar la petición real (15s de timeout).
+                    if (!ServerReachability.isServerReachable()) {
+                        songs.forEach { song -> sessionManager.addPendingPlaylistSongAdd(playlist.id, song.id) }
+                        val cache = sessionManager.getPlaylistsCache().toMutableList()
+                        val idx = cache.indexOfFirst { it.id == playlist.id }
+                        if (idx >= 0) {
+                            val updatedIds = (cache[idx].songIds + songs.map { it.id }).distinct()
+                            cache[idx] = cache[idx].copy(songIds = updatedIds)
+                            sessionManager.savePlaylistsCache(cache)
+                        }
+                        Toast.makeText(context, "Sin conexión: se añadirá a \"${playlist.name}\" al reconectar", Toast.LENGTH_SHORT).show()
+                        onAdded?.invoke()
+                        dialog.dismiss()
+                        return@launch
+                    }
+
                     var successCount = 0
                     for (song in songs) {
                         val response = RetrofitClient.api.addSongToPlayList(
@@ -112,10 +131,10 @@ object AddToPlaylistDialog {
                         onAdded?.invoke()
                         dialog.dismiss()
                     } else {
-                        Toast.makeText(context, "Error al añadir a la lista", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Error al añadir a la lista, prueba de nuevo", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
-                    // Sin conexión: encolar para sincronizar y actualizar la caché local optimistamente.
+                    // Red inestable durante la petición (pasó la comprobación pero falló después): mismo fallback.
                     songs.forEach { song -> sessionManager.addPendingPlaylistSongAdd(playlist.id, song.id) }
                     val cache = sessionManager.getPlaylistsCache().toMutableList()
                     val idx = cache.indexOfFirst { it.id == playlist.id }
@@ -127,6 +146,10 @@ object AddToPlaylistDialog {
                     Toast.makeText(context, "Sin conexión: se añadirá a \"${playlist.name}\" al reconectar", Toast.LENGTH_SHORT).show()
                     onAdded?.invoke()
                     dialog.dismiss()
+                } finally {
+                    // Si el diálogo sigue abierto (falló sin excepción), quitar el check
+                    // para que la fila vuelva a su estado normal y se pueda reintentar.
+                    adapter.setAdding(null)
                 }
             }
         }
@@ -153,8 +176,35 @@ object AddToPlaylistDialog {
             if (creatingPlaylist) return@setOnClickListener
             creatingPlaylist = true
             btnCreateAndAdd.isEnabled = false
+            btnCreateAndAdd.text = "Creando..."
+            btnCancelForm?.isEnabled = false
+            etName?.isEnabled = false
+
             scope.launch {
+                fun createOfflineFallback() {
+                    val localId = "local_" + java.util.UUID.randomUUID().toString()
+                    val creation = PendingPlaylistCreation(
+                        localId = localId,
+                        name = name,
+                        description = null,
+                        songIds = songs.map { it.id }.toMutableList()
+                    )
+                    sessionManager.addPendingPlaylistCreation(creation)
+                    val cache = sessionManager.getPlaylistsCache().toMutableList()
+                    if (cache.none { it.id == localId }) {
+                        cache.add(Playlist(id = localId, name = name, description = null, songIds = creation.songIds))
+                    }
+                    sessionManager.savePlaylistsCache(cache)
+                    Toast.makeText(context, "Sin conexión: \"$name\" se creará al reconectar", Toast.LENGTH_SHORT).show()
+                    onAdded?.invoke()
+                    dialog.dismiss()
+                }
+
                 try {
+                    if (!ServerReachability.isServerReachable()) {
+                        createOfflineFallback()
+                        return@launch
+                    }
                     val createResponse = RetrofitClient.api.createPlayList(
                         CreatePlaylistRequest(name, null, userId)
                     )
@@ -180,26 +230,13 @@ object AddToPlaylistDialog {
                         Toast.makeText(context, "Error al crear la lista", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
-                    // Sin conexión: crear la lista solo localmente y encolarla para el próximo sync.
-                    val localId = "local_" + java.util.UUID.randomUUID().toString()
-                    val creation = PendingPlaylistCreation(
-                        localId = localId,
-                        name = name,
-                        description = null,
-                        songIds = songs.map { it.id }.toMutableList()
-                    )
-                    sessionManager.addPendingPlaylistCreation(creation)
-                    val cache = sessionManager.getPlaylistsCache().toMutableList()
-                    if (cache.none { it.id == localId }) {
-                        cache.add(Playlist(id = localId, name = name, description = null, songIds = creation.songIds))
-                    }
-                    sessionManager.savePlaylistsCache(cache)
-                    Toast.makeText(context, "Sin conexión: \"$name\" se creará al reconectar", Toast.LENGTH_SHORT).show()
-                    onAdded?.invoke()
-                    dialog.dismiss()
+                    createOfflineFallback()
                 } finally {
                     creatingPlaylist = false
                     btnCreateAndAdd.isEnabled = true
+                    btnCreateAndAdd.text = "Crear y añadir"
+                    btnCancelForm?.isEnabled = true
+                    etName?.isEnabled = true
                 }
             }
         }
