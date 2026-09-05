@@ -32,7 +32,8 @@ class PlaylistAdapter(
         val playlist = playlists[position]
         holder.tvName.text = playlist.name
         val count = playlist.songIds.size
-        holder.tvCount.text = if (count == 1) "1 canción" else "$count canciones"
+        val base = if (count == 1) "1 canción" else "$count canciones"
+        holder.tvCount.text = if (playlist.id.startsWith("local_")) "$base · sin sincronizar" else base
 
         holder.itemView.setOnClickListener { onClick(playlist) }
         holder.btnMenu.setOnClickListener {

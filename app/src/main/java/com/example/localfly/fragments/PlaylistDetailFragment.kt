@@ -133,6 +133,11 @@ class PlaylistDetailFragment : Fragment() {
         progressBar.visibility = View.VISIBLE
         tvEmpty.visibility = View.GONE
 
+        if (id.startsWith("local_")) {
+            loadLocalPlaylist(id)
+            return
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val plResponse = RetrofitClient.api.getPlayList(id)
@@ -175,10 +180,55 @@ class PlaylistDetailFragment : Fragment() {
             } catch (e: Exception) {
                 if (isAdded) {
                     progressBar.visibility = View.GONE
-                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    // Sin conexión: mostrar lo que haya en caché para esta lista en vez de un error puro.
+                    val cachedPlaylist = sessionManager.getPlaylistsCache().firstOrNull { it.id == id }
+                    if (cachedPlaylist != null) {
+                        val downloaded = downloadHelper.getDownloadedSongs()
+                        currentSongs = cachedPlaylist.songIds.mapNotNull { songId ->
+                            downloaded.find { it.id == songId }?.let { d ->
+                                Song(
+                                    id = d.id, title = d.title, artist = d.artist, album = null, year = null,
+                                    duration = d.duration, bpm = d.bpm, key = d.key, liked = d.liked,
+                                    hasCover = d.hasCover, hasLyrics = d.hasLyrics
+                                )
+                            }
+                        }
+                        adapter.updateSongs(currentSongs)
+                        tvCount.text = "${currentSongs.size} canciones descargadas · sin conexión"
+                        tvEmpty.visibility = if (currentSongs.isEmpty()) View.VISIBLE else View.GONE
+                        Toast.makeText(requireContext(), "Sin conexión: solo se muestran las canciones descargadas", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Sin conexión y esta lista no está guardada localmente", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
+    }
+
+    private fun loadLocalPlaylist(localId: String) {
+        val creation = sessionManager.getPendingPlaylistCreations().firstOrNull { it.localId == localId }
+        progressBar.visibility = View.GONE
+        if (creation == null) {
+            tvEmpty.visibility = View.VISIBLE
+            return
+        }
+        playlistName = creation.name
+        tvName.text = creation.name
+        tvCount.text = "sin sincronizar todavía"
+
+        val downloaded = downloadHelper.getDownloadedSongs()
+        currentSongs = creation.songIds.mapNotNull { songId ->
+            downloaded.find { it.id == songId }?.let { d ->
+                Song(
+                    id = d.id, title = d.title, artist = d.artist, album = null, year = null,
+                    duration = d.duration, bpm = d.bpm, key = d.key, liked = d.liked,
+                    hasCover = d.hasCover, hasLyrics = d.hasLyrics
+                )
+            }
+        }
+        adapter.updateSongs(currentSongs)
+        tvCount.text = "${currentSongs.size} canciones · sin sincronizar"
+        tvEmpty.visibility = if (currentSongs.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun toggleLike(song: Song, position: Int) {
@@ -222,6 +272,29 @@ class PlaylistDetailFragment : Fragment() {
         tvCount.text = if (currentSongs.size == 1) "1 canción" else "${currentSongs.size} canciones"
         if (currentSongs.isEmpty()) tvEmpty.visibility = View.VISIBLE
 
+        // Lista creada offline (aún sin sincronizar): solo hay que quitarla
+        // de la creación pendiente y de la caché local. Si se queda vacía y
+        // era la única canción, simplemente desaparece de la pendiente.
+        if (id.startsWith("local_")) {
+            val pending = sessionManager.getPendingPlaylistCreations()
+            val creation = pending.firstOrNull { it.localId == id }
+            if (creation != null) {
+                val newIds = creation.songIds.filter { it != song.id }.toMutableList()
+                if (newIds.isEmpty()) {
+                    sessionManager.removePendingPlaylistCreation(id)
+                } else {
+                    sessionManager.updatePendingPlaylistCreation(id, creation.copy(songIds = newIds))
+                }
+            }
+            val cache = sessionManager.getPlaylistsCache().toMutableList()
+            val cIdx = cache.indexOfFirst { it.id == id }
+            if (cIdx >= 0) {
+                cache[cIdx] = cache[cIdx].copy(songIds = cache[cIdx].songIds - song.id)
+                sessionManager.savePlaylistsCache(cache)
+            }
+            return
+        }
+
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.removeSongFromPlayList(id, PlaylistSongRequest(song.id))
@@ -248,6 +321,16 @@ class PlaylistDetailFragment : Fragment() {
     private fun deletePlaylist() {
         val id = playlistId ?: return
         viewLifecycleOwner.lifecycleScope.launch {
+            // Lista creada offline: borrarla de la cola pendiente y de la caché local.
+            if (id.startsWith("local_")) {
+                sessionManager.removePendingPlaylistCreation(id)
+                val cache = sessionManager.getPlaylistsCache().toMutableList()
+                cache.removeAll { it.id == id }
+                sessionManager.savePlaylistsCache(cache)
+                Toast.makeText(requireContext(), "Lista eliminada", Toast.LENGTH_SHORT).show()
+                parentFragmentManager.popBackStack()
+                return@launch
+            }
             try {
                 val response = RetrofitClient.api.deletePlayList(id)
                 if (response.isSuccessful) {

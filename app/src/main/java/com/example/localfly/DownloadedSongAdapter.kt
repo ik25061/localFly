@@ -15,7 +15,8 @@ class DownloadedSongAdapter(
     private val items: MutableList<DownloadedSong>,
     private val serverBaseUrl: String,
     private val onItemClick: (DownloadedSong) -> Unit,
-    private val onDeleteClick: (DownloadedSong) -> Unit
+    private val onDeleteClick: (DownloadedSong) -> Unit,
+    private val onAddToPlaylistClick: (DownloadedSong) -> Unit
 ) : RecyclerView.Adapter<DownloadedSongAdapter.ViewHolder>() {
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -24,6 +25,7 @@ class DownloadedSongAdapter(
         val tvTitle: TextView = view.findViewById(R.id.tvDownloadedTitle)
         val tvArtist: TextView = view.findViewById(R.id.tvDownloadedArtist)
         val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
+        val btnAddToPlaylist: ImageButton = view.findViewById(R.id.btnAddToPlaylist)
         val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
@@ -64,6 +66,7 @@ val seed = item.id
 
         holder.itemView.setOnClickListener { onItemClick(item) }
         holder.btnDelete.setOnClickListener { onDeleteClick(item) }
+        holder.btnAddToPlaylist.setOnClickListener { onAddToPlaylistClick(item) }
     }
 
     private fun formatDuration(durationSeconds: Double?): String {

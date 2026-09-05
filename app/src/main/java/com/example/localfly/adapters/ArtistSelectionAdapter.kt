@@ -45,25 +45,28 @@ class ArtistSelectionAdapter(
         holder.checkBox.isChecked = isSelected
         holder.root.isSelected = isSelected
 
-        // El servidor sirve la foto del artista en /artist-cover/{nombre}
-        // (misma ruta que usa la versión web y el resto de la app). 
+        // La foto del artista vive en /artist-cover/{nombre} y NO depende de coverId.
+        // Antes, si coverId venía null se pintaba color directamente aunque la foto
+        // existiera; ahora siempre se intenta cargar la del artista.
         val seed = artist.name
         val encodedName = URLEncoder.encode(artist.name, "UTF-8").replace("+", "%20")
         val primaryUrl = "$serverBaseUrl/artist-cover/$encodedName"
-        if (artist.coverId == null) {
-            holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
-        } else {
-            val fallback = Glide.with(context)
+        val fallback = if (artist.coverId != null) {
+            Glide.with(context)
                 .load("$serverBaseUrl/cover/${artist.coverId}")
                 .placeholder(CoverPlaceholder.drawable(seed))
                 .error(CoverPlaceholder.drawable(seed))
                 .centerCrop()
-            Glide.with(context)
-                .load(primaryUrl)
-                .placeholder(CoverPlaceholder.drawable(seed))
-                .error(fallback)
-                .centerCrop()
-                .into(holder.ivCover)
+        } else {
+            null
+        }
+        val loader = Glide.with(context)
+            .load(primaryUrl)
+            .placeholder(CoverPlaceholder.drawable(seed))
+        if (fallback != null) {
+            loader.error(fallback).centerCrop().into(holder.ivCover)
+        } else {
+            loader.error(CoverPlaceholder.drawable(seed)).centerCrop().into(holder.ivCover)
         }
  
         holder.itemView.setOnClickListener {

@@ -1,9 +1,33 @@
 package com.example.localfly.network
 
+// Reemplaza por completo a: app/src/main/java/com/example/localfly/network/SessionManager.kt
+//
+// Todo lo que había antes se mantiene igual; lo nuevo es la sección
+// "Soporte Offline para Playlists" (caché de nombres de lista + dos colas
+// de pendientes: listas creadas offline y canciones añadidas offline a
+// listas que ya existían en el servidor).
+
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+
+/** Lista creada mientras el teléfono estaba sin conexión. [localId] empieza
+ *  siempre por "local_" para poder distinguirla de un id real del servidor
+ *  en cualquier pantalla que reciba un [Playlist]. */
+data class PendingPlaylistCreation(
+    val localId: String,
+    val name: String,
+    val description: String?,
+    val songIds: MutableList<String>
+)
+
+/** Una canción que se intentó añadir, sin conexión, a una lista que ya
+ *  existía en el servidor (por eso aquí sí se guarda el id real). */
+data class PendingPlaylistSongAdd(
+    val playlistId: String,
+    val songId: String
+)
 
 class SessionManager(context: Context) {
 
@@ -143,6 +167,91 @@ class SessionManager(context: Context) {
 
     private fun savePendingLyricsUploads(map: Map<String, String>) {
         prefs.edit().putString("pending_lyrics_uploads", com.google.gson.Gson().toJson(map)).apply()
+    }
+
+    // --- Soporte Offline para Playlists ---
+
+    fun addPendingPlaylistCreation(creation: PendingPlaylistCreation) {
+        val pending = getPendingPlaylistCreations().toMutableList()
+        if (pending.any { it.localId == creation.localId }) return
+        pending.add(creation)
+        savePendingPlaylistCreations(pending)
+    }
+
+    fun getPendingPlaylistCreations(): List<PendingPlaylistCreation> {
+        val json = prefs.getString("pending_playlist_creations", "[]") ?: "[]"
+        val type = object : com.google.gson.reflect.TypeToken<List<PendingPlaylistCreation>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Reemplaza (o agrega si no existía) una creación pendiente por su localId.
+     *  Se usa al añadirle más canciones desde otra pantalla mientras sigue offline. */
+    fun updatePendingPlaylistCreation(localId: String, updated: PendingPlaylistCreation) {
+        val pending = getPendingPlaylistCreations().toMutableList()
+        val idx = pending.indexOfFirst { it.localId == localId }
+        if (idx >= 0) pending[idx] = updated else pending.add(updated)
+        savePendingPlaylistCreations(pending)
+    }
+
+    private fun savePendingPlaylistCreations(list: List<PendingPlaylistCreation>) {
+        prefs.edit().putString("pending_playlist_creations", com.google.gson.Gson().toJson(list)).apply()
+    }
+
+    fun removePendingPlaylistCreation(localId: String) {
+        val pending = getPendingPlaylistCreations().toMutableList()
+        pending.removeAll { it.localId == localId }
+        savePendingPlaylistCreations(pending)
+    }
+
+    fun addPendingPlaylistSongAdd(playlistId: String, songId: String) {
+        val pending = getPendingPlaylistSongAdds().toMutableList()
+        if (pending.none { it.playlistId == playlistId && it.songId == songId }) {
+            pending.add(PendingPlaylistSongAdd(playlistId, songId))
+            savePendingPlaylistSongAdds(pending)
+        }
+    }
+
+    fun getPendingPlaylistSongAdds(): List<PendingPlaylistSongAdd> {
+        val json = prefs.getString("pending_playlist_song_adds", "[]") ?: "[]"
+        val type = object : com.google.gson.reflect.TypeToken<List<PendingPlaylistSongAdd>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun savePendingPlaylistSongAdds(list: List<PendingPlaylistSongAdd>) {
+        prefs.edit().putString("pending_playlist_song_adds", com.google.gson.Gson().toJson(list)).apply()
+    }
+
+    fun removePendingPlaylistSongAdd(playlistId: String, songId: String) {
+        val pending = getPendingPlaylistSongAdds().toMutableList()
+        pending.removeAll { it.playlistId == playlistId && it.songId == songId }
+        savePendingPlaylistSongAdds(pending)
+    }
+
+    // --- Caché de playlists (nombres + songIds) ---
+
+    /** Última copia conocida de las listas del usuario (nombres + songIds),
+     *  para poder mostrar la pantalla "Listas" sin conexión. Se actualiza
+     *  cada vez que GET /api/playlists responde con éxito. */
+    fun savePlaylistsCache(playlists: List<Playlist>) {
+        prefs.edit().putString("playlists_cache", com.google.gson.Gson().toJson(playlists)).apply()
+    }
+
+    fun getPlaylistsCache(): List<Playlist> {
+        val json = prefs.getString("playlists_cache", "[]") ?: "[]"
+        val type = object : com.google.gson.reflect.TypeToken<List<Playlist>>() {}.type
+        return try {
+            com.google.gson.Gson().fromJson(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     fun saveFavoriteArtists(artistIds: Set<String>) {

@@ -80,6 +80,16 @@
         android:padding="2dp" />
 
     <ImageButton
+        android:id="@+id/btnAddToPlaylist"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:layout_marginStart="4dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_playlist"
+        app:tint="#AAAAAA"
+        android:scaleType="centerInside" />
+
+    <ImageButton
         android:id="@+id/btnDelete"
         android:layout_width="32dp"
         android:layout_height="32dp"

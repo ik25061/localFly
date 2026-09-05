@@ -13,6 +13,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
 import com.example.localfly.adapters.PlaylistPickAdapter
 import com.example.localfly.network.CreatePlaylistRequest
+import com.example.localfly.network.PendingPlaylistCreation
+import com.example.localfly.network.Playlist
 import com.example.localfly.network.PlaylistSongRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
@@ -75,9 +77,26 @@ object AddToPlaylistDialog {
         btnClose?.setOnClickListener { dialog.dismiss() }
 
         val userId = sessionManager.getUserId()
+        // Bandera para evitar que tocar varias veces "Crear y añadir" duplique listas.
+        var creatingPlaylist = false
 
         val adapter = PlaylistPickAdapter(emptyList()) { playlist ->
             scope.launch {
+                // Lista creada offline y aún sin sincronizar: encolar como parte de esa creación pendiente.
+                if (playlist.id.startsWith("local_")) {
+                    val pending = sessionManager.getPendingPlaylistCreations().toMutableList()
+                    val idx = pending.indexOfFirst { it.localId == playlist.id }
+                    if (idx >= 0) {
+                        val current = pending[idx]
+                        songs.forEach { song -> if (song.id !in current.songIds) current.songIds.add(song.id) }
+                        sessionManager.updatePendingPlaylistCreation(current.localId, current)
+                    }
+                    Toast.makeText(context, "Añadidas a \"${playlist.name}\" (se subirá al reconectar)", Toast.LENGTH_SHORT).show()
+                    onAdded?.invoke()
+                    dialog.dismiss()
+                    return@launch
+                }
+
                 try {
                     var successCount = 0
                     for (song in songs) {
@@ -96,7 +115,18 @@ object AddToPlaylistDialog {
                         Toast.makeText(context, "Error al añadir a la lista", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    // Sin conexión: encolar para sincronizar y actualizar la caché local optimistamente.
+                    songs.forEach { song -> sessionManager.addPendingPlaylistSongAdd(playlist.id, song.id) }
+                    val cache = sessionManager.getPlaylistsCache().toMutableList()
+                    val idx = cache.indexOfFirst { it.id == playlist.id }
+                    if (idx >= 0) {
+                        val updatedIds = (cache[idx].songIds + songs.map { it.id }).distinct()
+                        cache[idx] = cache[idx].copy(songIds = updatedIds)
+                        sessionManager.savePlaylistsCache(cache)
+                    }
+                    Toast.makeText(context, "Sin conexión: se añadirá a \"${playlist.name}\" al reconectar", Toast.LENGTH_SHORT).show()
+                    onAdded?.invoke()
+                    dialog.dismiss()
                 }
             }
         }
@@ -119,6 +149,10 @@ object AddToPlaylistDialog {
                 Toast.makeText(context, "Ponle un nombre a la lista", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // Evita que tocar varias veces seguidas cree listas duplicadas (mismo nombre y canción).
+            if (creatingPlaylist) return@setOnClickListener
+            creatingPlaylist = true
+            btnCreateAndAdd.isEnabled = false
             scope.launch {
                 try {
                     val createResponse = RetrofitClient.api.createPlayList(
@@ -146,31 +180,87 @@ object AddToPlaylistDialog {
                         Toast.makeText(context, "Error al crear la lista", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                    // Sin conexión: crear la lista solo localmente y encolarla para el próximo sync.
+                    val localId = "local_" + java.util.UUID.randomUUID().toString()
+                    val creation = PendingPlaylistCreation(
+                        localId = localId,
+                        name = name,
+                        description = null,
+                        songIds = songs.map { it.id }.toMutableList()
+                    )
+                    sessionManager.addPendingPlaylistCreation(creation)
+                    val cache = sessionManager.getPlaylistsCache().toMutableList()
+                    if (cache.none { it.id == localId }) {
+                        cache.add(Playlist(id = localId, name = name, description = null, songIds = creation.songIds))
+                    }
+                    sessionManager.savePlaylistsCache(cache)
+                    Toast.makeText(context, "Sin conexión: \"$name\" se creará al reconectar", Toast.LENGTH_SHORT).show()
+                    onAdded?.invoke()
+                    dialog.dismiss()
+                } finally {
+                    creatingPlaylist = false
+                    btnCreateAndAdd.isEnabled = true
                 }
             }
         }
 
-        // Cargar listas existentes
+        // Cargar listas existentes (con caché + pendientes offline como respaldo).
+        // 1) Se pintan al instante las listas guardadas localmente para que el
+        //    diálogo no se quede en blanco esperando el timeout de red cuando
+        //    no hay conexión. 2) Después se intenta refrescar con el servidor.
         scope.launch {
+            val cached = sessionManager.getPlaylistsCache()
+            val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
+                Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+            }
+            val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
+            if (merged.isNotEmpty()) {
+                adapter.updatePlaylists(merged)
+                tvEmpty?.visibility = View.GONE
+            }
+            // Indicador de carga: visible mientras se intenta alcanzar el servidor.
+            progress?.visibility = View.VISIBLE
+
             try {
                 val response = RetrofitClient.api.getPlayLists(userId)
                 progress?.visibility = View.GONE
                 if (response.isSuccessful && response.body() != null) {
-                    val playlists = response.body()!!.playlists
+                    val serverPlaylists = response.body()!!.playlists
+                    val pending = sessionManager.getPendingPlaylistCreations().map {
+                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+                    }
+                    val playlists = serverPlaylists + pending
+                    sessionManager.savePlaylistsCache(playlists)
                     adapter.updatePlaylists(playlists)
                     tvEmpty?.visibility = if (playlists.isEmpty()) View.VISIBLE else View.GONE
                 } else {
-                    tvEmpty?.text = "No se pudieron cargar las listas"
-                    tvEmpty?.visibility = View.VISIBLE
+                    showCachedPlaylists(adapter, tvEmpty, sessionManager)
                 }
             } catch (e: Exception) {
                 progress?.visibility = View.GONE
-                tvEmpty?.text = "Error al cargar listas: ${e.message}"
-                tvEmpty?.visibility = View.VISIBLE
+                showCachedPlaylists(adapter, tvEmpty, sessionManager)
             }
         }
 
         dialog.show()
+    }
+
+    private fun showCachedPlaylists(
+        adapter: PlaylistPickAdapter,
+        tvEmpty: TextView?,
+        sessionManager: SessionManager
+    ) {
+        val cached = sessionManager.getPlaylistsCache()
+        val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
+            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+        }
+        val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
+        adapter.updatePlaylists(merged)
+        if (merged.isEmpty()) {
+            tvEmpty?.text = "Sin conexión y todavía no hay listas guardadas"
+            tvEmpty?.visibility = View.VISIBLE
+        } else {
+            tvEmpty?.visibility = View.GONE
+        }
     }
 }

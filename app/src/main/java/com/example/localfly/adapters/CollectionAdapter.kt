@@ -60,24 +60,28 @@ class CollectionAdapter(
             is Artist -> {
                 holder.tvTitle.text = item.name
                 holder.tvSubtitle.text = "${item.songCount} canciones"
-                // El servidor sirve la foto del artista en /artist-cover/{nombre}
+                // La foto del artista vive en /artist-cover/{nombre} y NO depende de
+                // coverId. Antes, si coverId venía null se pintaba color directamente
+                // aunque la foto existiera; ahora siempre se intenta cargar la del artista.
                 val seed = item.name
                 val encodedName = URLEncoder.encode(item.name, "UTF-8").replace("+", "%20")
                 val primary = "$serverBaseUrl/artist-cover/$encodedName"
-                if (item.coverId == null) {
-                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
-                } else {
-                    val fallback = Glide.with(context)
+                val fallback = if (item.coverId != null) {
+                    Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
                         .placeholder(CoverPlaceholder.drawable(seed))
                         .error(CoverPlaceholder.drawable(seed))
                         .centerCrop()
-                    Glide.with(context)
-                        .load(primary)
-                        .placeholder(CoverPlaceholder.drawable(seed))
-                        .error(fallback)
-                        .centerCrop()
-                        .into(holder.ivCover)
+                } else {
+                    null
+                }
+                val loader = Glide.with(context)
+                    .load(primary)
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                if (fallback != null) {
+                    loader.error(fallback).centerCrop().into(holder.ivCover)
+                } else {
+                    loader.error(CoverPlaceholder.drawable(seed)).centerCrop().into(holder.ivCover)
                 }
             }
             is Genre -> {

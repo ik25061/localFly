@@ -25,6 +25,7 @@ import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.ApiService
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
+import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
@@ -306,7 +307,11 @@ class PlaybackService : MediaSessionService() {
             while (true) {
                 val pendingLikes = sessionManager.getPendingLikes()
                 val pendingDislikes = sessionManager.getPendingDislikes()
-                if (pendingLikes.isEmpty() && pendingDislikes.isEmpty()) {
+                val pendingPlaylistCreations = sessionManager.getPendingPlaylistCreations()
+                val pendingPlaylistAdds = sessionManager.getPendingPlaylistSongAdds()
+
+                if (pendingLikes.isEmpty() && pendingDislikes.isEmpty() &&
+                    pendingPlaylistCreations.isEmpty() && pendingPlaylistAdds.isEmpty()) {
                     delay(30000)
                     continue
                 }
@@ -327,6 +332,15 @@ class PlaybackService : MediaSessionService() {
                             sessionManager.removePendingDislike(songId)
                             anySuccess = true
                         }
+                    } catch (e: Exception) {}
+                }
+                // Playlists modificadas sin conexión (listas nuevas y canciones
+                // añadidas a listas ya existentes). Si el servidor sigue caído,
+                // PlaylistSyncManager lo deja pendiente y se reintenta aquí.
+                if (pendingPlaylistCreations.isNotEmpty() || pendingPlaylistAdds.isNotEmpty()) {
+                    try {
+                        PlaylistSyncManager.sync(sessionManager)
+                        anySuccess = true
                     } catch (e: Exception) {}
                 }
                 if (anySuccess) withContext(Dispatchers.Main) { onStateChanged?.invoke() }

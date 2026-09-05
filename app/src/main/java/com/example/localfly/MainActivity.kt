@@ -373,7 +373,6 @@ class MainActivity : AppCompatActivity() {
         val menu = bottomNav.menu
         menu.findItem(R.id.nav_home)?.isVisible = online
         menu.findItem(R.id.nav_search)?.isVisible = online
-        menu.findItem(R.id.nav_playlists)?.isVisible = online
         menu.findItem(R.id.nav_ai)?.isVisible = online
 
         if (!online && bottomNav.selectedItemId != R.id.nav_downloads) {
@@ -385,6 +384,15 @@ class MainActivity : AppCompatActivity() {
             // El servidor volvió: aprovechar para subir letras encontradas
             // por internet directo mientras estaba caído (ver Parte C).
             playbackService?.flushPendingLyricsUploads()
+
+            // Subir al servidor las playlists modificadas sin conexión:
+            // listas nuevas (con sus canciones) y canciones añadidas offline
+            // a listas que ya existían.
+            lifecycleScope.launch {
+                PlaylistSyncManager.sync(sessionManager)
+                // Refrescar la pantalla de Listas si es la que está abierta ahora mismo
+                (supportFragmentManager.findFragmentById(R.id.container) as? PlaylistsFragment)?.reloadAfterSync()
+            }
 
             // Disparar auto-descarga inteligente para mantener el móvil lleno (hasta 500 temas)
             lifecycleScope.launch {

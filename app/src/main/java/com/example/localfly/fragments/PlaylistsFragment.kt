@@ -135,18 +135,41 @@ class PlaylistsFragment : Fragment() {
                 if (!isAdded) return@launch
                 progressBar.visibility = View.GONE
                 if (response.isSuccessful && response.body() != null) {
-                    val playlists = response.body()!!.playlists
+                    val serverPlaylists = response.body()!!.playlists
+                    val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
+                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+                    }
+                    val playlists = serverPlaylists + pendingLocal
+                    sessionManager.savePlaylistsCache(playlists)
                     adapter.updatePlaylists(playlists)
                     tvEmpty.visibility = if (playlists.isEmpty()) View.VISIBLE else View.GONE
                 } else {
-                    Toast.makeText(requireContext(), "Error al cargar tus listas", Toast.LENGTH_SHORT).show()
+                    showFromCache(toastIfEmpty = true)
                 }
             } catch (e: Exception) {
-                if (isAdded) {
-                    progressBar.visibility = View.GONE
-                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                if (isAdded) showFromCache(toastIfEmpty = true)
             }
+        }
+    }
+
+    /** Público para que MainActivity pueda refrescar esta pantalla justo después de sincronizar. */
+    fun reloadAfterSync() {
+        if (isAdded) loadPlaylists()
+    }
+
+    private fun showFromCache(toastIfEmpty: Boolean) {
+        progressBar.visibility = View.GONE
+        val cached = sessionManager.getPlaylistsCache()
+        val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
+            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+        }
+        val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
+        adapter.updatePlaylists(merged)
+        tvEmpty.visibility = if (merged.isEmpty()) View.VISIBLE else View.GONE
+        if (merged.isEmpty() && toastIfEmpty) {
+            Toast.makeText(requireContext(), "Sin conexión y todavía no hay listas guardadas", Toast.LENGTH_SHORT).show()
+        } else if (merged.isNotEmpty()) {
+            Toast.makeText(requireContext(), "Sin conexión: mostrando listas guardadas", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -178,9 +201,12 @@ class PlaylistsFragment : Fragment() {
                     Toast.makeText(requireContext(), "Error al crear la lista", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
-                if (isAdded) {
-                    Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                val localId = "local_" + java.util.UUID.randomUUID().toString()
+                sessionManager.addPendingPlaylistCreation(
+                    PendingPlaylistCreation(localId, name, null, mutableListOf())
+                )
+                Toast.makeText(requireContext(), "Sin conexión: la lista se creará al reconectar", Toast.LENGTH_SHORT).show()
+                loadPlaylists()
             }
         }
     }
@@ -196,6 +222,16 @@ class PlaylistsFragment : Fragment() {
 
     private fun deletePlaylist(playlist: Playlist) {
         viewLifecycleOwner.lifecycleScope.launch {
+            // Lista creada offline: borrarla de la cola pendiente y de la caché local.
+            if (playlist.id.startsWith("local_")) {
+                sessionManager.removePendingPlaylistCreation(playlist.id)
+                val cache = sessionManager.getPlaylistsCache().toMutableList()
+                cache.removeAll { it.id == playlist.id }
+                sessionManager.savePlaylistsCache(cache)
+                Toast.makeText(requireContext(), "Lista eliminada", Toast.LENGTH_SHORT).show()
+                loadPlaylists()
+                return@launch
+            }
             try {
                 val response = RetrofitClient.api.deletePlayList(playlist.id)
                 if (response.isSuccessful) {

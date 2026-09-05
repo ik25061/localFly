@@ -8,6 +8,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.DownloadManagerHelper
@@ -62,6 +63,17 @@ class DownloadsFragment : Fragment() {
             onDeleteClick = { downloaded ->
                 downloadHelper.removeDownload(downloaded.id)
                 loadDownloads()
+            },
+            onAddToPlaylistClick = { downloaded ->
+                val song = com.example.localfly.network.Song(
+                    id = downloaded.id, title = downloaded.title, artist = downloaded.artist,
+                    album = null, year = null, duration = downloaded.duration, bpm = downloaded.bpm,
+                    key = downloaded.key, liked = downloaded.liked, hasCover = downloaded.hasCover,
+                    hasLyrics = downloaded.hasLyrics
+                )
+                com.example.localfly.dialogs.AddToPlaylistDialog.show(
+                    requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager
+                )
             }
         )
         rvDownloads.layoutManager = LinearLayoutManager(requireContext())

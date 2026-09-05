@@ -24,6 +24,7 @@ import com.example.localfly.network.Song
 import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.LrclibClient
+import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
@@ -767,6 +768,9 @@ class NowPlayingActivity : AppCompatActivity() {
             // en vez de esperar al próximo evento de reconexión.
             if (ServerReachability.isServerReachable()) {
                 playbackService?.flushPendingLyricsUploads()
+                // Igual que con las letras, aprovechar para sincronizar playlists
+                // creadas/modificadas offline en cuanto haya servidor disponible.
+                lifecycleScope.launch { PlaylistSyncManager.sync(sessionManager) }
             }
         } catch (e: Exception) { }
     }

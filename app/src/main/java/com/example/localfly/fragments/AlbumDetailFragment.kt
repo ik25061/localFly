@@ -79,20 +79,25 @@ class AlbumDetailFragment : Fragment() {
         tvName.text = albumName
         
         val serverBaseUrl = ApiConfig.BASE_URL
-        val coverUrl = "$serverBaseUrl/cover/$coverId"
         val seed = albumName ?: albumId ?: "Álbum"
 
-        Glide.with(this)
-            .load(coverUrl)
-            .placeholder(CoverPlaceholder.drawable(seed))
-            .error(
-                Glide.with(this)
-                    .load("$serverBaseUrl/cover/$coverId")
-                    .placeholder(CoverPlaceholder.drawable(seed))
-                    .error(CoverPlaceholder.drawable(seed))
-                    .centerCrop()
-            )
-            .into(ivCover)
+        if (coverId.isNullOrBlank()) {
+            // Sin cover conocida no llamamos a una URL "cover/null" (daría error y color).
+            ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
+        } else {
+            val coverUrl = "$serverBaseUrl/cover/$coverId"
+            Glide.with(this)
+                .load(coverUrl)
+                .placeholder(CoverPlaceholder.drawable(seed))
+                .error(
+                    Glide.with(this)
+                        .load("$serverBaseUrl/cover/${coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
+                        .centerCrop()
+                )
+                .into(ivCover)
+        }
 
         adapter = SongAdapter(
             songs = mutableListOf(),
