@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp">
+
+            <ImageButton
+                android:id="@+id/btnBackAdmin"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_previous"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/btnBackAdmin"
+                android:layout_marginStart="8dp"
+                android:layout_centerVertical="true"
+                android:text="Panel de Administrador"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Herramientas del administrador. Todos los cambios se guardan en este dispositivo y se mantienen tras reescanear la biblioteca."
+            android:textColor="#888888"
+            android:textSize="12sp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Editar metadatos -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEditSongs"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Editar metadatos de canciones"
+            android:textAllCaps="false"
+            android:textColor="#000000"
+            app:backgroundTint="#1DB954"
+            app:cornerRadius="10dp"
+            app:icon="@drawable/ic_library"
+            app:iconTint="#000000" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cambia el nombre mostrado, álbum, géneros, año y estado de ánimo."
+            android:textColor="#888888"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Conflictos de reescaneo -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConflicts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Conflictos de reescaneo"
+            android:textAllCaps="false"
+            android:textColor="#000000"
+            app:backgroundTint="#FFB300"
+            app:cornerRadius="10dp"
+            app:icon="@android:drawable/ic_menu_rotate"
+            app:iconTint="#000000" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Canciones editadas vs. lo que devuelve el servidor. Deja el que esté mejor."
+            android:textColor="#888888"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- No me gusta -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnDisliked"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Canciones que no me gustan"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#FF5252"
+            app:cornerRadius="10dp"
+            app:icon="@drawable/ic_dislike"
+            app:iconTint="#FFFFFF" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Revisa las canciones marcadas como 'No me gusta' y elimínalas por completo del disco si quieres."
+            android:textColor="#888888"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Géneros -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnGenres"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gestión de géneros"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            app:backgroundTint="#7C4DFF"
+            app:cornerRadius="10dp"
+            app:icon="@drawable/ic_music_placeholder"
+            app:iconTint="#FFFFFF" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Crea géneros, asigna canciones y usa la IA local para analizar qué canciones pertenecen a cada género."
+            android:textColor="#888888"
+            android:textSize="11sp" />
+
+    </LinearLayout>
+</ScrollView>

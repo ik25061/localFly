@@ -264,6 +264,9 @@ class LibraryFragment : Fragment() {
     }
 
     private fun hideSong(song: Song, position: Int) {
+        // Registrar localmente para que el admin pueda revisarla y, si quiere,
+        // borrarla por completo del disco.
+        SongAdminStore.recordDislikedSong(song)
         adapter.removeAt(position)
         fullSongsList.removeAll { it.id == song.id }
         tvSongCountInfo.text = "${fullSongsList.size} canciones"

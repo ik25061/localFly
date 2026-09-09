@@ -95,7 +95,7 @@ class PlaylistsFragment : Fragment() {
                 // Crear la lista
                 val name = "Descubrimiento IA - ${java.text.SimpleDateFormat("dd/MM", java.util.Locale.getDefault()).format(java.util.Date())}"
                 val createResp = RetrofitClient.api.createPlayList(
-                    CreatePlaylistRequest(name, "Lista generada automáticamente por la IA local de localFly", sessionManager.getUserId())
+                    CreatePlaylistRequest(name, "Lista generada automáticamente por la IA local de localFly", sessionManager.getUserId(), false)
                 )
 
                 if (createResp.isSuccessful && createResp.body() != null) {
@@ -192,7 +192,7 @@ class PlaylistsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.createPlayList(
-                    CreatePlaylistRequest(name, null, sessionManager.getUserId())
+                    CreatePlaylistRequest(name, null, sessionManager.getUserId(), false)
                 )
                 if (response.isSuccessful) {
                     Toast.makeText(requireContext(), "Lista creada", Toast.LENGTH_SHORT).show()

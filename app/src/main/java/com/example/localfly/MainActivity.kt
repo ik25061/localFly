@@ -6,13 +6,22 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
@@ -108,6 +117,8 @@ class MainActivity : AppCompatActivity() {
         
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applyBackgroundAppearance()
+        applyFontFamilyToView(findViewById(android.R.id.content))
 
         downloadHelper = DownloadManagerHelper.getInstance(this)
 
@@ -465,16 +476,78 @@ class MainActivity : AppCompatActivity() {
 
     private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false) {
         if (isFinishing || isDestroyed) return
-        
+
         val transaction = supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
-        
+
         if (addToBackStack) {
             transaction.addToBackStack(null)
         }
-        // Usar commitAllowingStateLoss para evitar el crash IllegalStateException
-        // cuando el servidor cambia de estado (online/offline) mientras la app está en fondo.
         transaction.commitAllowingStateLoss()
+        findViewById<View>(R.id.container)?.post {
+            applyFontFamilyToView(findViewById(R.id.container))
+        }
+    }
+
+    private fun applyBackgroundAppearance() {
+        val root = findViewById<View>(R.id.container) ?: findViewById(android.R.id.content)
+        val mode = sessionManager.getBackgroundMode()
+
+        val drawable = when (mode.lowercase()) {
+            "gradient" -> {
+                GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(
+                        Color.parseColor(sessionManager.getBackgroundGradientStart()),
+                        Color.parseColor(sessionManager.getBackgroundGradientEnd())
+                    )
+                ).apply {
+                    shape = GradientDrawable.RECTANGLE
+                }
+            }
+            "image" -> {
+                val uriString = sessionManager.getBackgroundImageUri() ?: sessionManager.getBackgroundSolidColor()
+                val uri = Uri.parse(uriString)
+                try {
+                    val stream = contentResolver.openInputStream(uri)
+                    val bitmap = BitmapFactory.decodeStream(stream)
+                    stream?.close()
+                    if (bitmap != null) {
+                        val scaled = Bitmap.createScaledBitmap(bitmap, 1440, 2560, true)
+                        val drawableImage = BitmapDrawable(resources, scaled)
+                        drawableImage.alpha = sessionManager.getBackgroundImageAlpha()
+                        drawableImage
+                    } else {
+                        ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+                    }
+                } catch (_: Exception) {
+                    ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+                }
+            }
+            else -> ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+        }
+
+        root.background = drawable
+        window.decorView.background = drawable
+    }
+
+    private fun applyFontFamilyToView(view: View?) {
+        if (view == null) return
+        val typeface = when (sessionManager.getFontFamily()) {
+            "Serif" -> Typeface.SERIF
+            "Monospace" -> Typeface.MONOSPACE
+            else -> Typeface.DEFAULT
+        }
+
+        if (view is TextView) {
+            view.typeface = typeface
+        }
+
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                applyFontFamilyToView(view.getChildAt(i))
+            }
+        }
     }
 
     private fun refreshMiniPlayer() {
@@ -583,6 +656,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun hideSongInLibrary(song: Song, position: Int) {
+        // Registrar localmente para que el admin pueda revisarla y, si quiere,
+        // borrarla por completo del disco.
+        SongAdminStore.recordDislikedSong(song)
         adapter.removeAt(position)
         lifecycleScope.launch {
             try {

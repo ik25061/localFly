@@ -55,6 +55,11 @@ class SessionManager(context: Context) {
             // Fallback: no cifradas. El usuario simplemente tendrá que volver a iniciar sesión.
             appContext.getSharedPreferences("localfly_session_plain", Context.MODE_PRIVATE)
         }
+
+        // Cargar el almacén local del Administrador (ediciones de metadatos,
+        // canciones "no me gusta" y géneros personalizados). Es un complemento
+        // local que no modifica el comportamiento existente.
+        SongAdminStore.ensureContext(context)
     }
 
     fun saveSession(token: String, userId: String, username: String) {
@@ -276,6 +281,27 @@ class SessionManager(context: Context) {
 
     fun getAppColor(): String = prefs.getString("app_color", "Green") ?: "Green"
     fun setAppColor(color: String) = prefs.edit().putString("app_color", color).apply()
+
+    fun getFontFamily(): String = prefs.getString("app_font_family", "Default") ?: "Default"
+    fun setFontFamily(font: String) = prefs.edit().putString("app_font_family", font).apply()
+
+    fun getBackgroundMode(): String = prefs.getString("app_bg_mode", "solid") ?: "solid"
+    fun setBackgroundMode(mode: String) = prefs.edit().putString("app_bg_mode", mode).apply()
+
+    fun getBackgroundSolidColor(): String = prefs.getString("app_bg_solid", "#121212") ?: "#121212"
+    fun setBackgroundSolidColor(color: String) = prefs.edit().putString("app_bg_solid", color).apply()
+
+    fun getBackgroundGradientStart(): String = prefs.getString("app_bg_grad_start", "#4A148C") ?: "#4A148C"
+    fun setBackgroundGradientStart(color: String) = prefs.edit().putString("app_bg_grad_start", color).apply()
+
+    fun getBackgroundGradientEnd(): String = prefs.getString("app_bg_grad_end", "#F06292") ?: "#F06292"
+    fun setBackgroundGradientEnd(color: String) = prefs.edit().putString("app_bg_grad_end", color).apply()
+
+    fun getBackgroundImageUri(): String? = prefs.getString("app_bg_image_uri", null)
+    fun setBackgroundImageUri(uri: String?) = prefs.edit().putString("app_bg_image_uri", uri).apply()
+
+    fun getBackgroundImageAlpha(): Int = prefs.getInt("app_bg_image_alpha", 80)
+    fun setBackgroundImageAlpha(alpha: Int) = prefs.edit().putInt("app_bg_image_alpha", alpha).apply()
 
     fun isAdmin(): Boolean = getUsername()?.equals("Rafael", ignoreCase = true) == true
 }

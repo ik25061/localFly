@@ -114,7 +114,9 @@ data class Playlist(
     @SerializedName("songIds")
     val songIds: List<String> = emptyList(),
     @SerializedName("cover_id")
-    val coverId: String? = null
+    val coverId: String? = null,
+    @SerializedName("is_public")
+    val isPublic: Boolean = false
 )
 
 data class PlaylistsResponse(
@@ -128,7 +130,9 @@ data class PlaylistResponse(
 data class CreatePlaylistRequest(
     val name: String,
     val description: String?,
-    val userId: String?
+    val userId: String?,
+    @SerializedName("is_public")
+    val isPublic: Boolean = false
 )
 
 data class PlaylistSongRequest(

@@ -154,9 +154,10 @@ class LikedSongsFragment : Fragment() {
                 if (response.isSuccessful && response.body() != null) {
                     val body = response.body()!!
                     if (isNextPage) {
-                        currentSongs.addAll(body.songs)
+                        // Aplicar ediciones locales del admin (título/álbum/año editados)
+                        currentSongs.addAll(SongAdminStore.applyTo(body.songs))
                     } else {
-                        currentSongs = body.songs.toMutableList()
+                        currentSongs = SongAdminStore.applyTo(body.songs).toMutableList()
                     }
                     adapter.updateSongs(currentSongs)
 

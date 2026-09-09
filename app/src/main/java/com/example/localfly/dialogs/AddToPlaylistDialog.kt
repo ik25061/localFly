@@ -64,6 +64,7 @@ object AddToPlaylistDialog {
         val btnShowForm = dialog.findViewById<MaterialButton>(R.id.btnShowNewPlaylistForm)
         val layoutForm = dialog.findViewById<LinearLayout>(R.id.layoutNewPlaylistForm)
         val etName = dialog.findViewById<EditText>(R.id.etNewPlaylistName)
+        val switchPublic = dialog.findViewById<com.google.android.material.switchmaterial.SwitchMaterial>(R.id.switchPlaylistPublic)
         val btnCreateAndAdd = dialog.findViewById<MaterialButton>(R.id.btnCreateAndAdd)
         val btnCancelForm = dialog.findViewById<MaterialButton>(R.id.btnCancelNewPlaylist)
 
@@ -206,7 +207,7 @@ object AddToPlaylistDialog {
                         return@launch
                     }
                     val createResponse = RetrofitClient.api.createPlayList(
-                        CreatePlaylistRequest(name, null, userId)
+                        CreatePlaylistRequest(name, null, userId, switchPublic?.isChecked == true)
                     )
                     val playlist = createResponse.body()?.playlist
                     if (createResponse.isSuccessful && playlist != null) {

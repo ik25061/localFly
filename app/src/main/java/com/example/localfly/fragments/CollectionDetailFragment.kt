@@ -308,12 +308,15 @@ class CollectionDetailFragment : Fragment() {
                     } else {
                         newSongs
                     }
-                    
+
+                    // Aplicar ediciones locales del admin (título/álbum/año editados)
+                    val displaySongs = SongAdminStore.applyTo(processedSongs)
+
                     if (isNextPage) {
-                        currentSongs.addAll(processedSongs)
-                        adapter.addSongs(processedSongs)
+                        currentSongs.addAll(displaySongs)
+                        adapter.addSongs(displaySongs)
                     } else {
-                        currentSongs.addAll(processedSongs)
+                        currentSongs.addAll(displaySongs)
                         adapter.updateSongs(currentSongs)
                     }
                     

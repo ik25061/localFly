@@ -357,6 +357,9 @@ class HomeFragment : Fragment() {
     }
 
     private fun hideSong(song: Song) {
+        // Registrar localmente para que el admin pueda revisarla y, si quiere,
+        // borrarla por completo del disco.
+        SongAdminStore.recordDislikedSong(song)
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
         if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
         if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)

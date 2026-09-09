@@ -564,10 +564,27 @@ class PlaybackService : MediaSessionService() {
     fun toggleShuffle() { player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled; onStateChanged?.invoke() } }
     fun toggleRepeat() { player?.let { it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onStateChanged?.invoke() } }
 
+    private fun updateSongState(songId: String, updater: (Song) -> Song) {
+        val queueIndex = queue.indexOfFirst { it.id == songId }
+        if (queueIndex >= 0) {
+            val updatedQueue = queue.toMutableList()
+            updatedQueue[queueIndex] = updater(updatedQueue[queueIndex])
+            queue = updatedQueue
+        }
+        val current = currentSong ?: return
+        if (current.id == songId) {
+            currentSong = updater(current)
+        }
+    }
+
+    private fun syncLikeStateForSong(songId: String, liked: Boolean) {
+        updateSongState(songId) { it.copy(liked = liked) }
+    }
+
     fun toggleLike() {
         val song = currentSong ?: return
         val newLiked = !song.liked
-        currentSong = song.copy(liked = newLiked)
+        syncLikeStateForSong(song.id, newLiked)
         com.example.localfly.ai.AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
         downloadHelper.updateLiked(song.id, newLiked)
         updateMediaSessionCustomLayout()
@@ -583,6 +600,9 @@ class PlaybackService : MediaSessionService() {
     fun dislikeCurrentSong() {
         val songToHide = currentSong ?: return
         com.example.localfly.ai.AIWeightsStore(this).reinforce(songToHide.id, -1f)
+        // Registrar localmente para que el admin pueda revisarla y, si quiere,
+        // borrarla por completo del disco.
+        com.example.localfly.network.SongAdminStore.recordDislikedSong(songToHide)
         serviceScope.launch {
             try {
                 val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))

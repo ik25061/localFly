@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.network.Song
+import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
 import java.util.Locale
@@ -50,7 +51,7 @@ class SongAdapter(
     }
  
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
-         val song = songs[position]
+         val song = SongAdminStore.applyTo(songs[position])
         holder.tvIndex.text = (position +  1).toString()
  
         // Highlight current song
@@ -162,7 +163,7 @@ class SongAdapter(
         notifyDataSetChanged()
     }
 
-    fun currentSongs(): List<Song> = songs.toList()
+    fun currentSongs(): List<Song> = songs.map { SongAdminStore.applyTo(it) }
 
     fun updateSongAt(position: Int, song: Song) {
         if (position !in songs.indices) return
