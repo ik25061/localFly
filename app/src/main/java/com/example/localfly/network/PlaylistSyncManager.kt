@@ -30,7 +30,7 @@ object PlaylistSyncManager {
         for (creation in sessionManager.getPendingPlaylistCreations()) {
             try {
                 val createResp = RetrofitClient.api.createPlayList(
-                    CreatePlaylistRequest(creation.name, creation.description, userId)
+                    CreatePlaylistRequest(creation.name, creation.description, userId, creation.isPublic)
                 )
                 val realPlaylist = createResp.body()?.playlist
                 if (!createResp.isSuccessful || realPlaylist == null) continue

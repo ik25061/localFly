@@ -10,12 +10,14 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.Spinner
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.localfly.LoginActivity
+import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.network.RescanManager
 import com.example.localfly.network.RetrofitClient
@@ -214,17 +216,69 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    private fun setupAdminOptions(root: View) {
-        val adminLayout = root.findViewById<LinearLayout>(R.id.layoutAdminOptions)
-        val btnRescan = root.findViewById<MaterialButton>(R.id.btnRescanLibrary)
-
-        if (sessionManager.isAdmin()) {
-            adminLayout.visibility = View.VISIBLE
-        } else {
-            adminLayout.visibility = View.GONE
+    private fun setupBackgroundExtraControls(root: View) {
+        val btnSolid = root.findViewById<MaterialButton>(R.id.btnPickSolidColor)
+        btnSolid.setOnClickListener {
+            val names = arrayOf(
+                "Oscuro", "Negro", "Gris oscuro", "Azul oscuro",
+                "Verde oscuro", "Morado oscuro", "Naranja oscuro", "Rojo oscuro"
+            )
+            val colors = arrayOf(
+                "#121212", "#000000", "#2A2A2A", "#0D1B2A",
+                "#1B3A2B", "#260B33", "#3E2C00", "#3B0A0A"
+            )
+            AlertDialog.Builder(requireContext())
+                .setTitle("Elige un color sólido")
+                .setItems(names) { _, which ->
+                    sessionManager.setBackgroundMode("solid")
+                    sessionManager.setBackgroundSolidColor(colors[which])
+                    Toast.makeText(requireContext(), "Color de fondo guardado", Toast.LENGTH_SHORT).show()
+                    (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
         }
 
-        btnRescan.setOnClickListener {
+        val seekAlpha = root.findViewById<SeekBar>(R.id.seekBackgroundAlpha)
+        seekAlpha.progress = sessionManager.getBackgroundAlphaPct()
+        seekAlpha.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                sessionManager.setBackgroundAlphaPct(progress)
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        val seekBlur = root.findViewById<SeekBar>(R.id.seekBackgroundBlur)
+        seekBlur.progress = sessionManager.getBackgroundBlur()
+        seekBlur.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                sessionManager.setBackgroundBlur(progress)
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+    }
+
+    private fun setupAdminOptions(root: View) {
+        val adminLayout = root.findViewById<LinearLayout>(R.id.layoutAdminOptions)
+
+        // Ajustes y herramientas disponibles para todos (antes quedaban ocultas
+        // si el nombre de usuario no coincidía exactamente con "Rafael").
+        adminLayout.visibility = View.VISIBLE
+
+        root.findViewById<MaterialButton>(R.id.btnDislikedSongs).setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, DislikedSongsAdminFragment())
+                .addToBackStack(null)
+                .commit()
+        }
+
+        root.findViewById<MaterialButton>(R.id.btnRescanLibrary).setOnClickListener {
             RescanManager.triggerRescan(viewLifecycleOwner.lifecycleScope)
         }
 

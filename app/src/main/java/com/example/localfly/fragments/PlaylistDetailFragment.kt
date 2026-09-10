@@ -1,6 +1,8 @@
 package com.example.localfly.fragments
 
 import android.app.AlertDialog
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -26,6 +28,8 @@ class PlaylistDetailFragment : Fragment() {
 
     private var playlistId: String? = null
     private var playlistName: String? = null
+    private var isOwner: Boolean = true
+    private var playlistIsPublic: Boolean = false
 
     private lateinit var rvSongs: RecyclerView
     private lateinit var adapter: SongAdapter
@@ -36,6 +40,7 @@ class PlaylistDetailFragment : Fragment() {
     private lateinit var tvCount: TextView
     private lateinit var btnPlayAll: MaterialButton
     private lateinit var btnDownloadAll: MaterialButton
+    private lateinit var btnPublicPrivate: MaterialButton
     private lateinit var btnDelete: ImageButton
     private lateinit var progressBar: ProgressBar
     private lateinit var tvEmpty: TextView
@@ -47,6 +52,7 @@ class PlaylistDetailFragment : Fragment() {
         arguments?.let {
             playlistId = it.getString(ARG_ID)
             playlistName = it.getString(ARG_NAME)
+            isOwner = it.getBoolean(ARG_IS_OWNER, true)
         }
     }
 
@@ -64,6 +70,7 @@ class PlaylistDetailFragment : Fragment() {
         tvCount = view.findViewById(R.id.tvPlaylistDetailCount)
         btnPlayAll = view.findViewById(R.id.btnPlayAllPlaylist)
         btnDownloadAll = view.findViewById(R.id.btnDownloadAllPlaylist)
+        btnPublicPrivate = view.findViewById(R.id.btnPublicPrivatePlaylist)
         btnDelete = view.findViewById(R.id.btnDeletePlaylist)
         progressBar = view.findViewById(R.id.progressPlaylistDetail)
         tvEmpty = view.findViewById(R.id.tvEmptyPlaylistDetail)
@@ -74,6 +81,16 @@ class PlaylistDetailFragment : Fragment() {
             parentFragmentManager.popBackStack()
         }
         btnDelete.setOnClickListener { confirmDeletePlaylist() }
+
+        // Visibilidad de la lista (pública/privada). Solo el propósito del
+        // propietario: en listas públicas ajenas se ocultan borrar y cambiar
+        // la visibilidad.
+        if (isOwner) {
+            btnPublicPrivate.setOnClickListener { showVisibilityDialog() }
+        } else {
+            btnPublicPrivate.visibility = View.GONE
+            btnDelete.visibility = View.GONE
+        }
 
         val serverBaseUrl = ApiConfig.BASE_URL
         adapter = SongAdapter(
@@ -151,6 +168,8 @@ class PlaylistDetailFragment : Fragment() {
 
                 val playlist = plResponse.body()!!.playlist
                 playlistName = playlist.name
+                playlistIsPublic = playlist.isPublic
+                refreshPublicState()
                 tvName.text = playlist.name
 
                 val songIds = playlist.songIds
@@ -213,6 +232,8 @@ class PlaylistDetailFragment : Fragment() {
             return
         }
         playlistName = creation.name
+        playlistIsPublic = creation.isPublic
+        refreshPublicState()
         tvName.text = creation.name
         tvCount.text = "sin sincronizar todavía"
 
@@ -229,6 +250,103 @@ class PlaylistDetailFragment : Fragment() {
         adapter.updateSongs(currentSongs)
         tvCount.text = "${currentSongs.size} canciones · sin sincronizar"
         tvEmpty.visibility = if (currentSongs.isEmpty()) View.VISIBLE else View.GONE
+    }
+
+    // ===== VISIBILIDAD PÚBLICA / PRIVADA =====
+
+    /** Pinta el botón según el estado actual de la lista. */
+    private fun refreshPublicState() {
+        if (!::btnPublicPrivate.isInitialized || !isAdded) return
+        if (playlistIsPublic) {
+            btnPublicPrivate.text = "Pública"
+            btnPublicPrivate.setTextColor(Color.parseColor("#1DB954"))
+            btnPublicPrivate.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#1DB954")))
+            btnPublicPrivate.setIconResource(R.drawable.ic_public)
+            btnPublicPrivate.setIconTint(ColorStateList.valueOf(Color.parseColor("#1DB954")))
+        } else {
+            btnPublicPrivate.text = "Privada"
+            btnPublicPrivate.setTextColor(Color.parseColor("#FFB300"))
+            btnPublicPrivate.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#FFB300")))
+            btnPublicPrivate.setIconResource(R.drawable.ic_lock)
+            btnPublicPrivate.setIconTint(ColorStateList.valueOf(Color.parseColor("#FFB300")))
+        }
+    }
+
+    /** Diálogo para elegir la visibilidad de la lista. */
+    private fun showVisibilityDialog() {
+        val options = arrayOf("Pública (visible para todos)", "Privada (solo tú)")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Visibilidad de la lista")
+            .setItems(options) { _, which ->
+                val makePublic = which == 0
+                if (makePublic != playlistIsPublic) {
+                    setPlaylistPublic(makePublic)
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /**
+     * Cambia la visibilidad de la lista. En listas sincronizadas llama al
+     * servidor (PATCH /api/playlists/{id}); en listas creadas sin conexión
+     * ("local_") actualiza la creación pendiente y la caché local para que,
+     * al sincronizarse, se cree ya como pública.
+     */
+    private fun setPlaylistPublic(isPublic: Boolean) {
+        val id = playlistId ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            var ok = true
+            if (id.startsWith("local_")) {
+                val creation = sessionManager.getPendingPlaylistCreations()
+                    .firstOrNull { it.localId == id }
+                if (creation != null) {
+                    sessionManager.updatePendingPlaylistCreation(id, creation.copy(isPublic = isPublic))
+                }
+                val cache = sessionManager.getPlaylistsCache().toMutableList()
+                val idx = cache.indexOfFirst { it.id == id }
+                if (idx >= 0) {
+                    cache[idx] = cache[idx].copy(isPublic = isPublic)
+                    sessionManager.savePlaylistsCache(cache)
+                }
+            } else {
+                try {
+                    val response = RetrofitClient.api.updatePlayList(
+                        id,
+                        UpdatePlaylistRequest(
+                            name = playlistName,
+                            description = null,
+                            userId = sessionManager.getUserId(),
+                            isPublic = isPublic
+                        )
+                    )
+                    ok = response.isSuccessful
+                    if (ok) {
+                        val cache = sessionManager.getPlaylistsCache().toMutableList()
+                        val idx = cache.indexOfFirst { it.id == id }
+                        if (idx >= 0) {
+                            cache[idx] = cache[idx].copy(isPublic = isPublic)
+                            sessionManager.savePlaylistsCache(cache)
+                        }
+                    }
+                } catch (e: Exception) {
+                    ok = false
+                }
+            }
+
+            if (!isAdded) return@launch
+            if (ok) {
+                playlistIsPublic = isPublic
+                refreshPublicState()
+                Toast.makeText(
+                    requireContext(),
+                    if (isPublic) "La lista ahora es pública" else "La lista ahora es privada",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                Toast.makeText(requireContext(), "No se pudo cambiar la visibilidad", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun toggleLike(song: Song, position: Int) {
@@ -350,11 +468,13 @@ class PlaylistDetailFragment : Fragment() {
     companion object {
         private const val ARG_ID = "playlist_id"
         private const val ARG_NAME = "playlist_name"
+        private const val ARG_IS_OWNER = "playlist_is_owner"
 
-        fun newInstance(id: String, name: String) = PlaylistDetailFragment().apply {
+        fun newInstance(id: String, name: String, isOwner: Boolean = true) = PlaylistDetailFragment().apply {
             arguments = Bundle().apply {
                 putString(ARG_ID, id)
                 putString(ARG_NAME, name)
+                putBoolean(ARG_IS_OWNER, isOwner)
             }
         }
     }

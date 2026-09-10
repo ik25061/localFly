@@ -184,16 +184,18 @@ object AddToPlaylistDialog {
             scope.launch {
                 fun createOfflineFallback() {
                     val localId = "local_" + java.util.UUID.randomUUID().toString()
+                    val isPublic = switchPublic?.isChecked == true
                     val creation = PendingPlaylistCreation(
                         localId = localId,
                         name = name,
                         description = null,
-                        songIds = songs.map { it.id }.toMutableList()
+                        songIds = songs.map { it.id }.toMutableList(),
+                        isPublic = isPublic
                     )
                     sessionManager.addPendingPlaylistCreation(creation)
                     val cache = sessionManager.getPlaylistsCache().toMutableList()
                     if (cache.none { it.id == localId }) {
-                        cache.add(Playlist(id = localId, name = name, description = null, songIds = creation.songIds))
+                        cache.add(Playlist(id = localId, name = name, description = null, songIds = creation.songIds, isPublic = isPublic))
                     }
                     sessionManager.savePlaylistsCache(cache)
                     Toast.makeText(context, "Sin conexión: \"$name\" se creará al reconectar", Toast.LENGTH_SHORT).show()
@@ -249,7 +251,7 @@ object AddToPlaylistDialog {
         scope.launch {
             val cached = sessionManager.getPlaylistsCache()
             val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
-                Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+                Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds, isPublic = it.isPublic)
             }
             val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
             if (merged.isNotEmpty()) {
@@ -265,7 +267,7 @@ object AddToPlaylistDialog {
                 if (response.isSuccessful && response.body() != null) {
                     val serverPlaylists = response.body()!!.playlists
                     val pending = sessionManager.getPendingPlaylistCreations().map {
-                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds, isPublic = it.isPublic)
                     }
                     val playlists = serverPlaylists + pending
                     sessionManager.savePlaylistsCache(playlists)
@@ -290,7 +292,7 @@ object AddToPlaylistDialog {
     ) {
         val cached = sessionManager.getPlaylistsCache()
         val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
-            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds, isPublic = it.isPublic)
         }
         val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
         adapter.updatePlaylists(merged)

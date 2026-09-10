@@ -43,10 +43,11 @@ class HorizontalCardAdapter(
         val serverBaseUrl = ApiConfig.BASE_URL
  
         when (item) {
-            is Playlist ->{
+            is Playlist -> {
                 holder.tvTitle.text = item.name
                 val count = item.songIds.size
-                holder.tvSubtitle.text = if (count == 1) "1 canción" else "$count canciones"
+                val countText = if (count == 1) "1 canción" else "$count canciones"
+                holder.tvSubtitle.text = if (item.isPublic) "Pública · $countText" else countText
                 val seed = item.name ?: item.id
                 if (!item.coverId.isNullOrBlank()) {
 

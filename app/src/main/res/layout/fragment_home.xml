@@ -301,6 +301,40 @@
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
         </LinearLayout>
 
+        <!-- Carrusel: Propuestas públicas (de todos los usuarios) -->
+        <LinearLayout
+            android:id="@+id/layoutPublicPlaylists"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Propuestas para ti"
+                android:textColor="#1DB954"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Listas públicas de todos los usuarios"
+                android:textColor="#888888"
+                android:textSize="12sp"
+                android:layout_marginBottom="8dp" />
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvPublicPlaylists"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:nestedScrollingEnabled="false"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+        </LinearLayout>
+
         <!-- Sección: Recomendaciones -->
         <LinearLayout
             android:layout_width="match_parent"

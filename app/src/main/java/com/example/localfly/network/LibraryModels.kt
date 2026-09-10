@@ -135,6 +135,15 @@ data class CreatePlaylistRequest(
     val isPublic: Boolean = false
 )
 
+/** Edición de una lista existente (nombre/descripción/visibilidad). */
+data class UpdatePlaylistRequest(
+    val name: String? = null,
+    val description: String? = null,
+    val userId: String? = null,
+    @SerializedName("is_public")
+    val isPublic: Boolean? = null
+)
+
 data class PlaylistSongRequest(
     val songId: String
 )

@@ -5,6 +5,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -147,6 +148,15 @@ interface ApiService {
     suspend fun createPlayList(
         @Body request: CreatePlaylistRequest
     ): Response<PlaylistResponse>
+
+    @PATCH("api/playlists/{id}")
+    suspend fun updatePlayList(
+        @Path("id") playlistId: String,
+        @Body request: UpdatePlaylistRequest
+    ): Response<PlaylistResponse>
+
+    @GET("api/playlists/public")
+    suspend fun getPublicPlayLists(): Response<PlaylistsResponse>
 
     @POST("api/playlists/{id}/songs")
     suspend fun addSongToPlayList(

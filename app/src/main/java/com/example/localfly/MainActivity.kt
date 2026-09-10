@@ -29,6 +29,9 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
@@ -119,6 +122,27 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         applyBackgroundAppearance()
         applyFontFamilyToView(findViewById(android.R.id.content))
+
+        // ===== INSETS (EVITA QUE LA BARRA INFERIOR SE OCULTE O SE PIERDA) =====
+        // Con targetSdk 35+ Android aplica edge-to-edge de forma obligatoria:
+        // la ventana se dibuja por debajo de la barra de navegación del sistema
+        // y del teclado. Aquí lo hacemos explícito y manejamos los insets a mano:
+        //  - La barra del sistema y el notch se aplican como padding en la raíz
+        //    (rootMain), para que nada quede tapado.
+        //  - El teclado (IME) solo redimensiona la zona de contenido (container),
+        //    nunca la barra inferior ni el mini reproductor. Así, al ocultar el
+        //    teclado la botonería siempre vuelve a su sitio (no se queda perdida).
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootMain)) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            findViewById<View>(R.id.container)?.setPadding(0, 0, 0, ime.bottom)
+            WindowInsetsCompat.CONSUMED
+        }
 
         downloadHelper = DownloadManagerHelper.getInstance(this)
 
@@ -381,15 +405,11 @@ class MainActivity : AppCompatActivity() {
         if (isServerOnline == online) return
         isServerOnline = online
 
-        val menu = bottomNav.menu
-        menu.findItem(R.id.nav_home)?.isVisible = online
-        menu.findItem(R.id.nav_search)?.isVisible = online
-        menu.findItem(R.id.nav_ai)?.isVisible = online
-
-        if (!online && bottomNav.selectedItemId != R.id.nav_downloads) {
-            bottomNav.selectedItemId = R.id.nav_downloads
-            replaceFragment(DownloadsFragment())
-        }
+        // IMPORTANTE: no ocultar (isVisible = false) ni deshabilitar los ítems
+        // del menú. Ocultar/deshabilitar 3 de 5 ítems deja la barra inferior
+        // casi vacía ("no se muestra la botonería") y puede provocar el crash
+        // "IllegalStateException: Expected exactly 3 items". Los ítems quedan
+        // siempre activos; cada fragmento ya muestra su aviso si no hay servidor.
 
         if (online) {
             // El servidor volvió: aprovechar para subir letras encontradas
@@ -489,9 +509,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyBackgroundAppearance() {
+    fun applyBackgroundAppearance() {
         val root = findViewById<View>(R.id.container) ?: findViewById(android.R.id.content)
         val mode = sessionManager.getBackgroundMode()
+        val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
 
         val drawable = when (mode.lowercase()) {
             "gradient" -> {
@@ -503,6 +524,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 ).apply {
                     shape = GradientDrawable.RECTANGLE
+                    this.alpha = alpha
                 }
             }
             "image" -> {
@@ -510,25 +532,40 @@ class MainActivity : AppCompatActivity() {
                 val uri = Uri.parse(uriString)
                 try {
                     val stream = contentResolver.openInputStream(uri)
-                    val bitmap = BitmapFactory.decodeStream(stream)
+                    val original = BitmapFactory.decodeStream(stream)
                     stream?.close()
-                    if (bitmap != null) {
-                        val scaled = Bitmap.createScaledBitmap(bitmap, 1440, 2560, true)
-                        val drawableImage = BitmapDrawable(resources, scaled)
-                        drawableImage.alpha = sessionManager.getBackgroundImageAlpha()
-                        drawableImage
+                    if (original != null) {
+                        var result = Bitmap.createScaledBitmap(original, 1440, 2560, true)
+                        if (result !== original) original.recycle()
+                        val blur = sessionManager.getBackgroundBlur()
+                        if (blur > 0) result = blurBitmap(result, blur)
+                        BitmapDrawable(resources, result).apply { this.alpha = alpha }
                     } else {
-                        ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+                        ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
                     }
                 } catch (_: Exception) {
-                    ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+                    ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
                 }
             }
-            else -> ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor()))
+            else -> ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
         }
 
         root.background = drawable
         window.decorView.background = drawable
+    }
+
+    /**
+     * Desenfoque sencillo y barato (sin RenderScript, que ya no existe en
+     * API 31+): reducir la imagen y volverla a escalar produce un degradado
+     * suave tipo "blur" suficiente para el fondo de la app.
+     */
+    private fun blurBitmap(bitmap: Bitmap, blur: Int): Bitmap {
+        val factor = (blur / 7) + 1 // 1..15
+        if (factor <= 1) return bitmap
+        val small = Bitmap.createScaledBitmap(bitmap, bitmap.width / factor, bitmap.height / factor, true)
+        val result = Bitmap.createScaledBitmap(small, bitmap.width, bitmap.height, true)
+        if (small !== bitmap) small.recycle()
+        return result
     }
 
     private fun applyFontFamilyToView(view: View?) {
@@ -545,7 +582,7 @@ class MainActivity : AppCompatActivity() {
 
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) {
-                applyFontFamilyToView(view.getChildAt(i))
+                applyFontFamilyToView(view.getChildAt(i) ?: continue)
             }
         }
     }

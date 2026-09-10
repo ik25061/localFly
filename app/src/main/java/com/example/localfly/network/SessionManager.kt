@@ -19,7 +19,8 @@ data class PendingPlaylistCreation(
     val localId: String,
     val name: String,
     val description: String?,
-    val songIds: MutableList<String>
+    val songIds: MutableList<String>,
+    val isPublic: Boolean = false
 )
 
 /** Una canción que se intentó añadir, sin conexión, a una lista que ya
@@ -302,6 +303,14 @@ class SessionManager(context: Context) {
 
     fun getBackgroundImageAlpha(): Int = prefs.getInt("app_bg_image_alpha", 80)
     fun setBackgroundImageAlpha(alpha: Int) = prefs.edit().putInt("app_bg_image_alpha", alpha).apply()
+
+    /** Transparencia general del fondo (0 = invisible, 100 = opaco). */
+    fun getBackgroundAlphaPct(): Int = prefs.getInt("app_bg_alpha_pct", 100).coerceIn(0, 100)
+    fun setBackgroundAlphaPct(pct: Int) = prefs.edit().putInt("app_bg_alpha_pct", pct.coerceIn(0, 100)).apply()
+
+    /** Desenfoque del fondo (0 = sin desenfoque, 100 = máximo). */
+    fun getBackgroundBlur(): Int = prefs.getInt("app_bg_blur", 0).coerceIn(0, 100)
+    fun setBackgroundBlur(blur: Int) = prefs.edit().putInt("app_bg_blur", blur.coerceIn(0, 100)).apply()
 
     fun isAdmin(): Boolean = getUsername()?.equals("Rafael", ignoreCase = true) == true
 }

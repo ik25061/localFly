@@ -1,213 +1,296 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#121212"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:fillViewport="true">
 
-    <RelativeLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="24dp">
-
-        <ImageButton
-            android:id="@+id/btnBackSettings"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_media_previous"
-            app:tint="#FFFFFF" />
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerInParent="true"
-            android:text="Configuración"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-    </RelativeLayout>
-
-    <!-- Sección pública (para todos) -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Preferencias"
-        android:textColor="#888888"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnLogout"
-        style="@style/Widget.Material3.Button.TextButton"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Cerrar Sesión"
-        android:gravity="start"
-        android:textAllCaps="false"
-        android:textColor="#FF4444"
-        app:icon="@android:drawable/ic_lock_power_off"
-        app:iconTint="#FF4444" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="#333333"
-        android:layout_marginVertical="24dp" />
-
-    <!-- Opción Administrador -->
     <LinearLayout
-        android:id="@+id/layoutAdminOptions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:visibility="gone">
+        android:padding="16dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp">
+
+            <ImageButton
+                android:id="@+id/btnBackSettings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_previous"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:text="Configuración"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Opciones de Administrador"
-            android:textColor="#1DB954"
-            android:textSize="16sp"
+            android:text="Cuenta"
+            android:textColor="#888888"
+            android:textSize="14sp"
             android:textStyle="bold"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Ajuste: Tamaño de letra (Solo Admin según solicitado) -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Tamaño de fuente"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerFontSize"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="12dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Tipo de fuente"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerFontFamily"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="12dp" />
-
-        <!-- Ajuste: Color de la App (Solo Admin según solicitado) -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Color de la aplicación"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerAppColor"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="12dp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Fondo de la aplicación"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:layout_marginBottom="8dp" />
-
-        <Spinner
-            android:id="@+id/spinnerBackgroundMode"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="@android:drawable/btn_dropdown"
-            android:layout_marginBottom="12dp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnPickBackgroundImage"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Elegir imagen de fondo"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#3C3C3C"
-            app:cornerRadius="8dp"
             android:layout_marginBottom="8dp" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnApplyPresetGradient"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Probar degradados sugeridos"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#4A148C"
-            app:cornerRadius="8dp"
-            android:layout_marginBottom="16dp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRescanLibrary"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Reescanear Biblioteca"
-            android:textAllCaps="false"
-            android:textColor="#000000"
-            app:backgroundTint="#1DB954"
-            app:cornerRadius="8dp"
-            app:icon="@android:drawable/ic_menu_rotate"
-            app:iconTint="#000000" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Busca nuevas canciones y sincroniza Meilisearch."
-            android:textColor="#888888"
-            android:textSize="12sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnOpenAdminPanel"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Panel de Administrador"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#7C4DFF"
-            app:cornerRadius="10dp"
-            app:icon="@android:drawable/ic_menu_rotate"
-            app:iconTint="#FFFFFF" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Editar metadatos, revisar conflictos de reescaneo, borrar 'no me gusta' del disco y gestionar géneros con IA."
-            android:textColor="#888888"
-            android:textSize="11sp" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnViewLog"
+            android:id="@+id/btnLogout"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Ver Registro de Errores (Log)"
+            android:text="Cerrar Sesión"
+            android:gravity="start"
             android:textAllCaps="false"
-            android:textColor="#AAAAAA" />
-    </LinearLayout>
+            android:textColor="#FF4444"
+            app:icon="@android:drawable/ic_lock_power_off"
+            app:iconTint="#FF4444" />
 
-</LinearLayout>
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#333333"
+            android:layout_marginVertical="24dp" />
+
+        <!-- Ajustes de la aplicación (visibles para todos) -->
+        <LinearLayout
+            android:id="@+id/layoutAdminOptions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Ajustes de la aplicación"
+                android:textColor="#1DB954"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tamaño de fuente"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp" />
+
+            <Spinner
+                android:id="@+id/spinnerFontSize"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:drawable/btn_dropdown"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tipo de fuente"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp" />
+
+            <Spinner
+                android:id="@+id/spinnerFontFamily"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:drawable/btn_dropdown"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Color de la aplicación"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp" />
+
+            <Spinner
+                android:id="@+id/spinnerAppColor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:drawable/btn_dropdown"
+                android:layout_marginBottom="12dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Fondo de la aplicación"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:layout_marginBottom="8dp" />
+
+            <Spinner
+                android:id="@+id/spinnerBackgroundMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@android:drawable/btn_dropdown"
+                android:layout_marginBottom="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPickSolidColor"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Elegir color sólido"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                app:backgroundTint="#3C3C3C"
+                app:cornerRadius="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnPickBackgroundImage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Elegir imagen de fondo"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                app:backgroundTint="#3C3C3C"
+                app:cornerRadius="8dp"
+                android:layout_marginBottom="8dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnApplyPresetGradient"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Elegir degradado predefinido"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                app:backgroundTint="#4A148C"
+                app:cornerRadius="8dp"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Transparencia del fondo"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:layout_marginBottom="4dp" />
+
+            <SeekBar
+                android:id="@+id/seekBackgroundAlpha"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:progress="100"
+                android:progressTint="#1DB954"
+                android:thumbTint="#1DB954" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Desenfoque del fondo (imágenes)"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="4dp" />
+
+            <SeekBar
+                android:id="@+id/seekBackgroundBlur"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="100"
+                android:progress="0"
+                android:progressTint="#1DB954"
+                android:thumbTint="#1DB954" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#333333"
+                android:layout_marginVertical="24dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Herramientas"
+                android:textColor="#1DB954"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDislikedSongs"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Canciones que no me gustan"
+                android:textAllCaps="false"
+                android:textColor="#000000"
+                app:backgroundTint="#FF5252"
+                app:cornerRadius="10dp"
+                app:icon="@drawable/ic_dislike"
+                app:iconTint="#000000" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Revisa y elimina del disco las canciones marcadas como 'No me gusta'."
+                android:textColor="#888888"
+                android:textSize="11sp"
+                android:layout_marginBottom="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRescanLibrary"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Reescanear Biblioteca"
+                android:textAllCaps="false"
+                android:textColor="#000000"
+                app:backgroundTint="#1DB954"
+                app:cornerRadius="8dp"
+                app:icon="@android:drawable/ic_menu_rotate"
+                app:iconTint="#000000" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Busca nuevas canciones y sincroniza Meilisearch."
+                android:textColor="#888888"
+                android:textSize="12sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnOpenAdminPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Panel de Administrador"
+                android:textAllCaps="false"
+                android:textColor="#FFFFFF"
+                app:backgroundTint="#7C4DFF"
+                app:cornerRadius="10dp"
+                app:icon="@android:drawable/ic_menu_rotate"
+                app:iconTint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Editar metadatos, revisar conflictos de reescaneo y gestionar géneros con IA."
+                android:textColor="#888888"
+                android:textSize="11sp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnViewLog"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Ver Registro de Errores (Log)"
+                android:textAllCaps="false"
+                android:textColor="#AAAAAA" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

@@ -41,6 +41,7 @@ class HomeFragment : Fragment() {
     private lateinit var yearAdapter: HorizontalCardAdapter
     private lateinit var recommendationsAdapter: LikedSongsAdapter
     private lateinit var librarySectionAdapter: LikedSongsAdapter
+    private lateinit var publicAdapter: HorizontalCardAdapter
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
@@ -159,6 +160,16 @@ class HomeFragment : Fragment() {
         binding.rvPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.rvPlaylists.adapter = playlistAdapter
 
+        // Propuestas públicas (listas públicas de todos los usuarios)
+        publicAdapter = HorizontalCardAdapter(
+            emptyList(),
+            onItemClick = { item ->
+                if (item is Playlist) openPublicPlaylist(item)
+            }
+        )
+        binding.rvPublicPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvPublicPlaylists.adapter = publicAdapter
+
         // Álbumes
         albumAdapter = HorizontalCardAdapter(
             emptyList(),
@@ -266,6 +277,24 @@ class HomeFragment : Fragment() {
                     playlistAdapter.updateItems(playlistsResp.body()!!.playlists)
                 }
             } catch (e: Exception) { }
+
+            // 2b. Propuestas públicas (listas públicas de todos los usuarios).
+            // Si el servidor no soporta todavía el endpoint, la sección se oculta.
+            try {
+                val publicResp = RetrofitClient.api.getPublicPlayLists()
+                val publicPlaylists = if (publicResp.isSuccessful) {
+                    publicResp.body()?.playlists
+                        ?.filter { it.id != userId && !it.id.startsWith("local_") }
+                        ?: emptyList()
+                } else emptyList()
+                if (isAdded) {
+                    publicAdapter.updateItems(publicPlaylists)
+                    binding.layoutPublicPlaylists.visibility =
+                        if (publicPlaylists.isEmpty()) View.GONE else View.VISIBLE
+                }
+            } catch (e: Exception) {
+                if (isAdded) binding.layoutPublicPlaylists.visibility = View.GONE
+            }
 
             // 3. Álbumes
             try {
@@ -448,6 +477,14 @@ class HomeFragment : Fragment() {
                 .addToBackStack(null)
                 .commit()
         }
+    }
+
+    /** Abre una lista pública ajena: sin botones de administración (borrar/visibilidad). */
+    private fun openPublicPlaylist(playlist: Playlist) {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, PlaylistDetailFragment.newInstance(playlist.id, playlist.name, isOwner = false))
+            .addToBackStack(null)
+            .commit()
     }
 
     private fun setupSettingsButton() {

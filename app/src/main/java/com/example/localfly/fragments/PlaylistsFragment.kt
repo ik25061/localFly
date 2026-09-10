@@ -137,7 +137,7 @@ class PlaylistsFragment : Fragment() {
                 if (response.isSuccessful && response.body() != null) {
                     val serverPlaylists = response.body()!!.playlists
                     val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
-                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+                        Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds, isPublic = it.isPublic)
                     }
                     val playlists = serverPlaylists + pendingLocal
                     sessionManager.savePlaylistsCache(playlists)
@@ -161,7 +161,7 @@ class PlaylistsFragment : Fragment() {
         progressBar.visibility = View.GONE
         val cached = sessionManager.getPlaylistsCache()
         val pendingLocal = sessionManager.getPendingPlaylistCreations().map {
-            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds)
+            Playlist(id = it.localId, name = it.name, description = it.description, songIds = it.songIds, isPublic = it.isPublic)
         }
         val merged = cached.filter { c -> pendingLocal.none { p -> p.id == c.id } } + pendingLocal
         adapter.updatePlaylists(merged)
@@ -203,7 +203,7 @@ class PlaylistsFragment : Fragment() {
             } catch (e: Exception) {
                 val localId = "local_" + java.util.UUID.randomUUID().toString()
                 sessionManager.addPendingPlaylistCreation(
-                    PendingPlaylistCreation(localId, name, null, mutableListOf())
+                    PendingPlaylistCreation(localId, name, null, mutableListOf(), false)
                 )
                 Toast.makeText(requireContext(), "Sin conexión: la lista se creará al reconectar", Toast.LENGTH_SHORT).show()
                 loadPlaylists()
