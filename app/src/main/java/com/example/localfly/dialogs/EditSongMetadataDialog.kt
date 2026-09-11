@@ -6,6 +6,7 @@ package com.example.localfly.dialogs
 
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
@@ -78,18 +79,27 @@ object EditSongMetadataDialog {
             view.findViewById<MaterialButton>(R.id.btnMood7),
             view.findViewById<MaterialButton>(R.id.btnMood8)
         )
-        var selectedMood: String? = existing?.mood
+        val selectedMoods = (existing?.moods ?: emptyList()).toMutableList()
+        // Compatibilidad con edición antigua (un solo mood)
+        existing?.mood?.let { if (it !in selectedMoods) selectedMoods.add(it) }
 
         fun refreshMoods() {
             for (i in 0 until moodButtons.size) {
                 val label = MOODS[i]
-                moodButtons[i].text = if (label == selectedMood) "✓ $label" else label
+                moodButtons[i].text = if (label in selectedMoods) "✓ $label" else label
+                if (label in selectedMoods) {
+                    moodButtons[i].setBackgroundColor(Color.parseColor("#1DB954"))
+                    moodButtons[i].setTextColor(Color.BLACK)
+                } else {
+                    moodButtons[i].setBackgroundColor(Color.parseColor("#333333"))
+                    moodButtons[i].setTextColor(Color.WHITE)
+                }
             }
         }
         for (i in 0 until moodButtons.size) {
             moodButtons[i].setOnClickListener {
                 val label = MOODS[i]
-                selectedMood = if (selectedMood == label) null else label
+                if (label in selectedMoods) selectedMoods.remove(label) else selectedMoods.add(label)
                 refreshMoods()
             }
         }
@@ -134,7 +144,8 @@ val btnRevert = view.findViewById<MaterialButton>(R.id.btnRevertEdit)
                     album = if (albumRaw.isEmpty()) null else albumRaw,
                     genres = splitGenres(genresRaw),
                     year = year,
-                    mood = selectedMood,
+                    mood = if (selectedMoods.isEmpty()) null else selectedMoods.first(),
+                    moods = selectedMoods,
                     originalTitle = serverSong.title,
                     originalArtist = serverSong.artist,
                     originalAlbum = serverSong.album,

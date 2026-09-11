@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="20dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRescanLibraryRedesign"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Reescanear Biblioteca"
+            android:textAllCaps="false"
+            app:icon="@android:drawable/ic_menu_rotate"
+            app:cornerRadius="12dp"
+            app:backgroundTint="#1DB954"
+            android:textColor="#000000" />
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/swMixPodcastsRedesign"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Mezclar música con podcasts"
+            android:textColor="#FFFFFF" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnOpenAdminPanelRedesign"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Panel de Administrador"
+            android:textAllCaps="false"
+            app:icon="@android:drawable/ic_menu_preferences"
+            app:cornerRadius="12dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnViewLogRedesign"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Ver Registro de Errores (Log)"
+            android:textAllCaps="false"
+            android:textColor="#888888" />
+
+    </LinearLayout>
+</ScrollView>

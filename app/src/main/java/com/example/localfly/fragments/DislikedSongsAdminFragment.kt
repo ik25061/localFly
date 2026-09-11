@@ -1,6 +1,7 @@
 package com.example.localfly.fragments
 
 import android.app.AlertDialog
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -47,6 +48,11 @@ class DislikedSongsAdminFragment : Fragment() {
 
         view.findViewById<ImageButton>(R.id.btnBackDisliked).setOnClickListener {
             parentFragmentManager.popBackStack()
+        }
+        
+        if (parentFragment is SettingsFragment) {
+            view.findViewById<View>(R.id.btnBackDisliked).visibility = View.GONE
+            view.background = ColorDrawable(Color.TRANSPARENT)
         }
 
         view.findViewById<MaterialButton>(R.id.btnClearDisliked).setOnClickListener {

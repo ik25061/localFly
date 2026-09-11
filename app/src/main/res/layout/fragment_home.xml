@@ -5,462 +5,255 @@
     android:layout_height="match_parent"
     android:background="@android:color/transparent"
     android:fillViewport="true"
-    android:scrollbars="vertical">
+    android:scrollbars="none">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="12dp"
         android:paddingBottom="100dp">
 
-        <!-- Cabecera: Saludo y Ajustes -->
+        <!-- Header: "Tu Música" -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
+            android:padding="16dp"
+            android:layout_marginTop="8dp">
 
             <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_alignParentStart="true"
-                android:layout_toStartOf="@id/btnSettings">
-
+                android:orientation="vertical">
                 <TextView
                     android:id="@+id/tvGreeting"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Buenos días"
-                    android:textColor="#FFFFFF"
-                    android:textSize="24sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="4dp" />
-
+                    android:text="Buenas noches"
+                    android:textColor="#888888"
+                    android:textSize="12sp" />
                 <TextView
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Tu música, sin distracciones."
-                    android:textColor="#A7A7A7"
-                    android:textSize="14sp" />
+                    android:text="Tu Música"
+                    android:textColor="#FFFFFF"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
             </LinearLayout>
 
-            <FrameLayout
-                android:id="@+id/btnSettings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
-                android:background="@drawable/bg_circle_white"
-                android:clickable="true"
-                android:focusable="true">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-                <TextView
-                    android:id="@+id/tvSettingsAvatar"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:gravity="center"
-                    android:text="R"
-                    android:textColor="#FFFFFF"
-                    android:textSize="20sp"
-                    android:textStyle="bold" />
-            </FrameLayout>
+                <ImageButton
+                    android:id="@+id/btnNotifications"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/bg_circle_white"
+                    android:backgroundTint="#1AFFFFFF"
+                    android:src="@android:drawable/ic_popup_reminder"
+                    app:tint="#FFFFFF"
+                    android:layout_marginEnd="12dp" />
+
+                <FrameLayout
+                    android:id="@+id/btnSettings"
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_circle_white"
+                    android:clickable="true"
+                    android:focusable="true">
+                    <TextView
+                        android:id="@+id/tvSettingsAvatar"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:text="R"
+                        android:textColor="#FFFFFF"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+                </FrameLayout>
+            </LinearLayout>
         </RelativeLayout>
 
-        <!-- Sección: Canciones que me gustan -->
+        <!-- Moods Bar -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:paddingHorizontal="12dp"
+            android:clipToPadding="false">
+            <LinearLayout
+                android:id="@+id/layoutHomeMoods"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
+
+        <!-- Featured Card -->
+        <include
+            android:id="@+id/cardFeatured"
+            layout="@layout/item_home_featured"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="8dp"
+            android:layout_marginTop="16dp" />
+
+        <!-- Category Tabs -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="20dp"
+            android:clipToPadding="false">
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupHomeCategories"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true">
+                <!-- Chips will be added dynamically: Todo, Pop, etc. -->
+            </com.google.android.material.chip.ChipGroup>
+        </HorizontalScrollView>
+
+        <!-- Section: New Songs -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:layout_marginBottom="18dp">
-
-            <LinearLayout
+            android:layout_marginTop="24dp">
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:paddingHorizontal="16dp">
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Canciones que me gustan"
+                    android:text="Nuevas Canciones"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
                 <TextView
-                    android:id="@+id/tvSeeAllLiked"
+                    android:id="@+id/tvSeeAllNew"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
                     android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
+                    android:textColor="#E91E63"
+                    android:textSize="13sp" />
+            </RelativeLayout>
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/rvLikedSongs"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
                 android:nestedScrollingEnabled="false" />
         </LinearLayout>
 
-        <!-- Carrusel: Álbumes -->
+        <!-- Section: Continue Podcast -->
         <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Álbumes"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllAlbums"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvAlbums"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Podcasts [NUEVO] -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Podcasts"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllPodcasts"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvPodcasts"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Artistas -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Artistas"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllArtists"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvArtists"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Géneros -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Géneros"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllGenres"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvGenres"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Años -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Años"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllYears"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvYears"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Mis Listas (MovidO aquí) -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Mis Listas"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllPlaylists"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvPlaylists"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Carrusel: Propuestas públicas (de todos los usuarios) -->
-        <LinearLayout
-            android:id="@+id/layoutPublicPlaylists"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="16dp"
-            android:visibility="gone">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Propuestas para ti"
-                android:textColor="#1DB954"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Listas públicas de todos los usuarios"
-                android:textColor="#888888"
-                android:textSize="12sp"
-                android:layout_marginBottom="8dp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvPublicPlaylists"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:nestedScrollingEnabled="false"
-                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
-        </LinearLayout>
-
-        <!-- Sección: Recomendaciones -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginBottom="18dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Recomendaciones para ti"
-                android:textColor="#FFFFFF"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvRecommendations"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false" />
-        </LinearLayout>
-
-        <!-- Resumen mensual (placeholder) -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="#1A1A1A"
-            android:padding="16dp"
-            android:layout_marginTop="8dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="📊 Resumen del mes"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp" />
-
-            <TextView
-                android:id="@+id/tvMonthlySummary"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Cargando..."
-                android:textColor="#A7A7A7"
-                android:textSize="14sp" />
-        </LinearLayout>
-
-        <!-- Nueva Sección: Tu Biblioteca (al final) -->
-        <LinearLayout
+            android:id="@+id/layoutContinuePodcast"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:layout_marginTop="24dp"
-            android:layout_marginBottom="18dp">
-
-            <LinearLayout
+            android:visibility="gone">
+            <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:paddingHorizontal="16dp">
                 <TextView
-                    android:layout_width="0dp"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Tu Biblioteca"
+                    android:text="Continuar Podcast"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
                 <TextView
-                    android:id="@+id/tvSeeAllLibrary"
+                    android:id="@+id/tvSeeAllPodcastProgress"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_alignParentEnd="true"
                     android:text="Ver todo"
-                    android:textColor="#1DB954"
-                    android:textSize="14sp"
-                    android:padding="8dp" />
-            </LinearLayout>
-
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/rvLibrarySection"
+                    android:textColor="#E91E63"
+                    android:textSize="13sp" />
+            </RelativeLayout>
+            <!-- Card for last podcast with progress bar -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardLastPodcast"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:nestedScrollingEnabled="false" />
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginTop="12dp"
+                app:cardCornerRadius="16dp"
+                app:cardBackgroundColor="#1A1A1A"
+                app:strokeWidth="0dp">
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="12dp">
+                    <com.google.android.material.imageview.ShapeableImageView
+                        android:id="@+id/ivLastPodcastCover"
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:scaleType="centerCrop"
+                        app:shapeAppearanceOverlay="@style/RoundedCorners8" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_toEndOf="@id/ivLastPodcastCover"
+                        android:layout_toStartOf="@id/btnLastPodcastPlay"
+                        android:layout_marginStart="16dp"
+                        android:orientation="vertical">
+                        <TextView
+                            android:id="@+id/tvLastPodcastTitle"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Episodio..."
+                            android:textColor="#FFFFFF"
+                            android:textSize="14sp"
+                            android:textStyle="bold"
+                            android:maxLines="1"
+                            android:ellipsize="end" />
+                        <TextView
+                            android:id="@+id/tvLastPodcastAuthor"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Autor"
+                            android:textColor="#888888"
+                            android:textSize="12sp" />
+                        <ProgressBar
+                            android:id="@+id/pbLastPodcast"
+                            style="@android:style/Widget.ProgressBar.Horizontal"
+                            android:layout_width="match_parent"
+                            android:layout_height="4dp"
+                            android:layout_marginTop="8dp"
+                            android:progress="65"
+                            android:progressTint="#E91E63" />
+                    </LinearLayout>
+                    <ImageButton
+                        android:id="@+id/btnLastPodcastPlay"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:layout_alignParentEnd="true"
+                        android:layout_centerVertical="true"
+                        android:background="@drawable/bg_circle_white"
+                        android:backgroundTint="#E91E63"
+                        android:src="@android:drawable/ic_media_play"
+                        app:tint="#FFFFFF" />
+                </RelativeLayout>
+            </com.google.android.material.card.MaterialCardView>
         </LinearLayout>
+
+        <!-- Standard Sections with spaced title/ver todo -->
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionPodcasts" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionAlbums" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionArtists" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionGenres" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionYears" />
 
     </LinearLayout>
 </ScrollView>

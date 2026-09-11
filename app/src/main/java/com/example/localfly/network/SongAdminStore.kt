@@ -30,6 +30,7 @@ data class SongEdit(
     val genres: List<String> = emptyList(),
     val year: Int? = null,
     val mood: String? = null,
+    val moods: List<String> = emptyList(),
     val originalTitle: String? = null,
     val originalArtist: String? = null,
     val originalAlbum: String? = null,
@@ -155,9 +156,13 @@ object SongAdminStore {
     /** Estado de ánimo editado para una canción. */
     fun getEditedMood(songId: String): String? = editsCache[songId]?.mood
 
+    /** Estados de ánimo editados para una canción (lista de nombres). */
+    fun getEditedMoods(songId: String): List<String> = editsCache[songId]?.moods ?: emptyList()
+
     fun saveEdit(edit: SongEdit) {
         if (edit.title.isNullOrBlank() && edit.album.isNullOrBlank() &&
-            edit.genres.isEmpty() && edit.year == null && edit.mood.isNullOrBlank()
+            edit.genres.isEmpty() && edit.year == null && edit.mood.isNullOrBlank() &&
+            edit.moods.isEmpty()
         ) {
             // Edición vacía = sin cambios; quitar cualquier edición previa.
             removeEdit(edit.songId)

@@ -1,274 +1,278 @@
 package com.example.localfly.fragments
 
 import android.app.AlertDialog
+import android.content.Intent
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.ArrayAdapter
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.SeekBar
-import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.bumptech.glide.Glide
 import com.example.localfly.LoginActivity
 import com.example.localfly.MainActivity
 import com.example.localfly.R
+import com.example.localfly.adapters.GradientAdapter
+import com.example.localfly.adapters.PresetGradient
+import com.example.localfly.dialogs.ColorPickerDialog
 import com.example.localfly.network.RescanManager
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.utils.LocalLogger
-import com.example.localfly.dialogs.ColorPickerDialog
-import com.example.localfly.adapters.GradientAdapter
-import com.example.localfly.adapters.PresetGradient
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
-import android.widget.TextView
+import com.google.android.material.chip.Chip
+import com.google.android.material.chip.ChipGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
+import java.io.File
 
 class SettingsFragment : Fragment() {
 
     private lateinit var sessionManager: SessionManager
-    private var selectedBackgroundImageUri: Uri? = null
+    private lateinit var contentFrame: FrameLayout
+    private lateinit var chipGroupTabs: ChipGroup
 
     private val pickBackgroundImage = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@registerForActivityResult
-        selectedBackgroundImageUri = uri
         sessionManager.setBackgroundMode("image")
         sessionManager.setBackgroundImageUri(uri.toString())
         Toast.makeText(requireContext(), "Fondo de imagen guardado", Toast.LENGTH_SHORT).show()
-        requireActivity().recreate()
+        (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+        refreshCurrentSection()
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        return inflater.inflate(R.layout.fragment_settings, container, false)
+        return inflater.inflate(R.layout.fragment_settings_redesign, container, false)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         sessionManager = SessionManager(requireContext())
+        contentFrame = view.findViewById(R.id.settingsContentFrame)
+        chipGroupTabs = view.findViewById(R.id.chipGroupSettingsTabs)
 
-        view.findViewById<ImageButton>(R.id.btnBackSettings).setOnClickListener {
-            parentFragmentManager.popBackStack()
-        }
-
-        setupFontSizeSpinner(view)
-        setupFontFamilySpinner(view)
-        setupAppColorSpinner(view)
-        setupBackgroundAppearance(view)
-        setupBackgroundExtraControls(view)
-        setupAdminOptions(view)
-
-        val swMix = view.findViewById<MaterialSwitch>(R.id.swMixPodcasts)
-        swMix.isChecked = sessionManager.isPodcastMixingEnabled()
-        swMix.setOnCheckedChangeListener { _, isChecked ->
-            sessionManager.setPodcastMixingEnabled(isChecked)
-        }
-
-        view.findViewById<MaterialButton>(R.id.btnLogout).setOnClickListener {
-            sessionManager.clearSession()
-            android.content.Intent(requireContext(), LoginActivity::class.java).also {
-                it.flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
-                startActivity(it)
+        chipGroupTabs.setOnCheckedStateChangeListener { group, checkedIds ->
+            when (checkedIds.firstOrNull()) {
+                R.id.chipTabScreen -> showScreenSettings()
+                R.id.chipTabBackground -> showBackgroundSettings()
+                R.id.chipTabDisliked -> showDislikedSettings()
+                R.id.chipTabTools -> showToolsSettings()
+                R.id.chipTabAccount -> showAccountSettings()
             }
         }
 
-        view.findViewById<MaterialButton>(R.id.btnViewLog).setOnClickListener {
-            showLogDialog()
+        // Default tab
+        chipGroupTabs.check(R.id.chipTabScreen)
+        showScreenSettings()
+    }
+
+    private fun refreshCurrentSection() {
+        when (chipGroupTabs.checkedChipId) {
+            R.id.chipTabScreen -> showScreenSettings()
+            R.id.chipTabBackground -> showBackgroundSettings()
+            // others don't strictly need refresh on background change
         }
     }
 
-    private fun showLogDialog() {
-        val logFile = java.io.File(requireContext().filesDir, "app_debug_log.txt")
-        val content = if (logFile.exists()) logFile.readText() else "No hay registros todavía."
-        
-        AlertDialog.Builder(requireContext())
-            .setTitle("Registro de Depuración")
-            .setMessage(content)
-            .setPositiveButton("Cerrar", null)
-            .setNeutralButton("Borrar Log") { dialog, which ->
-                logFile.delete()
-                Toast.makeText(requireContext(), "Log borrado", Toast.LENGTH_SHORT).show()
-            }
-            .show()
-    }
+    // --- Aa Pantalla ---
 
+    private fun showScreenSettings() {
+        val view = layoutInflater.inflate(R.layout.settings_section_screen, contentFrame, false)
+        contentFrame.removeAllViews()
+        contentFrame.addView(view)
 
-    private fun setupFontSizeSpinner(root: View) {
-        val spinner = root.findViewById<Spinner>(R.id.spinnerFontSize)
-        val options = arrayOf("Extra pequeño", "Normal", "Grande", "Extra grande")
-        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
-        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
-        spinner.adapter = adapter
+        val btnSmall = view.findViewById<MaterialButton>(R.id.btnTextSmall)
+        val btnNormal = view.findViewById<MaterialButton>(R.id.btnTextNormal)
+        val btnLarge = view.findViewById<MaterialButton>(R.id.btnTextLarge)
+        val btnExtraLarge = view.findViewById<MaterialButton>(R.id.btnTextExtraLarge)
+
+        fun updateSelectedSize(size: String) {
+            val green = Color.parseColor("#1DB954")
+            val gray = Color.parseColor("#333333")
+            btnSmall.setBackgroundColor(if (size == "Extra pequeño") green else gray)
+            btnNormal.setBackgroundColor(if (size == "Normal") green else gray)
+            btnLarge.setBackgroundColor(if (size == "Grande") green else gray)
+            btnExtraLarge.setBackgroundColor(if (size == "Extra grande") green else gray)
+        }
 
         val currentSize = sessionManager.getTextSize()
-        val selection = options.indexOf(currentSize)
-        if (selection != -1) spinner.setSelection(selection)
+        updateSelectedSize(currentSize)
 
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, position: Int, id: Long) {
-                val newSize = options[position]
-                if (newSize != sessionManager.getTextSize()) {
-                    sessionManager.setTextSize(newSize)
+        val sizeListener = View.OnClickListener { v ->
+            val newSize = when (v.id) {
+                R.id.btnTextSmall -> "Extra pequeño"
+                R.id.btnTextNormal -> "Normal"
+                R.id.btnTextLarge -> "Grande"
+                else -> "Extra grande"
+            }
+            if (newSize != sessionManager.getTextSize()) {
+                sessionManager.setTextSize(newSize)
+                updateSelectedSize(newSize)
+                requireActivity().recreate()
+            }
+        }
+        btnSmall.setOnClickListener(sizeListener)
+        btnNormal.setOnClickListener(sizeListener)
+        btnLarge.setOnClickListener(sizeListener)
+        btnExtraLarge.setOnClickListener(sizeListener)
+
+        // Font Family List
+        val fontLayout = view.findViewById<LinearLayout>(R.id.layoutFontList)
+        val fonts = listOf("Default", "Serif", "Monospace")
+        fonts.forEach { fontName ->
+            val fontView = layoutInflater.inflate(R.layout.item_playlist_pick, fontLayout, false) // Reusar item simple
+            val tv = fontView.findViewById<TextView>(R.id.tvPlaylistPickName)
+            tv.text = fontName
+            tv.typeface = when (fontName) {
+                "Serif" -> Typeface.SERIF
+                "Monospace" -> Typeface.MONOSPACE
+                else -> Typeface.DEFAULT
+            }
+            if (fontName == sessionManager.getFontFamily()) {
+                tv.setTextColor(Color.parseColor("#1DB954"))
+            }
+            fontView.setOnClickListener {
+                if (fontName != sessionManager.getFontFamily()) {
+                    sessionManager.setFontFamily(fontName)
                     requireActivity().recreate()
                 }
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            fontLayout.addView(fontView)
         }
     }
 
-    private fun setupAppColorSpinner(root: View) {
-        val spinner = root.findViewById<Spinner>(R.id.spinnerAppColor)
-        val options = arrayOf("Verde", "Azul", "Rojo", "Púrpura")
-        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
-        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
-        spinner.adapter = adapter
+    // --- Fondo ---
 
-        val currentColor = sessionManager.getAppColor()
-        val selection = options.indexOf(currentColor)
-        if (selection != -1) spinner.setSelection(selection)
+    private fun showBackgroundSettings() {
+        val view = layoutInflater.inflate(R.layout.settings_section_background, contentFrame, false)
+        contentFrame.removeAllViews()
+        contentFrame.addView(view)
 
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, v: View?, position: Int, id: Long) {
-                val newColor = options[position]
-                if (newColor != sessionManager.getAppColor()) {
-                    sessionManager.setAppColor(newColor)
-                    requireActivity().recreate()
+        val previewLarge = view.findViewById<View>(R.id.viewBgPreviewLarge)
+        val subContentFrame = view.findViewById<FrameLayout>(R.id.backgroundSubContentFrame)
+        val chipGroupSub = view.findViewById<ChipGroup>(R.id.chipGroupBackgroundSubTabs)
+
+        fun updateLargePreview() {
+            val mode = sessionManager.getBackgroundMode()
+            val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
+            val drawable = when (mode.lowercase()) {
+                "gradient" -> GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(Color.parseColor(sessionManager.getBackgroundGradientStart()), Color.parseColor(sessionManager.getBackgroundGradientEnd()))
+                )
+                "image" -> {
+                    // Here we'd ideally show the actual image, but for now a placeholder or color
+                    GradientDrawable().apply { setColor(Color.DKGRAY) }
+                }
+                else -> GradientDrawable().apply { setColor(Color.parseColor(sessionManager.getBackgroundSolidColor())) }
+            }
+            drawable.alpha = alpha
+            previewLarge.background = drawable
+        }
+
+        chipGroupSub.setOnCheckedStateChangeListener { group, checkedIds ->
+            subContentFrame.removeAllViews()
+            when (checkedIds.firstOrNull()) {
+                R.id.chipSubTabSolid -> {
+                    val btn = MaterialButton(requireContext()).apply {
+                        text = "Elegir Color Sólido"
+                        setOnClickListener {
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundSolidColor()) { hex, alpha ->
+                                sessionManager.setBackgroundMode("solid")
+                                sessionManager.setBackgroundSolidColor(hex)
+                                sessionManager.setBackgroundAlphaPct(alpha)
+                                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                                updateLargePreview()
+                            }
+                        }
+                    }
+                    subContentFrame.addView(btn)
+                }
+                R.id.chipSubTabGradient -> {
+                    val btn = MaterialButton(requireContext()).apply {
+                        text = "Configurar Degradado"
+                        setOnClickListener { showPresetGradientsDialog() }
+                    }
+                    subContentFrame.addView(btn)
+                }
+                R.id.chipSubTabImage -> {
+                    val btn = MaterialButton(requireContext()).apply {
+                        text = "Seleccionar Imagen"
+                        setOnClickListener { pickBackgroundImage.launch("image/*") }
+                    }
+                    subContentFrame.addView(btn)
                 }
             }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-    }
 
-    private fun setupFontFamilySpinner(root: View) {
-        val spinner = root.findViewById<Spinner>(R.id.spinnerFontFamily)
-        val options = arrayOf("Default", "Serif", "Monospace")
-        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
-        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
-        spinner.adapter = adapter
-
-        val current = sessionManager.getFontFamily()
-        val selection = options.indexOf(current)
-        if (selection != -1) spinner.setSelection(selection)
-
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val selected = options[position]
-                if (selected != sessionManager.getFontFamily()) {
-                    sessionManager.setFontFamily(selected)
-                    requireActivity().recreate()
-                }
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-    }
-
-    private fun setupBackgroundAppearance(root: View) {
-        val spinner = root.findViewById<Spinner>(R.id.spinnerBackgroundMode)
-        val options = arrayOf("Sólido", "Degradado", "Imagen")
-        val adapter = ArrayAdapter(requireContext(), R.layout.spinner_item_selected, options)
-        adapter.setDropDownViewResource(R.layout.spinner_item_dropdown)
-        spinner.adapter = adapter
-
+        // Initialize sub-tabs
         val currentMode = sessionManager.getBackgroundMode()
-        val currentIndex = when (currentMode.lowercase()) {
-            "gradient" -> 1
-            "image" -> 2
-            else -> 0
-        }
-        spinner.setSelection(currentIndex)
-
-        // Evita recreate() en bucle: setSelection() dispara onItemSelected al crear la vista.
-        var initializingBgMode = true
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (initializingBgMode) { initializingBgMode = false; return }
-                val newMode = when (options[position]) {
-                    "Degradado" -> "gradient"
-                    "Imagen" -> "image"
-                    else -> "solid"
-                }
-                if (newMode != sessionManager.getBackgroundMode()) {
-                    sessionManager.setBackgroundMode(newMode)
-                    requireActivity().recreate()
-                }
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        when (currentMode) {
+            "gradient" -> chipGroupSub.check(R.id.chipSubTabGradient)
+            "image" -> chipGroupSub.check(R.id.chipSubTabImage)
+            else -> chipGroupSub.check(R.id.chipSubTabSolid)
         }
 
-        root.findViewById<MaterialButton>(R.id.btnPickBackgroundImage).setOnClickListener {
-            pickBackgroundImage.launch("image/*")
-        }
-    }
-
-    private fun setupBackgroundExtraControls(root: View) {
-        val btnSolid = root.findViewById<MaterialButton>(R.id.btnPickSolidColor)
-        btnSolid.setOnClickListener {
-            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundSolidColor()) { hex, alpha ->
-                sessionManager.setBackgroundMode("solid")
-                sessionManager.setBackgroundSolidColor(hex)
-                sessionManager.setBackgroundAlphaPct(alpha)
-                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                Toast.makeText(requireContext(), "Fondo sólido guardado", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        root.findViewById<MaterialButton>(R.id.btnApplyPresetGradient).setOnClickListener {
-            showPresetGradientsDialog()
-        }
-
-        val seekAlpha = root.findViewById<SeekBar>(R.id.seekBackgroundAlpha)
+        // Sliders
+        val seekAlpha = view.findViewById<SeekBar>(R.id.seekBgAlphaRedesign)
+        val tvValAlpha = view.findViewById<TextView>(R.id.tvValueAlpha)
         seekAlpha.progress = sessionManager.getBackgroundAlphaPct()
+        tvValAlpha.text = "${seekAlpha.progress}%"
         seekAlpha.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (!fromUser) return
-                sessionManager.setBackgroundAlphaPct(progress)
+            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                if (!f) return
+                sessionManager.setBackgroundAlphaPct(p)
+                tvValAlpha.text = "$p%"
                 (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                updateLargePreview()
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
         })
 
-        val seekBlur = root.findViewById<SeekBar>(R.id.seekBackgroundBlur)
+        val seekBlur = view.findViewById<SeekBar>(R.id.seekBgBlurRedesign)
+        val tvValBlur = view.findViewById<TextView>(R.id.tvValueBlur)
         seekBlur.progress = sessionManager.getBackgroundBlur()
+        tvValBlur.text = "${seekBlur.progress}px"
         seekBlur.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (!fromUser) return
-                sessionManager.setBackgroundBlur(progress)
+            override fun onProgressChanged(s: SeekBar?, p: Int, f: Boolean) {
+                if (!f) return
+                sessionManager.setBackgroundBlur(p)
+                tvValBlur.text = "${p}px"
                 (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
         })
-    }
 
-    private fun pickCustomGradient() {
-        ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { startHex, _ ->
-            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { endHex, _ ->
-                sessionManager.setBackgroundMode("gradient")
-                sessionManager.setBackgroundGradientStart(startHex)
-                sessionManager.setBackgroundGradientEnd(endHex)
-                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                Toast.makeText(requireContext(), "Degradado guardado", Toast.LENGTH_SHORT).show()
-            }
-        }
+        updateLargePreview()
     }
 
     private fun showPresetGradientsDialog() {
         val dialog = BottomSheetDialog(requireContext())
-        val view = layoutInflater.inflate(R.layout.fragment_playlists, null) // Reusar layout con RV
-        
+        val view = layoutInflater.inflate(R.layout.fragment_playlists, null)
         view.findViewById<View>(R.id.btnAIPlaylist).visibility = View.GONE
         view.findViewById<View>(R.id.btnNewPlaylist).visibility = View.GONE
-        view.findViewById<TextView>(android.R.id.text1)?.text = "Selecciona un degradado"
+        view.findViewById<TextView>(R.id.tvEmptyPlaylists).apply {
+            visibility = View.VISIBLE
+            text = "Selecciona un degradado"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+        }
         
         val rv = view.findViewById<RecyclerView>(R.id.rvPlaylists)
         val presets = listOf(
@@ -280,7 +284,7 @@ class SettingsFragment : Fragment() {
             PresetGradient("Personalizado...", "#000000", "#FFFFFF")
         )
         
-        val adapter = GradientAdapter(presets) { item ->
+        rv.adapter = GradientAdapter(presets) { item ->
             if (item.name == "Personalizado...") {
                 pickCustomGradient()
             } else {
@@ -288,40 +292,91 @@ class SettingsFragment : Fragment() {
                 sessionManager.setBackgroundGradientStart(item.startColor)
                 sessionManager.setBackgroundGradientEnd(item.endColor)
                 (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                refreshCurrentSection()
             }
             dialog.dismiss()
         }
-        
         rv.layoutManager = GridLayoutManager(requireContext(), 2)
-        rv.adapter = adapter
-        
         dialog.setContentView(view)
         dialog.show()
     }
 
-    private fun setupAdminOptions(root: View) {
-        val adminLayout = root.findViewById<LinearLayout>(R.id.layoutAdminOptions)
-
-        // Ajustes y herramientas disponibles para todos (antes quedaban ocultas
-        // si el nombre de usuario no coincidía exactamente con "Rafael").
-        adminLayout.visibility = View.VISIBLE
-
-        root.findViewById<MaterialButton>(R.id.btnDislikedSongs).setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, DislikedSongsAdminFragment())
-                .addToBackStack(null)
-                .commit()
+    private fun pickCustomGradient() {
+        ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { startHex, _ ->
+            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { endHex, _ ->
+                sessionManager.setBackgroundMode("gradient")
+                sessionManager.setBackgroundGradientStart(startHex)
+                sessionManager.setBackgroundGradientEnd(endHex)
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                refreshCurrentSection()
+                Toast.makeText(requireContext(), "Degradado guardado", Toast.LENGTH_SHORT).show()
+            }
         }
+    }
 
-        root.findViewById<MaterialButton>(R.id.btnRescanLibrary).setOnClickListener {
+    // --- No me gusta ---
+
+    private fun showDislikedSettings() {
+        val fragment = DislikedSongsAdminFragment()
+        childFragmentManager.beginTransaction()
+            .replace(R.id.settingsContentFrame, fragment)
+            .commit()
+    }
+
+    // --- Herramientas ---
+
+    private fun showToolsSettings() {
+        val view = layoutInflater.inflate(R.layout.settings_section_tools, contentFrame, false)
+        contentFrame.removeAllViews()
+        contentFrame.addView(view)
+
+        view.findViewById<MaterialButton>(R.id.btnRescanLibraryRedesign).setOnClickListener {
             RescanManager.triggerRescan(viewLifecycleOwner.lifecycleScope)
         }
 
-        root.findViewById<MaterialButton>(R.id.btnOpenAdminPanel).setOnClickListener {
+        val swMix = view.findViewById<MaterialSwitch>(R.id.swMixPodcastsRedesign)
+        swMix.isChecked = sessionManager.isPodcastMixingEnabled()
+        swMix.setOnCheckedChangeListener { _, isChecked -> sessionManager.setPodcastMixingEnabled(isChecked) }
+
+        view.findViewById<MaterialButton>(R.id.btnOpenAdminPanelRedesign).setOnClickListener {
             parentFragmentManager.beginTransaction()
                 .replace(R.id.container, AdminPanelFragment())
                 .addToBackStack(null)
                 .commit()
+        }
+
+        view.findViewById<MaterialButton>(R.id.btnViewLogRedesign).setOnClickListener {
+            showLogDialog()
+        }
+    }
+
+    private fun showLogDialog() {
+        val logFile = File(requireContext().filesDir, "app_debug_log.txt")
+        val content = if (logFile.exists()) logFile.readText() else "No hay registros todavía."
+        AlertDialog.Builder(requireContext())
+            .setTitle("Registro de Depuración")
+            .setMessage(content)
+            .setPositiveButton("Cerrar", null)
+            .setNeutralButton("Borrar Log") { _, _ ->
+                logFile.delete()
+                Toast.makeText(requireContext(), "Log borrado", Toast.LENGTH_SHORT).show()
+            }
+            .show()
+    }
+
+    // --- Cuenta ---
+
+    private fun showAccountSettings() {
+        val view = layoutInflater.inflate(R.layout.settings_section_account, contentFrame, false)
+        contentFrame.removeAllViews()
+        contentFrame.addView(view)
+
+        view.findViewById<MaterialButton>(R.id.btnLogoutRedesign).setOnClickListener {
+            sessionManager.clearSession()
+            Intent(requireContext(), LoginActivity::class.java).also {
+                it.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(it)
+            }
         }
     }
 }

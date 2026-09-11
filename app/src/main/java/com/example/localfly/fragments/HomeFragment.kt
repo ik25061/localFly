@@ -5,10 +5,12 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.MainActivity
 import com.example.localfly.R
@@ -17,7 +19,9 @@ import com.example.localfly.adapters.LikedSongsAdapter
 import com.example.localfly.databinding.FragmentHomeBinding
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.*
+import com.example.localfly.utils.CoverPlaceholder
 import com.example.localfly.utils.GenreUtils
+import com.google.android.material.chip.Chip
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -43,7 +47,17 @@ class HomeFragment : Fragment() {
     private lateinit var yearAdapter: HorizontalCardAdapter
     private lateinit var recommendationsAdapter: LikedSongsAdapter
     private lateinit var librarySectionAdapter: LikedSongsAdapter
-    private lateinit var publicAdapter: HorizontalCardAdapter
+
+    private val moods = listOf(
+        "Energético" to "⚡",
+        "Relajado" to "🌊",
+        "Feliz" to "☀️",
+        "Melancólico" to "☁️",
+        "Romántico" to "💜",
+        "Intenso" to "🔥",
+        "Épico" to "🏔️",
+        "Nocturno" to "🌙"
+    )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
@@ -56,6 +70,7 @@ class HomeFragment : Fragment() {
         downloadHelper = DownloadManagerHelper.getInstance(requireContext())
 
         setupGreeting()
+        setupMoods()
         setupAdapters()
         setupSettingsButton()
         loadData()
@@ -67,48 +82,49 @@ class HomeFragment : Fragment() {
                 .commit()
         }
 
+        binding.btnNotifications.setOnClickListener {
+            Toast.makeText(requireContext(), "No hay notificaciones nuevas", Toast.LENGTH_SHORT).show()
+        }
+
         // Listeners "Ver todo"
+        binding.tvSeeAllNew.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, LibraryFragment())
+                .addToBackStack(null)
+                .commit()
+        }
         binding.tvSeeAllLiked.setOnClickListener {
             parentFragmentManager.beginTransaction()
                 .replace(R.id.container, LikedSongsFragment())
                 .addToBackStack(null)
                 .commit()
         }
-        binding.tvSeeAllAlbums.setOnClickListener {
-            openSeeAll(CollectionListFragment.Type.ALBUM)
-        }
-        binding.tvSeeAllPodcasts.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, PodcastsFragment())
-                .addToBackStack(null)
-                .commit()
-        }
-        binding.tvSeeAllArtists.setOnClickListener {
-            openSeeAll(CollectionListFragment.Type.ARTIST)
-        }
-        binding.tvSeeAllGenres.setOnClickListener {
-            openSeeAll(CollectionListFragment.Type.GENRE)
-        }
-        binding.tvSeeAllYears.setOnClickListener {
-            openSeeAll(CollectionListFragment.Type.YEAR)
-        }
-        binding.tvSeeAllLibrary.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, LibraryFragment())
-                .addToBackStack(null)
-                .commit()
-        }
+        
+        // Configurar secciones estándar
+        setupSection(binding.sectionPodcasts.root, "Podcasts") { parentFragmentManager.beginTransaction().replace(R.id.container, PodcastsFragment()).addToBackStack(null).commit() }
+        setupSection(binding.sectionAlbums.root, "Álbumes") { openSeeAll(CollectionListFragment.Type.ALBUM) }
+        setupSection(binding.sectionArtists.root, "Artistas") { openSeeAll(CollectionListFragment.Type.ARTIST) }
+        setupSection(binding.sectionGenres.root, "Géneros") { openSeeAll(CollectionListFragment.Type.GENRE) }
+        setupSection(binding.sectionYears.root, "Por Año") { openSeeAll(CollectionListFragment.Type.YEAR) }
+        
+        // ... rest of observers ...
+    }
 
-        // Observar progreso de descargas (especialmente para la auto-descarga de 500 temas)
-        viewLifecycleOwner.lifecycleScope.launch {
-            DownloadManagerHelper.downloadProgress.collect { progress ->
-                if (progress.isDownloading) {
-                    binding.tvMonthlySummary.text = "🔄 Auto-descargando: ${progress.songTitle} (${progress.current}/${progress.total})"
-                } else {
-                    val count = downloadHelper.getDownloadedSongs().size
-                    binding.tvMonthlySummary.text = "✅ Biblioteca offline: $count de 500 temas recomendados."
-                }
+    private fun setupSection(include: View, title: String, onSeeAll: () -> Unit) {
+        include.findViewById<TextView>(R.id.tvSectionTitle).text = title
+        include.findViewById<TextView>(R.id.tvSectionSeeAll).setOnClickListener { onSeeAll() }
+    }
+
+    private fun setupMoods() {
+        binding.layoutHomeMoods.removeAllViews()
+        moods.forEach { (name, emoji) ->
+            val moodView = layoutInflater.inflate(R.layout.item_home_mood, binding.layoutHomeMoods, false)
+            moodView.findViewById<TextView>(R.id.tvMoodEmoji).text = emoji
+            moodView.findViewById<TextView>(R.id.tvMoodName).text = name
+            moodView.setOnClickListener {
+                Toast.makeText(requireContext(), "Filtrando por $name...", Toast.LENGTH_SHORT).show()
             }
+            binding.layoutHomeMoods.addView(moodView)
         }
     }
 
@@ -129,6 +145,61 @@ class HomeFragment : Fragment() {
             else -> "Buenas noches"
         }
         binding.tvGreeting.text = greeting
+    }
+
+    private fun updateFeatured(song: Song) {
+        val featured = binding.cardFeatured
+        featured.tvFeaturedTitle.text = song.title
+        featured.tvFeaturedArtist.text = song.artist ?: "Artista desconocido"
+        
+        val coverUrl = "$serverBaseUrl/cover/${song.id}"
+        Glide.with(this)
+            .load(coverUrl)
+            .placeholder(CoverPlaceholder.drawable(song.id))
+            .centerCrop()
+            .into(featured.ivFeaturedCover)
+            
+        featured.fabFeaturedPlay.setOnClickListener {
+            (requireActivity() as? MainActivity)?.playbackService?.playSong(song)
+        }
+    }
+
+    private fun setupCategories(genres: List<Genre>) {
+        binding.chipGroupHomeCategories.removeAllViews()
+        
+        // "Todo" chip
+        val allChip = Chip(requireContext())
+        allChip.text = "Todo"
+        allChip.isCheckable = true
+        allChip.isChecked = true
+        binding.chipGroupHomeCategories.addView(allChip)
+        
+        genres.take(10).forEach { genre ->
+            val chip = Chip(requireContext())
+            chip.text = genre.name
+            chip.isCheckable = true
+            binding.chipGroupHomeCategories.addView(chip)
+        }
+    }
+
+    private fun updateLastPodcast(episode: Song) {
+        binding.layoutContinuePodcast.visibility = View.VISIBLE
+        binding.tvLastPodcastTitle.text = episode.title
+        binding.tvLastPodcastAuthor.text = episode.artist ?: "Podcast"
+        
+        val progress = if (episode.duration != null && episode.duration > 0) {
+            ((episode.lastPositionMs / 1000.0) / episode.duration * 100).toInt()
+        } else 0
+        binding.pbLastPodcast.progress = progress
+        
+        Glide.with(this)
+            .load("$serverBaseUrl/cover/${episode.id}")
+            .placeholder(CoverPlaceholder.drawable(episode.id))
+            .into(binding.ivLastPodcastCover)
+            
+        binding.btnLastPodcastPlay.setOnClickListener {
+            (requireActivity() as? MainActivity)?.playbackService?.playSong(episode)
+        }
     }
 
     private fun setupAdapters() {
@@ -157,66 +228,48 @@ class HomeFragment : Fragment() {
                 AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
             }
         )
-        binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.rvLikedSongs.adapter = likedAdapter
-
-        // Playlists
-        playlistAdapter = HorizontalCardAdapter(
-            emptyList(),
-            onItemClick = { item -> openCollection(item) }
-        )
-        binding.rvPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvPlaylists.adapter = playlistAdapter
 
         // Podcasts
         podcastAdapter = HorizontalCardAdapter(
             emptyList(),
             onItemClick = { item -> if (item is Podcast) openPodcastDetail(item) }
         )
-        binding.rvPodcasts.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvPodcasts.adapter = podcastAdapter
-
-        // Propuestas públicas (listas públicas de todos los usuarios)
-        publicAdapter = HorizontalCardAdapter(
-            emptyList(),
-            onItemClick = { item ->
-                if (item is Playlist) openPublicPlaylist(item)
-            }
-        )
-        binding.rvPublicPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvPublicPlaylists.adapter = publicAdapter
+        binding.sectionPodcasts.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionPodcasts.rvSectionContent.adapter = podcastAdapter
 
         // Álbumes
         albumAdapter = HorizontalCardAdapter(
             emptyList(),
             onItemClick = { item -> openCollection(item) }
         )
-        binding.rvAlbums.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvAlbums.adapter = albumAdapter
+        binding.sectionAlbums.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionAlbums.rvSectionContent.adapter = albumAdapter
 
         // Artistas
         artistAdapter = HorizontalCardAdapter(
             emptyList(),
             onItemClick = { item -> openCollection(item) }
         )
-        binding.rvArtists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvArtists.adapter = artistAdapter
+        binding.sectionArtists.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionArtists.rvSectionContent.adapter = artistAdapter
 
         // Géneros
         genreAdapter = HorizontalCardAdapter(
             emptyList(),
             onItemClick = { item -> openCollection(item) }
         )
-        binding.rvGenres.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvGenres.adapter = genreAdapter
+        binding.sectionGenres.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionGenres.rvSectionContent.adapter = genreAdapter
 
         // Años
         yearAdapter = HorizontalCardAdapter(
             emptyList(),
             onItemClick = { item -> openCollection(item) }
         )
-        binding.rvYears.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        binding.rvYears.adapter = yearAdapter
+        binding.sectionYears.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionYears.rvSectionContent.adapter = yearAdapter
 
         // Recomendaciones
         recommendationsAdapter = LikedSongsAdapter(
@@ -295,22 +348,15 @@ class HomeFragment : Fragment() {
             } catch (e: Exception) { }
 
             // 2b. Propuestas públicas (listas públicas de todos los usuarios).
-            // Si el servidor no soporta todavía el endpoint, la sección se oculta.
             try {
                 val publicResp = RetrofitClient.api.getPublicPlayLists()
-                val publicPlaylists = if (publicResp.isSuccessful) {
-                    publicResp.body()?.playlists
+                if (publicResp.isSuccessful && isAdded) {
+                    val publicPlaylists = publicResp.body()?.playlists
                         ?.filter { it.id != userId && !it.id.startsWith("local_") }
                         ?: emptyList()
-                } else emptyList()
-                if (isAdded) {
-                    publicAdapter.updateItems(publicPlaylists)
-                    binding.layoutPublicPlaylists.visibility =
-                        if (publicPlaylists.isEmpty()) View.GONE else View.VISIBLE
+                    // Si queremos mostrarlas, añadir una sección para ellas en el XML
                 }
-            } catch (e: Exception) {
-                if (isAdded) binding.layoutPublicPlaylists.visibility = View.GONE
-            }
+            } catch (e: Exception) { }
 
             // 2c. Podcasts
             try {
@@ -347,9 +393,9 @@ class HomeFragment : Fragment() {
                 val genresResp = RetrofitClient.api.getGenres(userId = userId, limit = 100)
                 if (genresResp.isSuccessful && genresResp.body() != null) {
                     val rawGenres = genresResp.body()!!.items
-                    // Usar utilidad compartida para aplanar géneros legacy
-                    val flattenedGenres = com.example.localfly.utils.GenreUtils.flattenLegacyGenres(rawGenres)
+                    val flattenedGenres = GenreUtils.flattenLegacyGenres(rawGenres)
                     genreAdapter.updateItems(flattenedGenres.shuffled().take(20))
+                    if (isAdded) setupCategories(flattenedGenres)
                 }
             } catch (e: Exception) { }
 
@@ -372,9 +418,18 @@ class HomeFragment : Fragment() {
 
             // 8. Tu Biblioteca (previsualización de los primeros 10)
             try {
-                val libResp = RetrofitClient.api.getLibrary(userId = userId, limit = 10)
+                val libResp = RetrofitClient.api.getLibrary(userId = userId, limit = 100)
                 if (libResp.isSuccessful && libResp.body() != null) {
-                    librarySectionAdapter.updateSongs(libResp.body()!!.songs)
+                    val songs = libResp.body()!!.songs
+                    librarySectionAdapter.updateSongs(songs.take(10))
+                    
+                    if (isAdded && songs.isNotEmpty()) {
+                        updateFeatured(songs.shuffled().first())
+                        
+                        // Buscar último podcast escuchado
+                        val lastEp = songs.find { it.isEpisode && it.lastPositionMs > 0 }
+                        if (lastEp != null) updateLastPodcast(lastEp)
+                    }
                 }
             } catch (e: Exception) { }
 
