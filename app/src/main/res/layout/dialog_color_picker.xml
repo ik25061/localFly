@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="20dp"
+    android:background="#1C1C1E">
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="Farben"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <ImageButton
+            android:id="@+id/btnClosePicker"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_alignParentEnd="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#888888" />
+    </RelativeLayout>
+
+    <!-- Color Preview -->
+    <View
+        android:id="@+id/viewColorPreview"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_circle_white"
+        android:layout_marginBottom="20dp" />
+
+    <TextView
+        android:id="@+id/tvHexCode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:text="#FFFFFF"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <!-- RGB Sliders -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ROT"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <SeekBar
+            android:id="@+id/seekRed"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="255"
+            android:progressDrawable="@null"
+            android:thumbTint="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvRedValue"
+            android:layout_width="40dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="255"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="GRÜN"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <SeekBar
+            android:id="@+id/seekGreen"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="255"
+            android:progressDrawable="@null"
+            android:thumbTint="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvGreenValue"
+            android:layout_width="40dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="255"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="BLAU"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <SeekBar
+            android:id="@+id/seekBlue"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="255"
+            android:progressDrawable="@null"
+            android:thumbTint="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvBlueValue"
+            android:layout_width="40dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="255"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- Opacity -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="DECKKRAFT"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <SeekBar
+            android:id="@+id/seekAlpha"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="100"
+            android:progressDrawable="@null"
+            android:thumbTint="#FFFFFF" />
+        <TextView
+            android:id="@+id/tvAlphaValue"
+            android:layout_width="40dp"
+            android:layout_height="wrap_content"
+            android:gravity="end"
+            android:text="100%"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnApplyColor"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Aplicar"
+        android:textAllCaps="false"
+        app:cornerRadius="12dp"
+        app:backgroundTint="#1DB954"
+        android:textColor="#000000" />
+
+</LinearLayout>

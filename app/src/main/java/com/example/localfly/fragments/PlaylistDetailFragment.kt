@@ -317,7 +317,7 @@ class PlaylistDetailFragment : Fragment() {
                             name = playlistName,
                             description = null,
                             userId = sessionManager.getUserId(),
-                            isPublic = isPublic
+                            isPublic = if (isPublic) 1 else 0
                         )
                     )
                     ok = response.isSuccessful

@@ -67,8 +67,8 @@ class SongAdapter(
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
         holder.tvDuration.text = formatDuration(song.duration)
  
-        // Lyrics Indicator
-        holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
+        // Lyrics Indicator (reused for Podcasts with subtitles)
+        holder.ivLyricsIndicator.visibility = if (song.hasLyrics || !song.subtitleUrl.isNullOrEmpty()) View.VISIBLE else View.GONE
  
         // Acciones visibles
         holder.btnLike.setImageResource(

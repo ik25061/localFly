@@ -222,4 +222,24 @@ interface ApiService {
     @POST("api/rescan")
     suspend fun rescanLibrary(): Response<Unit>
 
+    // --- Podcasts ---
+
+    @GET("api/podcasts")
+    suspend fun getPodcasts(
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 20,
+        @Query("offset") offset: Int = 0
+    ): Response<PodcastsResponse>
+
+    @GET("api/podcasts/{id}")
+    suspend fun getPodcast(
+        @Path("id") podcastId: String,
+        @Query("userId") userId: String?
+    ): Response<PodcastResponse>
+
+    @POST("api/podcasts/progress")
+    suspend fun updateEpisodeProgress(
+        @Body request: ProgressUpdateRequest
+    ): Response<Unit>
+
 }

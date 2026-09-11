@@ -29,6 +29,8 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.dialogs.AddToPlaylistDialog
+import com.example.localfly.dialogs.EditSongMetadataDialog
+import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.LocalLogger
 import com.example.localfly.utils.CoverPlaceholder
 import okhttp3.OkHttpClient
@@ -62,6 +64,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnAddToPlaylist: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
+    private lateinit var btnEditMetadata: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvUpcomingHeader: TextView
@@ -161,6 +164,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
+        btnEditMetadata = findViewById(R.id.btnFullEditMetadata)
         btnShowQueueTop = findViewById(R.id.btnShowQueueTop)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         tvUpcomingHeader = findViewById(R.id.tvUpcomingHeader)
@@ -188,6 +192,12 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
         btnLyrics.setOnClickListener { showLyrics() }
+        btnEditMetadata.setOnClickListener {
+            val song = playbackService?.currentSong ?: return@setOnClickListener
+            EditSongMetadataDialog.show(this, song, SongAdminStore.applyTo(song)) {
+                refreshUi()
+            }
+        }
         btnAddToPlaylist.setOnClickListener {
             val song = playbackService?.currentSong ?: return@setOnClickListener
             AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
@@ -275,6 +285,7 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun openQueueOverlay() {
+        if (isFinishing || isDestroyed) return
         val song = playbackService?.currentSong
         if (song != null) {
             tvQueueMiniInfo.text = "Reproduciendo ahora: ${song.title}"
@@ -824,6 +835,7 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun refreshLyricsMiniPlayer() {
+        if (isFinishing || isDestroyed) return
         val song = playbackService?.currentSong ?: return
         
         tvLyricsMiniTitle?.text = song.title
@@ -848,6 +860,7 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun refreshUi() {
+        if (isFinishing || isDestroyed) return
         val song = playbackService?.currentSong ?: run { finish(); return }
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"

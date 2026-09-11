@@ -1,0 +1,19 @@
+- `[x]` Task 1: Corrections to UI and Navigation
+    - `[x]` Fix `applyBackgroundAppearance` in `MainActivity.kt` to target `rootMain`.
+    - `[x]` Ensure `BottomNavigationView` visibility in `activity_main.xml`.
+    - `[x]` Fix `UninitializedPropertyAccessException` for `bottomNav` in `MainActivity.kt` by moving initialization to the start of `onCreate`.
+- `[x]` Task 2: Disliked Songs and Metadata Editing
+    - `[x]` Fix `recordDislikedSong` in `SongAdminStore.kt`.
+    - `[x]` Add "Edit Metadata" button to `mini_player.xml` and `activity_now_playing.xml`.
+    - `[x]` Connect metadata button in `MainActivity.kt` and `NowPlayingActivity.kt`.
+- `[x]` Task 3: Playlist Visibility Fix
+    - `[x]` Debug and fix `updatePlayList` in `PlaylistDetailFragment.kt` (Improved error feedback and ensured name consistency).
+- `[x]` Task 4: Advanced Visual Settings
+    - `[x]` Implement iOS-style `ColorPickerDialog.kt`.
+    - `[x]` Update `SettingsFragment.kt` with the new color picker and blur/transparency previews.
+- `[x]` Task 5: Podcast System Implementation
+    - `[x]` Create `PodcastModels.kt` and update `LibraryModels.kt` for episode support.
+    - `[x]` Implement `PodcastsFragment.kt` and `PodcastDetailFragment.kt` with natural sorting.
+    - `[x]` Add Podcast section to `HomeFragment.kt`.
+    - `[x]` Update `PlaybackService.kt` for podcast resumption and progress tracking.
+    - `[x]` Add Podcast mixing setting in `SettingsFragment.kt`.

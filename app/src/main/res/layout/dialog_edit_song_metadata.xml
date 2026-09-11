@@ -72,200 +72,227 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <!-- Formulario -->
-    <TextView
+    <ScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Nombre mostrado"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp" />
-    <EditText
-        android:id="@+id/etEditTitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:background="#222222"
-        android:padding="10dp"
-        android:hint="Título de la canción"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#888888"
-        android:textSize="14sp"
-        android:maxLines="1"
-        android:imeOptions="actionDone" />
+        android:layout_weight="1">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Álbum"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp" />
-    <EditText
-        android:id="@+id/etEditAlbum"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:background="#222222"
-        android:padding="10dp"
-        android:hint="Álbum"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#888888"
-        android:textSize="14sp"
-        android:maxLines="1"
-        android:imeOptions="actionDone" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Año"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp" />
-    <EditText
-        android:id="@+id/etEditYear"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:background="#222222"
-        android:padding="10dp"
-        android:hint="Ej.: 1999"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#888888"
-        android:textSize="14sp"
-        android:inputType="number"
-        android:maxLines="1"
-        android:imeOptions="actionDone" />
-<TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Géneros (separados por comas)"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp" />
-    <EditText
-        android:id="@+id/etEditGenres"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:background="#222222"
-        android:padding="10dp"
-        android:hint="Ej.: Rock, Pop, Indie"
-        android:textColor="#FFFFFF"
-        android:textColorHint="#888888"
-        android:textSize="14sp"
-        android:maxLines="1"
-        android:imeOptions="actionDone" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Estado de ánimo (toca para elegir)"
-        android:textColor="#AAAAAA"
-        android:textSize="12sp" />
-
-    <LinearLayout
-        android:id="@+id/layoutMoodRow1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="4dp">
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood1"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Mood1"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+            android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood2"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood2"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+            <!-- Formulario -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Nombre mostrado"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+            <EditText
+                android:id="@+id/etEditTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#222222"
+                android:padding="10dp"
+                android:hint="Título de la canción"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#888888"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood3"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood3"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Álbum"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+            <EditText
+                android:id="@+id/etEditAlbum"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#222222"
+                android:padding="10dp"
+                android:hint="Álbum"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#888888"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood4"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood4"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
-    </LinearLayout>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Año"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+            <EditText
+                android:id="@+id/etEditYear"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#222222"
+                android:padding="10dp"
+                android:hint="Ej.: 1999"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#888888"
+                android:textSize="14sp"
+                android:inputType="number"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
 
-    <LinearLayout
-        android:id="@+id/layoutMoodRow2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="16dp">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Géneros (separados por comas)"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
+            <EditText
+                android:id="@+id/etEditGenres"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:background="#222222"
+                android:padding="10dp"
+                android:hint="Ej.: Rock, Pop, Indie"
+                android:textColor="#FFFFFF"
+                android:textColorHint="#888888"
+                android:textSize="14sp"
+                android:maxLines="1"
+                android:imeOptions="actionDone" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood5"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Mood5"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Estado de ánimo (toca para elegir)"
+                android:textColor="#AAAAAA"
+                android:textSize="12sp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood6"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood6"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="16dp">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood7"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood7"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood1"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Mood1"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood2"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Mood2"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood3"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Mood3"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMood8"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
-            android:text="Mood8"
-            android:textAllCaps="false"
-            android:textColor="#FFFFFF"
-            app:backgroundTint="#333333"
-            app:cornerRadius="18dp" />
-    </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood4"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Mood4"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood5"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Mood5"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood6"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Mood6"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood7"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Mood7"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnMood8"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="Mood8"
+                        android:textSize="12sp"
+                        android:textAllCaps="false"
+                        app:cornerRadius="10dp" />
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
 
     <!-- Acciones -->
     <LinearLayout

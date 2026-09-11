@@ -26,6 +26,7 @@ import com.example.localfly.network.ApiService
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.PlaylistSyncManager
+import com.example.localfly.network.ProgressUpdateRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
@@ -81,6 +82,29 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private val progressTrackerHandler = Handler(Looper.getMainLooper())
+    private val progressTrackerRunnable = object : Runnable {
+        override fun run() {
+            saveEpisodeProgress()
+            progressTrackerHandler.postDelayed(this, 5000)
+        }
+    }
+
+    private fun saveEpisodeProgress() {
+        val song = currentSong ?: return
+        if (song.isEpisode) {
+            val position = player?.currentPosition ?: 0L
+            song.lastPositionMs = position
+            serviceScope.launch {
+                try {
+                    RetrofitClient.api.updateEpisodeProgress(
+                        ProgressUpdateRequest(song.id, sessionManager.getUserId(), position)
+                    )
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
     private var mediaSession: MediaSession? = null
 
     var currentSong: Song? = null
@@ -117,10 +141,14 @@ class PlaybackService : MediaSessionService() {
         player?.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onStateChanged?.invoke()
-                if (isPlaying && crossfadeEnabled) {
-                    fadeTickerHandler.post(fadeTickerRunnable)
+                if (isPlaying) {
+                    if (crossfadeEnabled) fadeTickerHandler.post(fadeTickerRunnable)
+                    progressTrackerHandler.post(progressTrackerRunnable)
                 } else {
                     fadeTickerHandler.removeCallbacks(fadeTickerRunnable)
+                    progressTrackerHandler.removeCallbacks(progressTrackerRunnable)
+                    // Guardar progreso final al pausar
+                    saveEpisodeProgress()
                 }
             }
 
@@ -551,6 +579,12 @@ class PlaybackService : MediaSessionService() {
             player?.addMediaItem(nextMediaItem)
         }
         player?.prepare()
+        
+        // Continuar episodio donde se dejó
+        if (song.isEpisode && song.lastPositionMs > 0) {
+            player?.seekTo(song.lastPositionMs)
+        }
+
         fadeOutStartedForCurrentSong = false
         fadeJob?.cancel()
         player?.volume = if (crossfadeEnabled) 0f else 1f

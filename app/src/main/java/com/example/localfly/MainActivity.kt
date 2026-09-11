@@ -36,6 +36,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
 import com.example.localfly.dialogs.AddToPlaylistDialog
+import com.example.localfly.dialogs.EditSongMetadataDialog
 import com.example.localfly.fragments.AIFragment
 import com.example.localfly.fragments.CollectionDetailFragment
 import com.example.localfly.fragments.DownloadsFragment
@@ -66,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnMiniLike: ImageButton
     private lateinit var btnMiniDislike: ImageButton
+    private lateinit var btnMiniEditMetadata: ImageButton
     private var btnPrev: ImageButton? = null
     private lateinit var btnNext: ImageButton
 
@@ -100,8 +102,8 @@ class MainActivity : AppCompatActivity() {
             val binder = service as PlaybackService.LocalBinder
             playbackService = binder.getService()
             isBound = true
-            playbackService?.onStateChanged = { refreshMiniPlayer() }
-            refreshMiniPlayer()
+            playbackService?.onStateChanged = { if (!isFinishing && !isDestroyed) refreshMiniPlayer() }
+            if (!isFinishing && !isDestroyed) refreshMiniPlayer()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -120,6 +122,11 @@ class MainActivity : AppCompatActivity() {
         
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        
+        // Inicializar vistas críticas antes de aplicar apariencia
+        bottomNav = findViewById(R.id.bottomNavigation)
+        initMiniPlayer()
+        
         applyBackgroundAppearance()
         applyFontFamilyToView(findViewById(android.R.id.content))
 
@@ -155,8 +162,6 @@ class MainActivity : AppCompatActivity() {
 
         requestNotificationPermissionIfNeeded()
 
-        initMiniPlayer()
-
         // ===== CONFIGURAR ADAPTADOR =====
         adapter = SongAdapter(
             songs = mutableListOf(),
@@ -179,7 +184,6 @@ class MainActivity : AppCompatActivity() {
         )
 
         // ===== NAVEGACIÓN INFERIOR =====
-        bottomNav = findViewById(R.id.bottomNavigation)
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
                 R.id.nav_home -> {
@@ -340,6 +344,7 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnPlayPause)
         btnMiniLike = findViewById(R.id.btnMiniLike)
         btnMiniDislike = findViewById(R.id.btnMiniDislike)
+        btnMiniEditMetadata = findViewById(R.id.btnMiniEditMetadata)
         btnPrev = findViewById(R.id.btnPrev)
         btnNext = findViewById(R.id.btnNext)
 
@@ -351,6 +356,16 @@ class MainActivity : AppCompatActivity() {
         btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
         btnMiniLike.setOnClickListener { playbackService?.toggleLike() }
         btnMiniDislike.setOnClickListener { playbackService?.dislikeCurrentSong() }
+        btnMiniEditMetadata.setOnClickListener {
+            val song = playbackService?.currentSong ?: return@setOnClickListener
+            EditSongMetadataDialog.show(
+                this,
+                song,
+                SongAdminStore.applyTo(song)
+            ) {
+                refreshMiniPlayer()
+            }
+        }
         btnPrev?.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
     }
@@ -510,9 +525,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun applyBackgroundAppearance() {
-        val root = findViewById<View>(R.id.container) ?: findViewById(android.R.id.content)
+        val root = findViewById<View>(R.id.rootMain) ?: findViewById(android.R.id.content)
         val mode = sessionManager.getBackgroundMode()
         val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
+
+        // Asegurar visibilidad de los controles de navegación
+        bottomNav.visibility = View.VISIBLE
+        bottomNav.alpha = 1.0f
 
         val drawable = when (mode.lowercase()) {
             "gradient" -> {
@@ -602,6 +621,7 @@ class MainActivity : AppCompatActivity() {
         val coverUrl = "$serverBaseUrl/cover/${song.id}"
         val seed = song.id
 
+        if (isFinishing || isDestroyed) return
         Glide.with(this)
             .load(coverUrl)
             .placeholder(CoverPlaceholder.drawable(seed))

@@ -32,14 +32,58 @@ class AIRecommendationManager(
     ): List<Song> = withContext(Dispatchers.IO) {
         val userId = sessionManager.getUserId() ?: return@withContext emptyList()
         val favArtistIds = sessionManager.getFavoriteArtists()
+        val mixingEnabled = sessionManager.isPodcastMixingEnabled()
+
+        // Determinar qué tipos de contenido incluir según el contexto y el ajuste de mezcla
+        val includeMusic: Boolean
+        val includePodcasts: Boolean
+
+        if (mixingEnabled) {
+            includeMusic = true
+            includePodcasts = true
+        } else {
+            // Contexto separado
+            if (seedSong != null) {
+                includeMusic = !seedSong.isEpisode
+                includePodcasts = seedSong.isEpisode
+            } else {
+                includeMusic = true
+                includePodcasts = false
+            }
+        }
 
         // 1. Canciones que le gustan (para extraer patrones profundos)
         val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
         val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
 
-        // 2. Toda la biblioteca disponible para recomendar
-        val libResp = RetrofitClient.api.getLibrary(userId, limit = 5000)
-        val allSongs = if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
+        // 2. Obtener candidatos de música y/o podcasts
+        val musicSongs = if (includeMusic) {
+            val libResp = RetrofitClient.api.getLibrary(userId, limit = 5000)
+            if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
+        } else emptyList()
+
+        val podcastEpisodes = if (includePodcasts) {
+            try {
+                val podcastsResp = RetrofitClient.api.getPodcasts(userId, limit = 100)
+                if (podcastsResp.isSuccessful) {
+                    podcastsResp.body()?.podcasts?.flatMap { podcast ->
+                        val pResp = RetrofitClient.api.getPodcast(podcast.id, userId)
+                        if (pResp.isSuccessful) {
+                            pResp.body()?.episodes?.map { ep ->
+                                Song(
+                                    id = ep.id, title = ep.title, artist = podcast.author, album = podcast.title,
+                                    year = null, duration = ep.duration, bpm = null, key = null, liked = false,
+                                    hasCover = true, isEpisode = true, lastPositionMs = ep.lastPositionMs,
+                                    subtitleUrl = ep.subtitleUrl
+                                )
+                            } ?: emptyList()
+                        } else emptyList()
+                    } ?: emptyList()
+                } else emptyList()
+            } catch (e: Exception) { emptyList() }
+        } else emptyList()
+
+        val allSongs = musicSongs + podcastEpisodes
 
         if (allSongs.isEmpty()) return@withContext emptyList()
 

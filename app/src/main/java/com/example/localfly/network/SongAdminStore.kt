@@ -2,6 +2,7 @@ package com.example.localfly.network
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -186,7 +187,7 @@ object SongAdminStore {
     // ===================== CANCIONES "NO ME GUSTA" =====================
 
     fun getDislikedSongs(): List<DislikedSong> {
-        if (context != null && dislikedCache.isEmpty()) reload()
+        if (context != null) reload() // Siempre recargar para asegurar datos frescos del disco
         return dislikedCache.sortedByDescending { it.dislikedAtMs }
     }
 
@@ -194,7 +195,12 @@ object SongAdminStore {
     fun recordDislikedSong(song: Song) {
         if (song.id.isBlank()) return
         if (context != null) reload()
+        
+        Log.d("SongAdminStore", "Recording dislike for: ${song.title} (${song.id})")
+        
+        // Evitar duplicados
         if (dislikedCache.any { it.songId == song.id }) return
+        
         dislikedCache = dislikedCache + DislikedSong(
             songId = song.id,
             title = song.title,

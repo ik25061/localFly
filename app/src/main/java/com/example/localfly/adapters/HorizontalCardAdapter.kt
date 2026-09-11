@@ -13,6 +13,7 @@ import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
 import com.example.localfly.network.Playlist
+import com.example.localfly.network.Podcast
 import com.example.localfly.network.Year
 import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
@@ -130,6 +131,21 @@ class HorizontalCardAdapter(
  
                     Glide.with(context)
                         .load("$serverBaseUrl/cover/${item.coverId}")
+                        .placeholder(CoverPlaceholder.drawable(seed))
+                        .error(CoverPlaceholder.drawable(seed))
+                        .centerCrop()
+                        .into(holder.ivCover)
+                } else {
+                    holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
+                }
+            }
+            is Podcast -> {
+                holder.tvTitle.text = item.title
+                holder.tvSubtitle.text = item.author ?: "Podcast"
+                val seed = item.title ?: item.id
+                if (!item.coverUrl.isNullOrBlank()) {
+                    Glide.with(context)
+                        .load(item.coverUrl)
                         .placeholder(CoverPlaceholder.drawable(seed))
                         .error(CoverPlaceholder.drawable(seed))
                         .centerCrop()

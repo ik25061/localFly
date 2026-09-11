@@ -15,7 +15,13 @@ data class Song(
     val liked: Boolean,
     val hasCover: Boolean,
     @SerializedName("hasLyrics")
-    val hasLyrics: Boolean = false
+    val hasLyrics: Boolean = false,
+    @SerializedName("is_episode")
+    val isEpisode: Boolean = false,
+    @SerializedName("last_position_ms")
+    var lastPositionMs: Long = 0L,
+    @SerializedName("subtitle_url")
+    val subtitleUrl: String? = null
 )
 
 data class LibraryResponse(
@@ -141,7 +147,7 @@ data class UpdatePlaylistRequest(
     val description: String? = null,
     val userId: String? = null,
     @SerializedName("is_public")
-    val isPublic: Boolean? = null
+    val isPublic: Any? = null // Permite enviar Boolean o Int
 )
 
 data class PlaylistSongRequest(

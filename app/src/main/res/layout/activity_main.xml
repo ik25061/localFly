@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#121212">
+    android:background="@android:color/transparent">
 
     <!-- Banner de reescaneo -->
     <LinearLayout
@@ -59,7 +59,7 @@
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@color/bottom_nav_color"
         app:itemTextColor="@color/bottom_nav_color"
-        android:background="#121212"
+        android:background="@android:color/transparent"
         app:labelVisibilityMode="labeled" />
 
 </LinearLayout>

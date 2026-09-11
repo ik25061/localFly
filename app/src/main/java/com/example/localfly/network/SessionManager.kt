@@ -93,6 +93,12 @@ class SessionManager(context: Context) {
 
     fun isCrossfadeEnabled(): Boolean = prefs.getBoolean("crossfade_enabled", false)
 
+    fun setPodcastMixingEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("podcast_mixing_enabled", enabled).apply()
+    }
+
+    fun isPodcastMixingEnabled(): Boolean = prefs.getBoolean("podcast_mixing_enabled", true)
+
     // --- Soporte Offline para Like/Dislike ---
 
     fun addPendingLike(songId: String, liked: Boolean) {
@@ -280,7 +286,7 @@ class SessionManager(context: Context) {
     fun getTextSize(): String = prefs.getString("app_text_size", "Normal") ?: "Normal"
     fun setTextSize(size: String) = prefs.edit().putString("app_text_size", size).apply()
 
-    fun getAppColor(): String = prefs.getString("app_color", "Green") ?: "Green"
+    fun getAppColor(): String { val v = prefs.getString("app_color", "Verde") ?: "Verde"; return if (v == "Green") "Verde" else v }
     fun setAppColor(color: String) = prefs.edit().putString("app_color", color).apply()
 
     fun getFontFamily(): String = prefs.getString("app_font_family", "Default") ?: "Default"

@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId = "com.example.localfly"
         minSdk = 34
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
@@ -39,9 +39,10 @@ android {
         viewBinding = true
     }
 
+    // 16 KB page-size: no usar legacy packaging (alinea .so a 16 KB).
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
     }
 }

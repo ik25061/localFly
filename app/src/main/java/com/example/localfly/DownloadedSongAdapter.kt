@@ -44,7 +44,7 @@ class DownloadedSongAdapter(
         holder.tvDuration.text = formatDuration(item.duration)
 
         // Lyrics Indicator
-        holder.ivLyricsIndicator.visibility = if (item.hasLyrics) View.VISIBLE else View.GONE
+        holder.ivLyricsIndicator.visibility = if (item.hasLyrics || !item.subtitleUrl.isNullOrEmpty()) View.VISIBLE else View.GONE
 
         // Carga de portada con fallback inteligente
         val artistEncoded = java.net.URLEncoder.encode(item.artist ?: "", "UTF-8").replace("+", "%20")

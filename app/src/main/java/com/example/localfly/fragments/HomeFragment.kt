@@ -1,6 +1,7 @@
 package com.example.localfly.fragments
 
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -35,6 +36,7 @@ class HomeFragment : Fragment() {
     // Adaptadores
     private lateinit var likedAdapter: LikedSongsAdapter
     private lateinit var playlistAdapter: HorizontalCardAdapter
+    private lateinit var podcastAdapter: HorizontalCardAdapter
     private lateinit var albumAdapter: HorizontalCardAdapter
     private lateinit var artistAdapter: HorizontalCardAdapter
     private lateinit var genreAdapter: HorizontalCardAdapter
@@ -74,6 +76,12 @@ class HomeFragment : Fragment() {
         }
         binding.tvSeeAllAlbums.setOnClickListener {
             openSeeAll(CollectionListFragment.Type.ALBUM)
+        }
+        binding.tvSeeAllPodcasts.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, PodcastsFragment())
+                .addToBackStack(null)
+                .commit()
         }
         binding.tvSeeAllArtists.setOnClickListener {
             openSeeAll(CollectionListFragment.Type.ARTIST)
@@ -159,6 +167,14 @@ class HomeFragment : Fragment() {
         )
         binding.rvPlaylists.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.rvPlaylists.adapter = playlistAdapter
+
+        // Podcasts
+        podcastAdapter = HorizontalCardAdapter(
+            emptyList(),
+            onItemClick = { item -> if (item is Podcast) openPodcastDetail(item) }
+        )
+        binding.rvPodcasts.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvPodcasts.adapter = podcastAdapter
 
         // Propuestas públicas (listas públicas de todos los usuarios)
         publicAdapter = HorizontalCardAdapter(
@@ -294,6 +310,20 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) {
                 if (isAdded) binding.layoutPublicPlaylists.visibility = View.GONE
+            }
+
+            // 2c. Podcasts
+            try {
+                val podcastsResp = RetrofitClient.api.getPodcasts(userId = userId)
+                if (podcastsResp.isSuccessful && podcastsResp.body() != null) {
+                    val podcasts = podcastsResp.body()!!.podcasts
+                    podcastAdapter.updateItems(podcasts)
+                    if (podcasts.isEmpty()) {
+                        Log.d("HomeFragment", "No podcasts found on server")
+                    }
+                }
+            } catch (e: Exception) { 
+                Log.e("HomeFragment", "Error loading podcasts", e)
             }
 
             // 3. Álbumes
@@ -456,6 +486,9 @@ class HomeFragment : Fragment() {
             is Playlist -> {
                 PlaylistDetailFragment.newInstance(item.id, item.name)
             }
+            is Podcast -> {
+                PodcastDetailFragment.newInstance(item.id, item.title)
+            }
             is Album -> {
                 AlbumDetailFragment.newInstance(item.id, item.name, item.artist, item.coverId)
             }
@@ -483,6 +516,13 @@ class HomeFragment : Fragment() {
     private fun openPublicPlaylist(playlist: Playlist) {
         parentFragmentManager.beginTransaction()
             .replace(R.id.container, PlaylistDetailFragment.newInstance(playlist.id, playlist.name, isOwner = false))
+            .addToBackStack(null)
+            .commit()
+    }
+
+    private fun openPodcastDetail(podcast: Podcast) {
+        parentFragmentManager.beginTransaction()
+            .replace(R.id.container, PodcastDetailFragment.newInstance(podcast.id, podcast.title))
             .addToBackStack(null)
             .commit()
     }

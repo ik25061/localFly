@@ -35,6 +35,8 @@ data class DownloadedSong(
     val hasCover: Boolean = false,
     val hasLyrics: Boolean = false,
     val liked: Boolean = false,
+    val subtitleUrl: String? = null,
+    val isEpisode: Boolean = false,
     val fileSize: Long = 0
 )
 
