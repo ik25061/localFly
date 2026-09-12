@@ -47,8 +47,8 @@ class HomeFragment : Fragment() {
     private lateinit var artistAdapter: HorizontalCardAdapter
     private lateinit var genreAdapter: HorizontalCardAdapter
     private lateinit var yearAdapter: HorizontalCardAdapter
-    private var recommendationsAdapter: LikedSongsAdapter? = null
-    private var librarySectionAdapter: LikedSongsAdapter? = null
+    private lateinit var recommendationsAdapter: LikedSongsAdapter
+    private lateinit var librarySectionAdapter: LikedSongsAdapter
 
     private val moods = listOf(
         "Energético" to "⚡",
@@ -89,20 +89,24 @@ class HomeFragment : Fragment() {
         }
 
         // Listeners "Ver todo"
-        binding.tvSeeAllNew.setOnClickListener {
+        binding.tvSeeAllLiked.setOnClickListener {
             parentFragmentManager.beginTransaction()
-                .replace(R.id.container, LibraryFragment())
+                .replace(R.id.container, LikedSongsFragment())
                 .addToBackStack(null)
                 .commit()
         }
         // Configurar secciones estándar
+        setupSection(binding.sectionPlaylists.root, "Mis Playlists") { parentFragmentManager.beginTransaction().replace(R.id.container, PlaylistsFragment()).addToBackStack(null).commit() }
         setupSection(binding.sectionPodcasts.root, "Podcasts") { parentFragmentManager.beginTransaction().replace(R.id.container, PodcastsFragment()).addToBackStack(null).commit() }
         setupSection(binding.sectionAlbums.root, "Álbumes") { openSeeAll(CollectionListFragment.Type.ALBUM) }
         setupSection(binding.sectionArtists.root, "Artistas") { openSeeAll(CollectionListFragment.Type.ARTIST) }
         setupSection(binding.sectionGenres.root, "Géneros") { openSeeAll(CollectionListFragment.Type.GENRE) }
         setupSection(binding.sectionYears.root, "Por Año") { openSeeAll(CollectionListFragment.Type.YEAR) }
-        
-        // ... rest of observers ...
+        setupSection(binding.sectionLibrary.root, "Tu Biblioteca") { parentFragmentManager.beginTransaction().replace(R.id.container, LibraryFragment()).addToBackStack(null).commit() }
+
+        // Recomendaciones: no hay pantalla dedicada para "ver todo", se oculta el enlace.
+        binding.sectionRecommendations.tvSectionTitle.text = "Recomendaciones para ti"
+        binding.sectionRecommendations.tvSectionSeeAll.visibility = View.GONE
     }
 
     private fun setupSection(include: View, title: String, onSeeAll: () -> Unit) {
@@ -238,6 +242,14 @@ class HomeFragment : Fragment() {
         binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.rvLikedSongs.adapter = likedAdapter
 
+        // Mis Playlists
+        playlistAdapter = HorizontalCardAdapter(
+            emptyList(),
+            onItemClick = { item -> openCollection(item) }
+        )
+        binding.sectionPlaylists.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionPlaylists.rvSectionContent.adapter = playlistAdapter
+
         // Podcasts
         podcastAdapter = HorizontalCardAdapter(
             emptyList(),
@@ -277,6 +289,56 @@ class HomeFragment : Fragment() {
         )
         binding.sectionYears.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.sectionYears.rvSectionContent.adapter = yearAdapter
+
+        // Recomendaciones para ti (lista vertical, como en el diseño original)
+        recommendationsAdapter = LikedSongsAdapter(
+            mutableListOf(),
+            downloadHelper,
+            onLikeClick = { song -> toggleLike(song) },
+            onDislikeClick = { song -> hideSong(song) },
+            onItemClick = { song ->
+                activity?.playbackService?.playSong(song)
+            },
+            onDownloadClick = { song -> toggleDownload(song) },
+            onPlayNextClick = { song ->
+                activity?.playbackService?.playNext(song)
+                Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
+            },
+            onAddToQueueClick = { song ->
+                activity?.playbackService?.addToQueue(song)
+                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
+            },
+            onDeleteClick = { song -> removeSongFromHome(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
+            }
+        )
+        binding.sectionRecommendations.rvSectionContent.layoutManager = LinearLayoutManager(requireContext())
+        binding.sectionRecommendations.rvSectionContent.adapter = recommendationsAdapter
+
+        // Tu Biblioteca (previsualización vertical)
+        librarySectionAdapter = LikedSongsAdapter(
+            mutableListOf(),
+            downloadHelper,
+            onLikeClick = { song -> toggleLike(song) },
+            onDislikeClick = { song -> hideSong(song) },
+            onItemClick = { song ->
+                activity?.playbackService?.playSong(song)
+            },
+            onDownloadClick = { song -> toggleDownload(song) },
+            onPlayNextClick = { song ->
+                activity?.playbackService?.playNext(song)
+            },
+            onAddToQueueClick = { song ->
+                activity?.playbackService?.addToQueue(song)
+            },
+            onDeleteClick = { song -> removeSongFromHome(song) },
+            onAddToPlaylistClick = { song ->
+                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
+            }
+        )
+        binding.sectionLibrary.rvSectionContent.layoutManager = LinearLayoutManager(requireContext())
+        binding.sectionLibrary.rvSectionContent.adapter = librarySectionAdapter
 
     }
 
@@ -390,10 +452,11 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 7. Recomendaciones con IA (sin UI dedicada en este layout)
+            // 7. Recomendaciones con IA
             try {
                 val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(requireContext()))
-                aiManager.getRecommendations()
+                val recommendations = aiManager.getRecommendations()
+                if (isAdded) recommendationsAdapter.updateSongs(recommendations)
             } catch (e: Exception) { }
 
             // 8. Tu Biblioteca (previsualización de los primeros 10)
@@ -401,7 +464,7 @@ class HomeFragment : Fragment() {
                 val libResp = RetrofitClient.api.getLibrary(userId = userId, limit = 100)
                 if (libResp.isSuccessful && libResp.body() != null) {
                     val songs = libResp.body()!!.songs
-                    librarySectionAdapter?.updateSongs(songs.take(10))
+                    librarySectionAdapter.updateSongs(songs.take(10))
 
                     if (isAdded && songs.isNotEmpty()) {
                         updateFeatured(songs.shuffled().first())
@@ -425,13 +488,13 @@ class HomeFragment : Fragment() {
             val idxLiked = likedAdapter.indexOf(song.id)
             if (idxLiked != -1) likedAdapter.updateSongAt(idxLiked, updated)
         }
-        recommendationsAdapter?.let {
-            val idxRec = it.indexOf(song.id)
-            if (idxRec != -1) it.updateSongAt(idxRec, updated)
+        if (::recommendationsAdapter.isInitialized) {
+            val idxRec = recommendationsAdapter.indexOf(song.id)
+            if (idxRec != -1) recommendationsAdapter.updateSongAt(idxRec, updated)
         }
-        librarySectionAdapter?.let {
-            val idxLib = it.indexOf(song.id)
-            if (idxLib != -1) it.updateSongAt(idxLib, updated)
+        if (::librarySectionAdapter.isInitialized) {
+            val idxLib = librarySectionAdapter.indexOf(song.id)
+            if (idxLib != -1) librarySectionAdapter.updateSongAt(idxLib, updated)
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -455,8 +518,8 @@ class HomeFragment : Fragment() {
         // borrarla por completo del disco.
         SongAdminStore.recordDislikedSong(song)
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
-        recommendationsAdapter?.removeSongById(song.id)
-        librarySectionAdapter?.removeSongById(song.id)
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -498,16 +561,16 @@ class HomeFragment : Fragment() {
     /** Elimina la canción de la lista del Home (si aparece en alguna). */
     private fun removeSongFromHome(song: Song) {
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
-        recommendationsAdapter?.removeSongById(song.id)
-        librarySectionAdapter?.removeSongById(song.id)
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
         Toast.makeText(requireContext(), "Canción eliminada de la lista", Toast.LENGTH_SHORT).show()
     }
 
     /** Refresca el icono de descarga de las listas visibles. */
     private fun refreshDownloadStates() {
         if (::likedAdapter.isInitialized) likedAdapter.refreshDownloadStates()
-        recommendationsAdapter?.refreshDownloadStates()
-        librarySectionAdapter?.refreshDownloadStates()
+        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.refreshDownloadStates()
+        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.refreshDownloadStates()
     }
 
     override fun onResume() {

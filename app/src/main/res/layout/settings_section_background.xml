@@ -76,10 +76,11 @@
             app:strokeWidth="1dp"
             app:strokeColor="#33FFFFFF"
             app:cardBackgroundColor="#111318">
-            <View
+            <androidx.appcompat.widget.AppCompatImageView
                 android:id="@+id/viewBgPreviewLarge"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

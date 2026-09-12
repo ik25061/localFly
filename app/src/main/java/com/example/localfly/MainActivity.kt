@@ -8,7 +8,9 @@ import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
@@ -51,6 +53,10 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.utils.LocalLogger
 import com.example.localfly.utils.CoverPlaceholder
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -545,9 +551,10 @@ class MainActivity : AppCompatActivity() {
         bottomNav.visibility = View.VISIBLE
         bottomNav.alpha = 1.0f
 
-        val baseDrawable = when (mode.lowercase()) {
+        when (mode.lowercase()) {
             "gradient" -> {
-                GradientDrawable(
+                backgroundJob?.cancel()
+                val baseDrawable = GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(
                         parseColorSafely(sessionManager.getBackgroundGradientStart(), "#4A148C"),
@@ -557,70 +564,110 @@ class MainActivity : AppCompatActivity() {
                     shape = GradientDrawable.RECTANGLE
                     this.alpha = alpha
                 }
+                applyFinalBackground(root, baseDrawable)
             }
             "image" -> {
-                val uriString = sessionManager.getBackgroundImageUri()?.trim()
-                if (uriString.isNullOrBlank()) {
-                    ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
-                } else {
-                    val uri = try {
-                        Uri.parse(uriString)
-                    } catch (_: Exception) {
-                        null
+                // El decode + rotación + difuminado se hace fuera del hilo
+                // principal. `delay` actúa de debounce: si el usuario arrastra
+                // un slider, el cálculo anterior se cancela y solo se calcula
+                // el último valor (sin ANR).
+                val generation = ++backgroundGeneration
+                backgroundJob?.cancel()
+                backgroundJob = lifecycleScope.launch {
+                    delay(80)
+                    val bitmap = withContext(Dispatchers.IO) { buildImageBackgroundBitmap() }
+                    if (generation != backgroundGeneration) {
+                        bitmap?.recycle()
+                        return@launch
                     }
-                    if (uri == null || (uri.scheme.isNullOrBlank() && !uriString.startsWith("/"))) {
-                        ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                    val base: android.graphics.drawable.Drawable = if (bitmap != null) {
+                        BitmapDrawable(resources, bitmap).apply { this.alpha = alpha }
                     } else {
-                        try {
-                            val original = decodeBackgroundBitmap(uri)
-                            if (original != null) {
-                                var result = original
-                                val rotation = sessionManager.getBackgroundImageRotation()
-                                if (rotation != 0) {
-                                    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-                                    val rotated = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
-                                    if (rotated !== original) {
-                                        original.recycle()
-                                        result = rotated
-                                    }
-                                }
-                                val blur = sessionManager.getBackgroundBlur()
-                                if (blur > 0) {
-                                    val blurred = blurBitmap(result, blur)
-                                    if (blurred !== result) {
-                                        result.recycle()
-                                        result = blurred
-                                    }
-                                }
-                                BitmapDrawable(resources, result).apply { this.alpha = alpha }
-                            } else {
-                                ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
-                            }
-                        } catch (_: Exception) {
-                            ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
-                        }
+                        ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
                     }
+                    applyFinalBackground(root, base)
                 }
             }
-            else -> ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+            else -> {
+                backgroundJob?.cancel()
+                applyFinalBackground(root, ColorDrawable(fallbackSolid).apply { this.alpha = alpha })
+            }
         }
+    }
 
-        val overlayColor = try {
-            parseColorSafely(sessionManager.getBackgroundOverlayColor(), "#66000000")
-        } catch (_: Exception) {
-            Color.argb(120, 0, 0, 0)
-        }
-        val overlayAlpha = (sessionManager.getBackgroundOverlayAlphaPct() * 255) / 100
-        val drawable = if (overlayColor != Color.TRANSPARENT && overlayAlpha > 0) {
-            val overlayDrawable = ColorDrawable(overlayColor).apply { this.alpha = overlayAlpha }
-            LayerDrawable(arrayOf(baseDrawable, overlayDrawable))
-        } else {
-            baseDrawable
-        }
+    // ===== Fondo personalizado =====
+    // El trabajo pesado (decode/rotación/difuminado) va en un Job cancelable
+    // para no bloquear el hilo principal (fix del ANR en los sliders).
+    private var backgroundJob: Job? = null
+    @Volatile private var backgroundGeneration = 0
 
-        root.background = drawable
+    /** Compone el fondo final. En modo imagen, el color elegido va DETRÁS de
+     *  la imagen (se ve por las zonas transparentes/semitransparentes). */
+    private fun applyFinalBackground(root: View, base: android.graphics.drawable.Drawable) {
+        val finalDrawable: android.graphics.drawable.Drawable =
+            if (sessionManager.getBackgroundMode().lowercase() == "image") {
+                val behindColor = parseColorSafely(sessionManager.getBackgroundOverlayColor(), "#66000000")
+                val behindAlpha = (sessionManager.getBackgroundOverlayAlphaPct() * 255) / 100
+                val behind = ColorDrawable(behindColor).apply { this.alpha = behindAlpha }
+                LayerDrawable(arrayOf(behind, base))
+            } else {
+                base
+            }
+        root.background = finalDrawable
         if (window != null) {
-            window.decorView.background = drawable
+            window.decorView.background = finalDrawable
+        }
+    }
+
+    /**
+     * Carga la imagen de fondo y le aplica la rotación acumulada (0-359) y el
+     * difuminado. La rotación se aplica SIEMPRE desde la imagen original
+     * (almacenada sin girar) sobre un lienzo del mismo tamaño, escalando para
+     * que el contenido girado siga cubriendo toda la pantalla: así la imagen
+     * no se encoge con cada giro ni aparecen esquinas negras (JPEG sin alfa).
+     */
+    private fun buildImageBackgroundBitmap(): Bitmap? {
+        val uriString = sessionManager.getBackgroundImageUri()?.trim() ?: return null
+        if (uriString.isBlank()) return null
+        val uri = try { Uri.parse(uriString) } catch (_: Exception) { null }
+        if (uri == null || (uri.scheme.isNullOrBlank() && !uriString.startsWith("/"))) return null
+
+        val original = decodeBackgroundBitmap(uri) ?: return null
+        var result: Bitmap = original
+        try {
+            val rotation = sessionManager.getBackgroundImageRotation()
+            val w = original.width
+            val h = original.height
+            if (rotation != 0) {
+                val m = Matrix().apply { setRotate(rotation.toFloat(), w / 2f, h / 2f) }
+                if (rotation % 90 != 0) {
+                    // Giros de 45°/135°/...: escalar para que el contenido
+                    // girado cubra el lienzo completo (sin esquinas vacías).
+                    val rad = Math.toRadians(rotation.toDouble())
+                    val cos = Math.abs(Math.cos(rad))
+                    val sin = Math.abs(Math.sin(rad))
+                    val cover = maxOf((w * cos + h * sin) / w, (w * sin + h * cos) / h)
+                    m.postScale(cover.toFloat(), cover.toFloat(), w / 2f, h / 2f)
+                }
+                val rotated = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(rotated)
+                val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
+                canvas.drawBitmap(result, m, paint)
+                if (rotated !== result) result.recycle()
+                result = rotated
+            }
+            val blur = sessionManager.getBackgroundBlur()
+            if (blur > 0) {
+                val blurred = blurBitmap(result, blur)
+                if (blurred !== result) {
+                    result.recycle()
+                    result = blurred
+                }
+            }
+            return result
+        } catch (_: Exception) {
+            result.recycle()
+            return null
         }
     }
 

@@ -2,37 +2,33 @@ package com.example.localfly.fragments
 
 import android.app.AlertDialog
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import java.io.File
-import java.io.FileOutputStream
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.GridLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.LoginActivity
 import com.example.localfly.MainActivity
 import com.example.localfly.R
-import com.example.localfly.adapters.GradientAdapter
-import com.example.localfly.adapters.PresetGradient
 import com.example.localfly.dialogs.ColorPickerDialog
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RescanManager
@@ -40,7 +36,6 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.utils.LocalLogger
-import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -57,6 +52,8 @@ class SettingsFragment : Fragment() {
         if (uri == null) return@registerForActivityResult
         sessionManager.setBackgroundMode("image")
         sessionManager.setBackgroundImageUri(uri.toString())
+        // Nueva imagen: la rotación acumulada anterior no se aplica
+        sessionManager.setBackgroundImageRotation(0)
         Toast.makeText(requireContext(), "Fondo de imagen guardado", Toast.LENGTH_SHORT).show()
         (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
         refreshCurrentSection()
@@ -169,91 +166,169 @@ class SettingsFragment : Fragment() {
         contentFrame.removeAllViews()
         contentFrame.addView(view)
 
-        val previewLarge = view.findViewById<View>(R.id.viewBgPreviewLarge)
+        val previewLarge = view.findViewById<ImageView>(R.id.viewBgPreviewLarge)
         val subContentFrame = view.findViewById<FrameLayout>(R.id.backgroundSubContentFrame)
         val chipGroupSub = view.findViewById<ChipGroup>(R.id.chipGroupBackgroundSubTabs)
 
         fun updateLargePreview() {
             val mode = sessionManager.getBackgroundMode()
             val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
-            val drawable = when (mode.lowercase()) {
-                "gradient" -> GradientDrawable(
+            previewLarge.setImageDrawable(null)
+            previewLarge.rotation = 0f
+            when (mode.lowercase()) {
+                "gradient" -> previewLarge.background = GradientDrawable(
                     GradientDrawable.Orientation.TL_BR,
                     intArrayOf(Color.parseColor(sessionManager.getBackgroundGradientStart()), Color.parseColor(sessionManager.getBackgroundGradientEnd()))
-                )
-                "image" -> GradientDrawable().apply { setColor(Color.DKGRAY) }
-                else -> GradientDrawable().apply { setColor(Color.parseColor(sessionManager.getBackgroundSolidColor())) }
-            }
-            drawable.alpha = alpha
-            previewLarge.background = drawable
-        }
-
-        fun configureOverlayButton(): MaterialButton {
-            val btnOverlay = MaterialButton(requireContext()).apply {
-                text = "Color de superposición"
-                setOnClickListener {
-                    ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundOverlayColor()) { hex, overlayAlpha ->
-                        sessionManager.setBackgroundOverlayColor(hex)
-                        sessionManager.setBackgroundOverlayAlphaPct(overlayAlpha)
-                        (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                        updateLargePreview()
+                ).apply { this.alpha = alpha }
+                "image" -> {
+                    val uriString = sessionManager.getBackgroundImageUri()?.trim()
+                    previewLarge.background = ColorDrawable(Color.DKGRAY).apply { this.alpha = alpha }
+                    if (!uriString.isNullOrBlank()) {
+                        Glide.with(this).load(uriString).centerCrop().into(previewLarge)
+                        previewLarge.rotation = sessionManager.getBackgroundImageRotation().toFloat()
                     }
                 }
+                else -> previewLarge.background = ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
             }
-            return btnOverlay
         }
 
         fun attachBackgroundActionsForMode(mode: String) {
             subContentFrame.removeAllViews()
-            val buttonList = mutableListOf<MaterialButton>()
-
-            when (mode) {
-                "solid" -> {
-                    buttonList += MaterialButton(requireContext()).apply {
-                        text = "Elegir color sólido"
-                        setOnClickListener {
-                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundSolidColor()) { hex, alpha ->
-                                sessionManager.setBackgroundMode("solid")
-                                sessionManager.setBackgroundSolidColor(hex)
-                                sessionManager.setBackgroundAlphaPct(alpha)
-                                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                                updateLargePreview()
-                            }
-                        }
-                    }
-                }
-                "gradient" -> {
-                    buttonList += MaterialButton(requireContext()).apply {
-                        text = "Configurar degradado"
-                        setOnClickListener { showPresetGradientsDialog() }
-                    }
-                }
-                "image" -> {
-                    buttonList += MaterialButton(requireContext()).apply {
-                        text = "Seleccionar imagen"
-                        setOnClickListener { pickBackgroundImage.launch("image/*") }
-                    }
-                    buttonList += MaterialButton(requireContext()).apply {
-                        text = "Rotar imagen"
-                        setOnClickListener { rotatePickedBackgroundImage() }
-                    }
-                }
-            }
-
-            buttonList += configureOverlayButton()
             val container = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 8, 0, 0)
             }
-            buttonList.forEach { button ->
+
+            fun addFullWidth(v: View) {
                 val lp = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
                 lp.bottomMargin = 12
-                button.layoutParams = lp
-                container.addView(button)
+                v.layoutParams = lp
+                container.addView(v)
             }
+
+            fun applyAndRefresh() {
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                updateLargePreview()
+            }
+
+            when (mode) {
+                "solid" -> {
+                    // Colores predefinidos
+                    addFullWidth(buildColorSwatchGrid(solidPresetColors) { hex ->
+                        sessionManager.setBackgroundMode("solid")
+                        sessionManager.setBackgroundSolidColor(hex)
+                        applyAndRefresh()
+                    })
+                    // Selector personalizado (sliders RGB, iOS style)
+                    addFullWidth(MaterialButton(requireContext()).apply {
+                        text = "Elegir color personalizado..."
+                        setOnClickListener {
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundSolidColor()) { hex, alpha ->
+                                sessionManager.setBackgroundMode("solid")
+                                sessionManager.setBackgroundSolidColor(hex)
+                                sessionManager.setBackgroundAlphaPct(alpha)
+                                applyAndRefresh()
+                            }
+                        }
+                    })
+                }
+                "gradient" -> {
+                    // Degradados predefinidos
+                    addFullWidth(buildGradientSwatchGrid(presetGradients) { pair ->
+                        sessionManager.setBackgroundMode("gradient")
+                        sessionManager.setBackgroundGradientStart(pair.first)
+                        sessionManager.setBackgroundGradientEnd(pair.second)
+                        applyAndRefresh()
+                    })
+                    // Los dos selectores de color
+                    addFullWidth(MaterialButton(requireContext()).apply {
+                        text = "Color 1: ${sessionManager.getBackgroundGradientStart()}"
+                        setOnClickListener {
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { hex, _ ->
+                                sessionManager.setBackgroundMode("gradient")
+                                sessionManager.setBackgroundGradientStart(hex)
+                                applyAndRefresh()
+                                attachBackgroundActionsForMode("gradient")
+                            }
+                        }
+                    })
+                    addFullWidth(MaterialButton(requireContext()).apply {
+                        text = "Color 2: ${sessionManager.getBackgroundGradientEnd()}"
+                        setOnClickListener {
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { hex, _ ->
+                                sessionManager.setBackgroundMode("gradient")
+                                sessionManager.setBackgroundGradientEnd(hex)
+                                applyAndRefresh()
+                                attachBackgroundActionsForMode("gradient")
+                            }
+                        }
+                    })
+                }
+                "image" -> {
+                    // Fila: elegir imagen | rotar (solo icono) | color detrás
+                    val d = resources.displayMetrics.density
+                    val row = LinearLayout(requireContext()).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { bottomMargin = 12 }
+                    }
+
+                    row.addView(MaterialButton(requireContext()).apply {
+                        text = "Elegir imagen"
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                        setOnClickListener { pickBackgroundImage.launch("image/*") }
+                    })
+
+                    // Rotar 45°: solo icono, sin texto
+                    row.addView(ImageButton(requireContext()).apply {
+                        setImageResource(R.drawable.ic_rotate)
+                        contentDescription = "Rotar imagen 45 grados"
+                        setImageTintList(ColorStateList.valueOf(Color.WHITE))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(Color.parseColor("#33FFFFFF"))
+                            setStroke(2, Color.parseColor("#33FFFFFF"))
+                        }
+                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply {
+                            leftMargin = (8 * d).toInt()
+                        }
+                        setOnClickListener { rotatePickedBackgroundImage() }
+                    })
+
+                    // Selector del color DETRÁS de la imagen
+                    row.addView(ImageButton(requireContext()).apply {
+                        contentDescription = "Color detrás de la imagen"
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(try {
+                                Color.parseColor(sessionManager.getBackgroundOverlayColor())
+                            } catch (_: Exception) { Color.parseColor("#66000000") })
+                            setStroke(2, Color.parseColor("#66FFFFFF"))
+                        }
+                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply {
+                            leftMargin = (8 * d).toInt()
+                        }
+                        setOnClickListener {
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundOverlayColor()) { hex, behindAlpha ->
+                                sessionManager.setBackgroundOverlayColor(hex)
+                                sessionManager.setBackgroundOverlayAlphaPct(behindAlpha)
+                                sessionManager.setBackgroundMode("image")
+                                applyAndRefresh()
+                                attachBackgroundActionsForMode("image")
+                            }
+                        }
+                    })
+
+                    container.addView(row)
+                }
+            }
+
             subContentFrame.addView(container)
         }
 
@@ -308,94 +383,94 @@ class SettingsFragment : Fragment() {
         updateLargePreview()
     }
 
+    /** Gira la imagen 45° más. Solo guarda los grados acumulados: la rotación
+     *  se aplica desde la imagen ORIGINAL (sin re-encodar ni re-comprimir), así
+     *  que nunca se degrada, no encoge y no genera esquinas negras. */
     private fun rotatePickedBackgroundImage() {
-        val uriString = sessionManager.getBackgroundImageUri() ?: run {
+        if (sessionManager.getBackgroundImageUri().isNullOrBlank()) {
             Toast.makeText(requireContext(), "Primero selecciona una imagen de fondo", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val currentUri = Uri.parse(uriString)
-        try {
-            val inputStream = requireContext().contentResolver.openInputStream(currentUri)
-            val original = BitmapFactory.decodeStream(inputStream)
-            inputStream?.close()
-            if (original == null) {
-                Toast.makeText(requireContext(), "No se pudo leer la imagen actual", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val rotation = (sessionManager.getBackgroundImageRotation() + 45) % 360
-            val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
-            val rotated = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
-            if (rotated != original) original.recycle()
-
-            val file = File(requireContext().cacheDir, "background_rotated_${System.currentTimeMillis()}.jpg")
-            FileOutputStream(file).use { out ->
-                rotated.compress(Bitmap.CompressFormat.JPEG, 92, out)
-            }
-            rotated.recycle()
-
-            sessionManager.setBackgroundImageRotation(rotation)
-            sessionManager.setBackgroundImageUri(Uri.fromFile(file).toString())
-            sessionManager.setBackgroundMode("image")
-            (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-            refreshCurrentSection()
-            Toast.makeText(requireContext(), "Imagen girada ${rotation}°", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "No se pudo rotar la imagen: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+        val rotation = (sessionManager.getBackgroundImageRotation() + 45) % 360
+        sessionManager.setBackgroundImageRotation(rotation)
+        sessionManager.setBackgroundMode("image")
+        (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+        refreshCurrentSection()
+        Toast.makeText(requireContext(), "Imagen girada ${rotation}°", Toast.LENGTH_SHORT).show()
     }
 
-    private fun showPresetGradientsDialog() {
-        val dialog = BottomSheetDialog(requireContext())
-        val view = layoutInflater.inflate(R.layout.fragment_playlists, null)
-        view.findViewById<View>(R.id.btnAIPlaylist).visibility = View.GONE
-        view.findViewById<View>(R.id.btnNewPlaylist).visibility = View.GONE
-        view.findViewById<TextView>(R.id.tvEmptyPlaylists).apply {
-            visibility = View.VISIBLE
-            text = "Selecciona un degradado"
-            setTextColor(Color.WHITE)
-            textSize = 18f
-        }
-        
-        val rv = view.findViewById<RecyclerView>(R.id.rvPlaylists)
-        val presets = listOf(
-            PresetGradient("Aurora", "#4A148C", "#F06292"),
-            PresetGradient("Océano", "#0D47A1", "#26C6DA"),
-            PresetGradient("Atardecer", "#FF6F00", "#EC407A"),
-            PresetGradient("Bosque", "#1B5E20", "#29B6F6"),
-            PresetGradient("Noche", "#121212", "#434343"),
-            PresetGradient("Personalizado...", "#000000", "#FFFFFF")
-        )
-        
-        rv.adapter = GradientAdapter(presets) { item ->
-            if (item.name == "Personalizado...") {
-                pickCustomGradient()
-            } else {
-                sessionManager.setBackgroundMode("gradient")
-                sessionManager.setBackgroundGradientStart(item.startColor)
-                sessionManager.setBackgroundGradientEnd(item.endColor)
-                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                refreshCurrentSection()
+    // --- Paletas de fondo ---
+
+    private val solidPresetColors = listOf(
+        "#121212", "#000000", "#FFFFFF", "#1DB954", "#E91E63", "#9C27B0",
+        "#673AB7", "#3F51B5", "#2196F3", "#00BCD4", "#009688", "#4CAF50",
+        "#CDDC39", "#FFC107", "#FF9800", "#FF5722", "#795548", "#607D8B"
+    )
+
+    private val presetGradients = listOf(
+        "#4A148C" to "#F06292", // Aurora
+        "#0D47A1" to "#26C6DA", // Océano
+        "#FF6F00" to "#EC407A", // Atardecer
+        "#1B5E20" to "#29B6F6", // Bosque
+        "#121212" to "#434343", // Noche
+        "#FF512F" to "#DD2476", // Fuego
+        "#7F00FF" to "#E100FF", // Púrpura
+        "#11998E" to "#38EF7D"  // Selva
+    )
+
+    /** Cuadrícula de colores predefinidos (círculos seleccionables). */
+    private fun buildColorSwatchGrid(colors: List<String>, onPick: (String) -> Unit): View {
+        val d = resources.displayMetrics.density
+        val grid = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
+        colors.chunked(6).forEach { rowColors ->
+            val row = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL }
+            rowColors.forEach { hex ->
+                val sw = View(requireContext())
+                sw.layoutParams = LinearLayout.LayoutParams((44 * d).toInt(), (44 * d).toInt()).apply {
+                    rightMargin = (8 * d).toInt()
+                    bottomMargin = (8 * d).toInt()
+                }
+                sw.background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(try { Color.parseColor(hex) } catch (_: Exception) { Color.GRAY })
+                    setStroke(2, Color.parseColor("#33FFFFFF"))
+                }
+                sw.setOnClickListener { onPick(hex) }
+                row.addView(sw)
             }
-            dialog.dismiss()
+            grid.addView(row)
         }
-        rv.layoutManager = GridLayoutManager(requireContext(), 2)
-        dialog.setContentView(view)
-        dialog.show()
+        return grid
     }
 
-    private fun pickCustomGradient() {
-        ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { startHex, _ ->
-            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { endHex, _ ->
-                sessionManager.setBackgroundMode("gradient")
-                sessionManager.setBackgroundGradientStart(startHex)
-                sessionManager.setBackgroundGradientEnd(endHex)
-                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
-                refreshCurrentSection()
-                Toast.makeText(requireContext(), "Degradado guardado", Toast.LENGTH_SHORT).show()
+    /** Cuadrícula de degradados predefinidos (círculos de dos colores). */
+    private fun buildGradientSwatchGrid(pairs: List<Pair<String, String>>, onPick: (Pair<String, String>) -> Unit): View {
+        val d = resources.displayMetrics.density
+        val grid = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL }
+        pairs.chunked(6).forEach { rowPairs ->
+            val row = LinearLayout(requireContext()).apply { orientation = LinearLayout.HORIZONTAL }
+            rowPairs.forEach { pair ->
+                val sw = View(requireContext())
+                sw.layoutParams = LinearLayout.LayoutParams((44 * d).toInt(), (44 * d).toInt()).apply {
+                    rightMargin = (8 * d).toInt()
+                    bottomMargin = (8 * d).toInt()
+                }
+                sw.background = GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(
+                        try { Color.parseColor(pair.first) } catch (_: Exception) { Color.GRAY },
+                        try { Color.parseColor(pair.second) } catch (_: Exception) { Color.GRAY }
+                    )
+                ).apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(2, Color.parseColor("#33FFFFFF"))
+                }
+                sw.setOnClickListener { onPick(pair) }
+                row.addView(sw)
             }
+            grid.addView(row)
         }
+        return grid
     }
 
     private fun showConfigServerIp() {

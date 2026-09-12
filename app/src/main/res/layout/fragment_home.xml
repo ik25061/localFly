@@ -124,7 +124,7 @@
             </com.google.android.material.chip.ChipGroup>
         </HorizontalScrollView>
 
-        <!-- Section: New Songs -->
+        <!-- Section: Canciones que te gustan -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -137,12 +137,12 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Nuevas Canciones"
+                    android:text="Canciones que te gustan"
                     android:textColor="#FFFFFF"
                     android:textSize="18sp"
                     android:textStyle="bold" />
                 <TextView
-                    android:id="@+id/tvSeeAllNew"
+                    android:id="@+id/tvSeeAllLiked"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_alignParentEnd="true"
@@ -254,11 +254,14 @@
         </LinearLayout>
 
         <!-- Standard Sections with spaced title/ver todo -->
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionPlaylists" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionPodcasts" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionAlbums" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionArtists" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionGenres" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionYears" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionRecommendations" />
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionLibrary" />
 
     </LinearLayout>
 </ScrollView>
