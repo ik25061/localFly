@@ -9,6 +9,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -25,10 +26,14 @@ import java.io.File
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.LoginActivity
 import com.example.localfly.MainActivity
 import com.example.localfly.R
+import com.example.localfly.adapters.GradientAdapter
+import com.example.localfly.adapters.PresetGradient
 import com.example.localfly.dialogs.ColorPickerDialog
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RescanManager
@@ -36,6 +41,7 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.utils.LocalLogger
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -92,12 +98,23 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    private fun clearContentArea() {
+        contentFrame.removeAllViews()
+        // Eliminar cualquier fragmento anterior para evitar solapamientos
+        val existing = childFragmentManager.findFragmentById(R.id.settingsContentFrame)
+        if (existing != null) {
+            childFragmentManager.beginTransaction().remove(existing).commitNow()
+        }
+    }
+
     // --- Aa Pantalla ---
 
     private fun showScreenSettings() {
+        clearContentArea()
         val view = layoutInflater.inflate(R.layout.settings_section_screen, contentFrame, false)
-        contentFrame.removeAllViews()
         contentFrame.addView(view)
+        
+        // ... rest of showScreenSettings ...
 
         val btnSmall = view.findViewById<MaterialButton>(R.id.btnTextSmall)
         val btnNormal = view.findViewById<MaterialButton>(R.id.btnTextNormal)
@@ -162,13 +179,16 @@ class SettingsFragment : Fragment() {
     // --- Fondo ---
 
     private fun showBackgroundSettings() {
+        clearContentArea()
         val view = layoutInflater.inflate(R.layout.settings_section_background, contentFrame, false)
-        contentFrame.removeAllViews()
         contentFrame.addView(view)
 
         val previewLarge = view.findViewById<ImageView>(R.id.viewBgPreviewLarge)
         val subContentFrame = view.findViewById<FrameLayout>(R.id.backgroundSubContentFrame)
-        val chipGroupSub = view.findViewById<ChipGroup>(R.id.chipGroupBackgroundSubTabs)
+        
+        val btnSolid = view.findViewById<MaterialButton>(R.id.btnModeSolid)
+        val btnGradient = view.findViewById<MaterialButton>(R.id.btnModeGradient)
+        val btnImage = view.findViewById<MaterialButton>(R.id.btnModeImage)
 
         fun updateLargePreview() {
             val mode = sessionManager.getBackgroundMode()
@@ -204,7 +224,7 @@ class SettingsFragment : Fragment() {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                lp.bottomMargin = 12
+                lp.bottomMargin = 16
                 v.layoutParams = lp
                 container.addView(v)
             }
@@ -214,6 +234,13 @@ class SettingsFragment : Fragment() {
                 updateLargePreview()
             }
 
+            // Actualizar estilo de botones principales
+            val green = Color.parseColor("#1DB954")
+            val gray = Color.parseColor("#333333")
+            btnSolid.setBackgroundColor(if (mode == "solid") green else gray)
+            btnGradient.setBackgroundColor(if (mode == "gradient") green else gray)
+            btnImage.setBackgroundColor(if (mode == "image") green else gray)
+
             when (mode) {
                 "solid" -> {
                     // Colores predefinidos
@@ -222,7 +249,7 @@ class SettingsFragment : Fragment() {
                         sessionManager.setBackgroundSolidColor(hex)
                         applyAndRefresh()
                     })
-                    // Selector personalizado (sliders RGB, iOS style)
+                    // Selector personalizado
                     addFullWidth(MaterialButton(requireContext()).apply {
                         text = "Elegir color personalizado..."
                         setOnClickListener {
@@ -242,10 +269,17 @@ class SettingsFragment : Fragment() {
                         sessionManager.setBackgroundGradientStart(pair.first)
                         sessionManager.setBackgroundGradientEnd(pair.second)
                         applyAndRefresh()
+                        attachBackgroundActionsForMode("gradient")
                     })
+                    
+                    val rowColors = LinearLayout(requireContext()).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                    }
+                    
                     // Los dos selectores de color
-                    addFullWidth(MaterialButton(requireContext()).apply {
-                        text = "Color 1: ${sessionManager.getBackgroundGradientStart()}"
+                    rowColors.addView(MaterialButton(requireContext()).apply {
+                        text = "Color 1"
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         setOnClickListener {
                             ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { hex, _ ->
                                 sessionManager.setBackgroundMode("gradient")
@@ -255,8 +289,9 @@ class SettingsFragment : Fragment() {
                             }
                         }
                     })
-                    addFullWidth(MaterialButton(requireContext()).apply {
-                        text = "Color 2: ${sessionManager.getBackgroundGradientEnd()}"
+                    rowColors.addView(MaterialButton(requireContext()).apply {
+                        text = "Color 2"
+                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = 12 }
                         setOnClickListener {
                             ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { hex, _ ->
                                 sessionManager.setBackgroundMode("gradient")
@@ -266,17 +301,13 @@ class SettingsFragment : Fragment() {
                             }
                         }
                     })
+                    addFullWidth(rowColors)
                 }
                 "image" -> {
-                    // Fila: elegir imagen | rotar (solo icono) | color detrás
                     val d = resources.displayMetrics.density
                     val row = LinearLayout(requireContext()).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.WRAP_CONTENT
-                        ).apply { bottomMargin = 12 }
                     }
 
                     row.addView(MaterialButton(requireContext()).apply {
@@ -285,68 +316,65 @@ class SettingsFragment : Fragment() {
                         setOnClickListener { pickBackgroundImage.launch("image/*") }
                     })
 
-                    // Rotar 45°: solo icono, sin texto
+                    // Rotar 45°: solo icono
                     row.addView(ImageButton(requireContext()).apply {
-                        setImageResource(R.drawable.ic_rotate)
-                        contentDescription = "Rotar imagen 45 grados"
+                        setImageResource(android.R.drawable.ic_menu_rotate)
+                        contentDescription = "Rotar"
                         setImageTintList(ColorStateList.valueOf(Color.WHITE))
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
                             setColor(Color.parseColor("#33FFFFFF"))
-                            setStroke(2, Color.parseColor("#33FFFFFF"))
                         }
-                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply {
-                            leftMargin = (8 * d).toInt()
-                        }
+                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply { leftMargin = 12 }
                         setOnClickListener { rotatePickedBackgroundImage() }
                     })
 
-                    // Selector del color DETRÁS de la imagen
+                    // Selector del color DETRÁS
                     row.addView(ImageButton(requireContext()).apply {
-                        contentDescription = "Color detrás de la imagen"
+                        contentDescription = "Color fondo"
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(try {
-                                Color.parseColor(sessionManager.getBackgroundOverlayColor())
-                            } catch (_: Exception) { Color.parseColor("#66000000") })
-                            setStroke(2, Color.parseColor("#66FFFFFF"))
+                            setColor(try { Color.parseColor(sessionManager.getBackgroundOverlayColor()) } catch (_: Exception) { Color.BLACK })
+                            setStroke(2, Color.WHITE)
                         }
-                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply {
-                            leftMargin = (8 * d).toInt()
-                        }
+                        layoutParams = LinearLayout.LayoutParams((48 * d).toInt(), (48 * d).toInt()).apply { leftMargin = 12 }
                         setOnClickListener {
-                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundOverlayColor()) { hex, behindAlpha ->
+                            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundOverlayColor()) { hex, alpha ->
                                 sessionManager.setBackgroundOverlayColor(hex)
-                                sessionManager.setBackgroundOverlayAlphaPct(behindAlpha)
-                                sessionManager.setBackgroundMode("image")
+                                sessionManager.setBackgroundOverlayAlphaPct(alpha)
                                 applyAndRefresh()
                                 attachBackgroundActionsForMode("image")
                             }
                         }
                     })
-
-                    container.addView(row)
+                    addFullWidth(row)
                 }
             }
-
             subContentFrame.addView(container)
         }
 
-        chipGroupSub.setOnCheckedStateChangeListener { _, checkedIds ->
-            val mode = when (checkedIds.firstOrNull()) {
-                R.id.chipSubTabGradient -> "gradient"
-                R.id.chipSubTabImage -> "image"
-                else -> "solid"
-            }
-            sessionManager.setBackgroundMode(mode)
-            attachBackgroundActionsForMode(mode)
+        btnSolid.setOnClickListener {
+            sessionManager.setBackgroundMode("solid")
+            attachBackgroundActionsForMode("solid")
+            (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            updateLargePreview()
+        }
+        btnGradient.setOnClickListener {
+            sessionManager.setBackgroundMode("gradient")
+            attachBackgroundActionsForMode("gradient")
+            (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            updateLargePreview()
+        }
+        btnImage.setOnClickListener {
+            sessionManager.setBackgroundMode("image")
+            attachBackgroundActionsForMode("image")
+            (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            updateLargePreview()
         }
 
-        when (sessionManager.getBackgroundMode()) {
-            "gradient" -> chipGroupSub.check(R.id.chipSubTabGradient)
-            "image" -> chipGroupSub.check(R.id.chipSubTabImage)
-            else -> chipGroupSub.check(R.id.chipSubTabSolid)
-        }
+        // Estado inicial
+        val currentMode = sessionManager.getBackgroundMode()
+        attachBackgroundActionsForMode(currentMode)
 
         val seekAlpha = view.findViewById<SeekBar>(R.id.seekBgAlphaRedesign)
         val tvValAlpha = view.findViewById<TextView>(R.id.tvValueAlpha)
@@ -381,6 +409,58 @@ class SettingsFragment : Fragment() {
         })
 
         updateLargePreview()
+    }
+
+    private fun showPresetGradientsDialog() {
+        val dialog = BottomSheetDialog(requireContext())
+        val view = layoutInflater.inflate(R.layout.fragment_playlists, null)
+        view.findViewById<View>(R.id.btnAIPlaylist).visibility = View.GONE
+        view.findViewById<View>(R.id.btnNewPlaylist).visibility = View.GONE
+        view.findViewById<TextView>(R.id.tvEmptyPlaylists).apply {
+            visibility = View.VISIBLE
+            text = "Selecciona un degradado"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+        }
+        
+        val rv = view.findViewById<RecyclerView>(R.id.rvPlaylists)
+        val presets = listOf(
+            PresetGradient("Aurora", "#4A148C", "#F06292"),
+            PresetGradient("Océano", "#0D47A1", "#26C6DA"),
+            PresetGradient("Atardecer", "#FF6F00", "#EC407A"),
+            PresetGradient("Bosque", "#1B5E20", "#29B6F6"),
+            PresetGradient("Noche", "#121212", "#434343"),
+            PresetGradient("Personalizado...", "#000000", "#FFFFFF")
+        )
+        
+        rv.adapter = GradientAdapter(presets) { item ->
+            if (item.name == "Personalizado...") {
+                pickCustomGradient()
+            } else {
+                sessionManager.setBackgroundMode("gradient")
+                sessionManager.setBackgroundGradientStart(item.startColor)
+                sessionManager.setBackgroundGradientEnd(item.endColor)
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                refreshCurrentSection()
+            }
+            dialog.dismiss()
+        }
+        rv.layoutManager = GridLayoutManager(requireContext(), 2)
+        dialog.setContentView(view)
+        dialog.show()
+    }
+
+    private fun pickCustomGradient() {
+        ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientStart()) { startHex, _ ->
+            ColorPickerDialog.show(requireContext(), sessionManager.getBackgroundGradientEnd()) { endHex, _ ->
+                sessionManager.setBackgroundMode("gradient")
+                sessionManager.setBackgroundGradientStart(startHex)
+                sessionManager.setBackgroundGradientEnd(endHex)
+                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                refreshCurrentSection()
+                Toast.makeText(requireContext(), "Degradado guardado", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     /** Gira la imagen 45° más. Solo guarda los grados acumulados: la rotación
@@ -478,7 +558,7 @@ class SettingsFragment : Fragment() {
         val editText = EditText(requireContext()).apply {
             setText(current.removePrefix("http://").removePrefix("https://"))
             hint = "ej: 192.168.1.152"
-            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            inputType = InputType.TYPE_CLASS_TEXT
         }
 
         AlertDialog.Builder(requireContext())
@@ -511,6 +591,7 @@ class SettingsFragment : Fragment() {
     // --- No me gusta ---
 
     private fun showDislikedSettings() {
+        clearContentArea()
         val fragment = DislikedSongsAdminFragment()
         childFragmentManager.beginTransaction()
             .replace(R.id.settingsContentFrame, fragment)
@@ -520,8 +601,8 @@ class SettingsFragment : Fragment() {
     // --- Herramientas ---
 
     private fun showToolsSettings() {
+        clearContentArea()
         val view = layoutInflater.inflate(R.layout.settings_section_tools, contentFrame, false)
-        contentFrame.removeAllViews()
         contentFrame.addView(view)
 
         view.findViewById<MaterialButton>(R.id.btnRescanLibraryRedesign).setOnClickListener {
@@ -561,8 +642,8 @@ class SettingsFragment : Fragment() {
     // --- Cuenta ---
 
     private fun showAccountSettings() {
+        clearContentArea()
         val view = layoutInflater.inflate(R.layout.settings_section_account, contentFrame, false)
-        contentFrame.removeAllViews()
         contentFrame.addView(view)
 
         view.findViewById<MaterialButton>(R.id.btnServerIpRedesign).setOnClickListener {

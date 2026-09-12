@@ -21,7 +21,15 @@ data class Song(
     @SerializedName("last_position_ms")
     var lastPositionMs: Long = 0L,
     @SerializedName("subtitle_url")
-    val subtitleUrl: String? = null
+    val subtitleUrl: String? = null,
+    val genre: List<String>? = emptyList(),
+    val moods: List<Mood>? = emptyList()
+)
+
+data class Mood(
+    val id: Int,
+    val name: String,
+    val color: String?
 )
 
 data class LibraryResponse(
@@ -216,6 +224,10 @@ data class LrclibResult(
 )
 
 // --- Config ---
+
+data class MoodsResponse(
+    val moods: List<Mood>
+)
 
 data class IpConfigResponse(
     val ip: String

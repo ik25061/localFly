@@ -74,8 +74,9 @@
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_weight="1">
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fadeScrollbars="false">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -170,127 +171,20 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="Estado de ánimo (toca para elegir)"
+                android:layout_marginTop="12dp"
+                android:text="Estado de ánimo (múltiple selección)"
                 android:textColor="#AAAAAA"
                 android:textSize="12sp" />
 
-            <LinearLayout
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupEditMoods"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="4dp"
-                android:layout_marginBottom="16dp">
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp"
+                app:chipSpacingHorizontal="8dp"
+                app:chipSpacingVertical="4dp" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood1"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Mood1"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood2"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Mood2"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood3"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Mood3"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="4dp">
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood4"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Mood4"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood5"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Mood5"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood6"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Mood6"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="4dp">
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood7"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Mood7"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMood8"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="Mood8"
-                        android:textSize="12sp"
-                        android:textAllCaps="false"
-                        app:cornerRadius="10dp" />
-                    <View
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1" />
-                </LinearLayout>
-            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
@@ -312,6 +206,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnRevertEdit"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"

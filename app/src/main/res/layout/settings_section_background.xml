@@ -11,67 +11,47 @@
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <com.google.android.material.card.MaterialCardView
+        <!-- Main Mode Selection -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardBackgroundColor="#17171B"
-            app:cardCornerRadius="22dp"
-            app:cardElevation="0dp"
-            app:strokeColor="#2AFFFFFF"
-            app:strokeWidth="1dp">
+            android:orientation="horizontal"
+            android:layout_marginBottom="20dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeSolid"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp">
+                android:layout_weight="1"
+                android:text="Sólido"
+                app:cornerRadius="12dp" />
 
-                <com.google.android.material.chip.ChipGroup
-                    android:id="@+id/chipGroupBackgroundSubTabs"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    app:singleSelection="true"
-                    app:selectionRequired="true"
-                    app:chipSpacingHorizontal="8dp"
-                    android:gravity="center">
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeGradient"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Degradado"
+                app:cornerRadius="12dp" />
 
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipSubTabSolid"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Sólido"
-                        android:textAlignment="center"
-                        app:checkedIconVisible="false" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeImage"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Imagen"
+                app:cornerRadius="12dp" />
+        </LinearLayout>
 
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipSubTabGradient"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Degradado"
-                        android:textAlignment="center"
-                        app:checkedIconVisible="false" />
-
-                    <com.google.android.material.chip.Chip
-                        android:id="@+id/chipSubTabImage"
-                        style="@style/Widget.Material3.Chip.Filter"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Imagen"
-                        android:textAlignment="center"
-                        app:checkedIconVisible="false" />
-                </com.google.android.material.chip.ChipGroup>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
+        <!-- Preview Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="180dp"
-            android:layout_marginTop="20dp"
             app:cardCornerRadius="18dp"
             app:strokeWidth="1dp"
             app:strokeColor="#33FFFFFF"
@@ -90,12 +70,14 @@
                 android:textStyle="italic" />
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Sub-section content Area -->
         <FrameLayout
             android:id="@+id/backgroundSubContentFrame"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp" />
 
+        <!-- Common Sliders Card -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

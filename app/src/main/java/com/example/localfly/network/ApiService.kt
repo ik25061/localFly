@@ -240,6 +240,9 @@ interface ApiService {
         @Query("userId") userId: String?
     ): Response<PodcastResponse>
 
+    @GET("api/moods")
+    suspend fun getMoods(): Response<MoodsResponse>
+
     @POST("api/podcasts/progress")
     suspend fun updateEpisodeProgress(
         @Body request: ProgressUpdateRequest

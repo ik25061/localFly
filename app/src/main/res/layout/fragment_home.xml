@@ -13,7 +13,7 @@
         android:orientation="vertical"
         android:paddingBottom="100dp">
 
-        <!-- Header: "Tu Música" -->
+        <!-- Header: Saludo y Ajustes -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -31,10 +31,9 @@
                     android:id="@+id/tvGreeting"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Buenas noches"
+                    android:text="Buenos días"
                     android:textColor="#9EA3AD"
-                    android:textSize="12sp"
-                    android:letterSpacing="0.04" />
+                    android:textSize="12sp" />
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
@@ -49,7 +48,6 @@
                 android:layout_height="wrap_content"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
-                android:gravity="center_vertical"
                 android:orientation="horizontal">
 
                 <ImageButton
@@ -67,15 +65,13 @@
                     android:layout_width="44dp"
                     android:layout_height="44dp"
                     android:background="@drawable/bg_circle_white"
-                    android:backgroundTint="#1DB954"
-                    android:clickable="true"
-                    android:focusable="true">
+                    android:backgroundTint="#1DB954">
                     <TextView
                         android:id="@+id/tvSettingsAvatar"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:gravity="center"
-                        android:text="R"
+                        android:text="U"
                         android:textColor="#FFFFFF"
                         android:textSize="18sp"
                         android:textStyle="bold" />
@@ -97,39 +93,12 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
 
-        <!-- Featured Card -->
-        <include
-            android:id="@+id/cardFeatured"
-            layout="@layout/item_home_featured"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginHorizontal="8dp"
-            android:layout_marginTop="16dp" />
-
-        <!-- Category Tabs -->
-        <HorizontalScrollView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:scrollbars="none"
-            android:paddingHorizontal="16dp"
-            android:layout_marginTop="20dp"
-            android:clipToPadding="false">
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/chipGroupHomeCategories"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                app:singleSelection="true"
-                app:selectionRequired="true">
-                <!-- Chips will be added dynamically: Todo, Pop, etc. -->
-            </com.google.android.material.chip.ChipGroup>
-        </HorizontalScrollView>
-
-        <!-- Section: Canciones que te gustan -->
+        <!-- [PROMOCIÓN] Canciones que te gustan (VERTICAL, EN EL TOP) -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:layout_marginTop="24dp">
+            android:layout_marginTop="20dp">
             <RelativeLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -147,7 +116,7 @@
                     android:layout_height="wrap_content"
                     android:layout_alignParentEnd="true"
                     android:text="Ver todo"
-                    android:textColor="#E91E63"
+                    android:textColor="#1DB954"
                     android:textSize="13sp" />
             </RelativeLayout>
             <androidx.recyclerview.widget.RecyclerView
@@ -155,105 +124,39 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="12dp"
+                android:paddingHorizontal="8dp"
+                android:clipToPadding="false"
                 android:nestedScrollingEnabled="false" />
         </LinearLayout>
 
-        <!-- Section: Continue Podcast -->
-        <LinearLayout
-            android:id="@+id/layoutContinuePodcast"
+        <!-- Featured Card -->
+        <include
+            android:id="@+id/cardFeatured"
+            layout="@layout/item_home_featured"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="24dp"
-            android:visibility="gone">
-            <RelativeLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:paddingHorizontal="16dp">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Continuar Podcast"
-                    android:textColor="#FFFFFF"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-                <TextView
-                    android:id="@+id/tvSeeAllPodcastProgress"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_alignParentEnd="true"
-                    android:text="Ver todo"
-                    android:textColor="#E91E63"
-                    android:textSize="13sp" />
-            </RelativeLayout>
-            <!-- Card for last podcast with progress bar -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardLastPodcast"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginHorizontal="16dp"
-                android:layout_marginTop="12dp"
-                app:cardCornerRadius="16dp"
-                app:cardBackgroundColor="#1A1A1A"
-                app:strokeWidth="0dp">
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:padding="12dp">
-                    <com.google.android.material.imageview.ShapeableImageView
-                        android:id="@+id/ivLastPodcastCover"
-                        android:layout_width="60dp"
-                        android:layout_height="60dp"
-                        android:scaleType="centerCrop"
-                        app:shapeAppearanceOverlay="@style/RoundedCorners8" />
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_toEndOf="@id/ivLastPodcastCover"
-                        android:layout_toStartOf="@id/btnLastPodcastPlay"
-                        android:layout_marginStart="16dp"
-                        android:orientation="vertical">
-                        <TextView
-                            android:id="@+id/tvLastPodcastTitle"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Episodio..."
-                            android:textColor="#FFFFFF"
-                            android:textSize="14sp"
-                            android:textStyle="bold"
-                            android:maxLines="1"
-                            android:ellipsize="end" />
-                        <TextView
-                            android:id="@+id/tvLastPodcastAuthor"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:text="Autor"
-                            android:textColor="#888888"
-                            android:textSize="12sp" />
-                        <ProgressBar
-                            android:id="@+id/pbLastPodcast"
-                            style="@android:style/Widget.ProgressBar.Horizontal"
-                            android:layout_width="match_parent"
-                            android:layout_height="4dp"
-                            android:layout_marginTop="8dp"
-                            android:progress="65"
-                            android:progressTint="#E91E63" />
-                    </LinearLayout>
-                    <ImageButton
-                        android:id="@+id/btnLastPodcastPlay"
-                        android:layout_width="40dp"
-                        android:layout_height="40dp"
-                        android:layout_alignParentEnd="true"
-                        android:layout_centerVertical="true"
-                        android:background="@drawable/bg_circle_white"
-                        android:backgroundTint="#E91E63"
-                        android:src="@android:drawable/ic_media_play"
-                        app:tint="#FFFFFF" />
-                </RelativeLayout>
-            </com.google.android.material.card.MaterialCardView>
-        </LinearLayout>
+            android:layout_marginHorizontal="8dp"
+            android:layout_marginTop="24dp" />
 
-        <!-- Standard Sections with spaced title/ver todo -->
+        <!-- Category Tabs -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:paddingHorizontal="16dp"
+            android:layout_marginTop="20dp"
+            android:clipToPadding="false">
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/chipGroupHomeCategories"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:singleSelection="true"
+                app:selectionRequired="true" />
+        </HorizontalScrollView>
+
+        <!-- Continuar Podcast -->
+        <include layout="@layout/include_continue_podcast" android:id="@+id/layoutContinuePodcast" android:visibility="gone" />
+
         <include layout="@layout/section_home_standard" android:id="@+id/sectionPlaylists" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionPodcasts" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionAlbums" />

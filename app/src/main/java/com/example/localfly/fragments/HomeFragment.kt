@@ -6,6 +6,9 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.fragment.app.Fragment
@@ -194,21 +197,32 @@ class HomeFragment : Fragment() {
     }
 
     private fun updateLastPodcast(episode: Song) {
-        binding.layoutContinuePodcast.visibility = View.VISIBLE
-        binding.tvLastPodcastTitle.text = episode.title
-        binding.tvLastPodcastAuthor.text = episode.artist ?: "Podcast"
+        // Buscar el contenedor en binding por su ID de include
+        val layout = binding.root.findViewById<View>(R.id.layoutContinuePodcast) ?: return
+        layout.visibility = View.VISIBLE
+        
+        val tvTitle = layout.findViewById<TextView>(R.id.tvLastPodcastTitle)
+        val tvAuthor = layout.findViewById<TextView>(R.id.tvLastPodcastAuthor)
+        val pb = layout.findViewById<ProgressBar>(R.id.pbLastPodcast)
+        val ivCover = layout.findViewById<ImageView>(R.id.ivLastPodcastCover)
+        val btnPlay = layout.findViewById<ImageButton>(R.id.btnLastPodcastPlay)
+
+        tvTitle?.text = episode.title
+        tvAuthor?.text = episode.artist ?: "Podcast"
         
         val progress = if (episode.duration != null && episode.duration > 0) {
             ((episode.lastPositionMs / 1000.0) / episode.duration * 100).toInt()
         } else 0
-        binding.pbLastPodcast.progress = progress
+        pb?.progress = progress
         
-        Glide.with(this)
-            .load("$serverBaseUrl/cover/${episode.id}")
-            .placeholder(CoverPlaceholder.drawable(episode.id))
-            .into(binding.ivLastPodcastCover)
+        if (ivCover != null) {
+            Glide.with(this)
+                .load("$serverBaseUrl/cover/${episode.id}")
+                .placeholder(CoverPlaceholder.drawable(episode.id))
+                .into(ivCover)
+        }
             
-        binding.btnLastPodcastPlay.setOnClickListener {
+        btnPlay?.setOnClickListener {
             (requireActivity() as? MainActivity)?.playbackService?.playSong(episode)
         }
     }
@@ -216,7 +230,7 @@ class HomeFragment : Fragment() {
     private fun setupAdapters() {
         val activity = requireActivity() as? MainActivity
 
-        // Canciones que me gustan
+        // Canciones que me gustan (Lista Vertical)
         likedAdapter = LikedSongsAdapter(
             mutableListOf(),
             downloadHelper,
@@ -239,7 +253,7 @@ class HomeFragment : Fragment() {
                 AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
             }
         )
-        binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.rvLikedSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.rvLikedSongs.adapter = likedAdapter
 
         // Mis Playlists
@@ -351,33 +365,37 @@ class HomeFragment : Fragment() {
 
         fun applyHomeSongs(songs: List<Song>) {
             if (songs.isEmpty()) return
-            likedAdapter.updateSongs(songs)
+            likedAdapter.updateSongs(songs.take(20)) // Mostrar más canciones en el Home
         }
 
-        // Usar viewLifecycleOwner para que se cancele al destruir la vista
         viewLifecycleOwner.lifecycleScope.launch {
-            // 1. Canciones que me gustan / fallback a biblioteca para no dejar la home vacía.
+            Log.d("HomeFragment", "Loading data for userId: $userId")
+            // 1. Canciones que me gustan (Limite aumentado a 50 para asegurar contenido)
             try {
-                val likedResp = RetrofitClient.api.getLikedSongs(userId = userId, limit = 20)
+                val likedResp = RetrofitClient.api.getLikedSongs(userId = userId, limit = 50)
                 if (likedResp.isSuccessful && likedResp.body() != null) {
                     val likedSongs = likedResp.body()!!.songs
+                    Log.d("HomeFragment", "Loaded ${likedSongs.size} liked songs")
                     if (likedSongs.isNotEmpty()) {
                         applyHomeSongs(likedSongs)
                     } else {
-                        val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                        val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 50)
                         if (libraryResp.isSuccessful && libraryResp.body() != null) {
+                            Log.d("HomeFragment", "Liked empty, fallback to library: ${libraryResp.body()!!.songs.size} songs")
                             applyHomeSongs(libraryResp.body()!!.songs)
                         }
                     }
                 } else {
-                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                    Log.w("HomeFragment", "Liked songs request failed: ${likedResp.code()}")
+                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 50)
                     if (libraryResp.isSuccessful && libraryResp.body() != null) {
                         applyHomeSongs(libraryResp.body()!!.songs)
                     }
                 }
             } catch (e: Exception) {
+                Log.e("HomeFragment", "Error loading liked songs", e)
                 try {
-                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 50)
                     if (libraryResp.isSuccessful && libraryResp.body() != null) {
                         applyHomeSongs(libraryResp.body()!!.songs)
                     }
@@ -392,26 +410,12 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 2b. Propuestas públicas (listas públicas de todos los usuarios).
-            try {
-                val publicResp = RetrofitClient.api.getPublicPlayLists()
-                if (publicResp.isSuccessful && isAdded) {
-                    val publicPlaylists = publicResp.body()?.playlists
-                        ?.filter { it.id != userId && !it.id.startsWith("local_") }
-                        ?: emptyList()
-                    // Si queremos mostrarlas, añadir una sección para ellas en el XML
-                }
-            } catch (e: Exception) { }
-
-            // 2c. Podcasts
+            // 2c. Podcasts (Ahora agrupados por el servidor)
             try {
                 val podcastsResp = RetrofitClient.api.getPodcasts(userId = userId)
                 if (podcastsResp.isSuccessful && podcastsResp.body() != null) {
                     val podcasts = podcastsResp.body()!!.podcasts
                     podcastAdapter.updateItems(podcasts)
-                    if (podcasts.isEmpty()) {
-                        Log.d("HomeFragment", "No podcasts found on server")
-                    }
                 }
             } catch (e: Exception) { 
                 Log.e("HomeFragment", "Error loading podcasts", e)

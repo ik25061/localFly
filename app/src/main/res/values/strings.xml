@@ -13,4 +13,6 @@
     <string name="notification_next">Siguiente</string>
     <string name="notification_dislike">No me gusta</string>
     <string name="notification_channel_name">Reproducción de música</string>
+    <string name="download_count_header">%1$d canciones descargadas</string>
+    <string name="storage_info">%1$d MB - %2$d canciones</string>
 </resources>

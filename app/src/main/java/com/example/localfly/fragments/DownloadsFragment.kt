@@ -4,11 +4,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.DownloadManagerHelper
@@ -16,20 +19,25 @@ import com.example.localfly.DownloadedSong
 import com.example.localfly.DownloadedSongAdapter
 import com.example.localfly.MainActivity
 import com.example.localfly.R
+import com.example.localfly.dialogs.AddToPlaylistDialog
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
+import com.example.localfly.network.Song
+import com.google.android.material.materialswitch.MaterialSwitch
 
+@UnstableApi
 class DownloadsFragment : Fragment() {
 
     private lateinit var rvDownloads: RecyclerView
     private lateinit var tvEmpty: TextView
     private lateinit var tvDownloadCountHeader: TextView
     private lateinit var tvStorageInfo: TextView
-    private lateinit var swAutoDelete: com.google.android.material.materialswitch.MaterialSwitch
-    private lateinit var swCrossfade: com.google.android.material.materialswitch.MaterialSwitch
-    private lateinit var btnBack: android.widget.ImageButton
-    private lateinit var ivInfo: android.widget.ImageView
-    private lateinit var btnDeleteList: android.widget.ImageButton
-    private lateinit var btnDeleteRed: android.widget.ImageButton
+    private lateinit var swAutoDelete: MaterialSwitch
+    private lateinit var swCrossfade: MaterialSwitch
+    private lateinit var btnBack: ImageButton
+    private lateinit var ivInfo: ImageView
+    private lateinit var btnDeleteList: ImageButton
+    private lateinit var btnDeleteRed: ImageButton
     
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
@@ -58,20 +66,20 @@ class DownloadsFragment : Fragment() {
 
         adapter = DownloadedSongAdapter(
             items = mutableListOf(),
-            serverBaseUrl = com.example.localfly.network.RetrofitClient.getBaseUrl(),
+            serverBaseUrl = RetrofitClient.getBaseUrl(),
             onItemClick = { downloaded -> playDownloaded(downloaded) },
             onDeleteClick = { downloaded ->
                 downloadHelper.removeDownload(downloaded.id)
                 loadDownloads()
             },
             onAddToPlaylistClick = { downloaded ->
-                val song = com.example.localfly.network.Song(
+                val song = Song(
                     id = downloaded.id, title = downloaded.title, artist = downloaded.artist,
                     album = null, year = null, duration = downloaded.duration, bpm = downloaded.bpm,
                     key = downloaded.key, liked = downloaded.liked, hasCover = downloaded.hasCover,
                     hasLyrics = downloaded.hasLyrics
                 )
-                com.example.localfly.dialogs.AddToPlaylistDialog.show(
+                AddToPlaylistDialog.show(
                     requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager
                 )
             }
@@ -130,15 +138,30 @@ class DownloadsFragment : Fragment() {
         val totalSongs = items.size
         val totalSizeMb = items.sumOf { it.fileSize } / (1024 * 1024)
         
-        tvDownloadCountHeader.text = "$totalSongs canciones descargadas"
-        tvStorageInfo.text = "$totalSizeMb MB - $totalSongs canciones"
+        tvDownloadCountHeader.text = getString(R.string.download_count_header, totalSongs)
+        tvStorageInfo.text = getString(R.string.storage_info, totalSizeMb, totalSongs)
         
         tvEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         rvDownloads.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private fun playDownloaded(downloaded: DownloadedSong) {
-        (requireActivity() as? MainActivity)?.playDownloadedSong(downloaded)
+        val song = Song(
+            id = downloaded.id,
+            title = downloaded.title,
+            artist = downloaded.artist,
+            album = null,
+            year = null,
+            duration = downloaded.duration,
+            bpm = downloaded.bpm,
+            key = downloaded.key,
+            liked = downloaded.liked,
+            hasCover = downloaded.hasCover,
+            hasLyrics = downloaded.hasLyrics
+        )
+        val activity = requireActivity() as? MainActivity
+        val localPath = downloadHelper.getLocalFilePath(song.id)
+        activity?.playbackService?.playSong(song, localPath)
     }
 
     override fun onResume() {

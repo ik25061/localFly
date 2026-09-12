@@ -1,586 +1,180 @@
 package com.example.localfly
 
-import android.Manifest
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.Matrix
+import android.content.res.ColorStateList
+import android.graphics.*
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ImageButton
-import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import kotlin.math.ceil
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
-import com.example.localfly.dialogs.AddToPlaylistDialog
-import com.example.localfly.dialogs.EditSongMetadataDialog
-import com.example.localfly.fragments.AIFragment
-import com.example.localfly.fragments.CollectionDetailFragment
-import com.example.localfly.fragments.DownloadsFragment
-import com.example.localfly.fragments.HomeFragment
-import com.example.localfly.fragments.SearchFragment
-import com.example.localfly.fragments.PlaylistsFragment
-import com.example.localfly.network.*
-import com.example.localfly.network.ServerReachability
-import com.example.localfly.utils.LocalLogger
-import com.example.localfly.utils.CoverPlaceholder
+import androidx.media3.common.util.UnstableApi
+import com.example.localfly.fragments.*
+import com.example.localfly.network.RescanManager
+import com.example.localfly.network.SessionManager
+import com.example.localfly.network.SongAdminStore
 import com.google.android.material.bottomnavigation.BottomNavigationView
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlin.math.max
 
-@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+@UnstableApi
 class MainActivity : AppCompatActivity() {
 
-    // ===== VARIABLES =====
+    private lateinit var bottomNav: BottomNavigationView
     private lateinit var sessionManager: SessionManager
-    private lateinit var downloadHelper: DownloadManagerHelper
-    private lateinit var adapter: SongAdapter
-
-    // Mini player views
-    private lateinit var miniPlayer: View
-    private lateinit var miniPlayerInfo: View
-    private lateinit var ivMiniCover: ImageView
-    private lateinit var tvNowPlayingTitle: TextView
-    private lateinit var tvNowPlayingArtist: TextView
-    private lateinit var btnPlayPause: ImageButton
-    private lateinit var btnMiniLike: ImageButton
-    private lateinit var btnMiniDislike: ImageButton
-    private lateinit var btnMiniEditMetadata: ImageButton
-    private var btnPrev: ImageButton? = null
-    private lateinit var btnNext: ImageButton
+    private lateinit var rescanProgressLayout: View
+    private lateinit var rescanProgressBar: ProgressBar
+    private lateinit var rescanMessage: TextView
 
     var playbackService: PlaybackService? = null
-        private set
-    private var isBound = false
 
-    private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            LocalLogger.log(
-                this,
-                "Resultado permiso POST_NOTIFICATIONS → concedido=$isGranted " +
-                    "(en Android 13+ la notificación de MediaSession está exenta, pero conviene tenerlo)"
-            )
-            // Aunque se deniegue, la app sigue funcionando: la notificación de
-            // reproducción (MediaSession) está exenta del permiso, según la doc oficial.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        sessionManager = SessionManager(this)
+        SongAdminStore.ensureContext(applicationContext)
+
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        setContentView(R.layout.activity_main)
+
+        bottomNav = findViewById(R.id.bottomNavigation)
+        rescanProgressLayout = findViewById(R.id.layoutRescanProgress)
+        rescanProgressBar = findViewById(R.id.pbRescan)
+        rescanMessage = findViewById(R.id.tvRescanMessage)
+
+        setupNavigation()
+        setupMiniPlayer()
+        setupRescanObserver()
+        setupSystemBars()
+        
+        applyBackgroundAppearance()
+
+        if (savedInstanceState == null) {
+            replaceFragment(HomeFragment())
         }
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val current = supportFragmentManager.findFragmentById(R.id.container)
+                if (current !is HomeFragment) {
+                    bottomNav.selectedItemId = R.id.nav_home
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
+    }
 
-    private lateinit var bottomNav: BottomNavigationView
-    private lateinit var connectivityManager: ConnectivityManager
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var isServerOnline = false // Cambiado a false para forzar la primera ejecución
-    private var connectivityPollJob: kotlinx.coroutines.Job? = null
-
-    // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
-    private val serverBaseUrl = RetrofitClient.getBaseUrl()
-
-    // ===== SERVICE CONNECTION =====
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as PlaybackService.LocalBinder
-            playbackService = binder.getService()
-            isBound = true
-            playbackService?.onStateChanged = { if (!isFinishing && !isDestroyed) refreshMiniPlayer() }
-            if (!isFinishing && !isDestroyed) refreshMiniPlayer()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            playbackService = null
-            isBound = false
+    private fun setupSystemBars() {
+        val root = findViewById<View>(R.id.rootMain)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            bottomNav.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                bottomMargin = systemBars.bottom + (8 * resources.displayMetrics.density).toInt()
+            }
+            insets
         }
     }
 
-    // ===== ON CREATE =====
-    override fun onCreate(savedInstanceState: Bundle?) {
-        LocalLogger.initCrashHandler(this)
-        LocalLogger.log(this, "App iniciada (onCreate)")
-        
-        sessionManager = SessionManager(this)
-        applyAppSettings()
-        
-        super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        
-        // Inicializar vistas críticas antes de aplicar apariencia
-        bottomNav = findViewById(R.id.bottomNavigation)
-        initMiniPlayer()
-        
-        applyBackgroundAppearance()
-        applyFontFamilyToView(findViewById(android.R.id.content))
-
-        // ===== INSETS (EVITA QUE LA BARRA INFERIOR SE OCULTE O SE PIERDA) =====
-        // Con targetSdk 35+ Android aplica edge-to-edge de forma obligatoria:
-        // la ventana se dibuja por debajo de la barra de navegación del sistema
-        // y del teclado. Aquí lo hacemos explícito y manejamos los insets a mano:
-        //  - La barra del sistema y el notch se aplican como padding en la raíz
-        //    (rootMain), para que nada quede tapado.
-        //  - El teclado (IME) solo redimensiona la zona de contenido (container),
-        //    nunca la barra inferior ni el mini reproductor. Así, al ocultar el
-        //    teclado la botonería siempre vuelve a su sitio (no se queda perdida).
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.rootMain)) { view, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
-            )
-            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
-            findViewById<View>(R.id.container)?.setPadding(0, 0, 0, ime.bottom)
-            WindowInsetsCompat.CONSUMED
-        }
-
-        downloadHelper = DownloadManagerHelper.getInstance(this)
-
-        // Verificar sesión
-        if (!sessionManager.isLoggedIn()) {
-            startActivity(Intent(this, LoginActivity::class.java))
-            finish()
-            return
-        }
-
-        requestNotificationPermissionIfNeeded()
-
-        // ===== CONFIGURAR ADAPTADOR =====
-        adapter = SongAdapter(
-            songs = mutableListOf(),
-            serverBaseUrl = serverBaseUrl,
-            downloadHelper = downloadHelper,
-            onSongClick = { song, position ->
-                val allSongs = adapter.currentSongs()
-                val localPaths = allSongs.map { downloadHelper.getLocalFilePath(it.id) }
-                playbackService?.setQueueAndPlay(allSongs, position, localPaths)
-            },
-            onLikeClick = { song, position -> toggleLikeInLibrary(song, position) },
-            onDislikeClick = { song, position -> hideSongInLibrary(song, position) },
-            onDownloadClick = { song -> toggleDownload(song) },
-            onDeleteClick = { song, position -> hideSongInLibrary(song, position) },
-            onPlayNextClick = { song -> playbackService?.playNext(song) },
-            onPlaylistAddClick = { song -> playbackService?.addToQueue(song) },
-            onAddToPlaylistClick = { song ->
-                AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
-            }
-        )
-
-        // ===== NAVEGACIÓN INFERIOR =====
+    private fun setupNavigation() {
         bottomNav.setOnItemSelectedListener { item ->
             when (item.itemId) {
-                R.id.nav_home -> {
-                    replaceFragment(HomeFragment())
-                    true
-                }
-                R.id.nav_search -> {
-                    replaceFragment(SearchFragment())
-                    true
-                }
-                R.id.nav_downloads -> {
-                    replaceFragment(DownloadsFragment())
-                    true
-                }
-                R.id.nav_playlists -> {
-                    replaceFragment(PlaylistsFragment())
-                    true
-                }
-                R.id.nav_ai -> {
-                    replaceFragment(AIFragment())
-                    true
-                }
+                R.id.nav_home -> replaceFragment(HomeFragment())
+                R.id.nav_search -> replaceFragment(SearchFragment())
+                R.id.nav_downloads -> replaceFragment(DownloadsFragment())
+                R.id.nav_playlists -> replaceFragment(PlaylistsFragment())
+                R.id.nav_ai -> replaceFragment(AIFragment())
                 else -> false
             }
+            true
         }
+    }
 
-        // Cargar fragmento inicial
-        if (savedInstanceState == null) {
-            handleIntent(intent)
+    private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false): Boolean {
+        if (isFinishing || isDestroyed) return false
+        val transaction = supportFragmentManager.beginTransaction()
+            .replace(R.id.container, fragment)
+        if (addToBackStack) transaction.addToBackStack(null)
+        transaction.commit()
+        return true
+    }
+
+    private fun setupMiniPlayer() {
+        val miniPlayer = findViewById<View>(R.id.miniPlayer)
+        miniPlayer.setOnClickListener {
+            val intent = Intent(this, NowPlayingActivity::class.java)
+            startActivity(intent)
         }
-
-        setupServerConnectivityMonitoring()
-        setupRescanObserver()
     }
 
     private fun setupRescanObserver() {
-        val layoutRescan = findViewById<View>(R.id.layoutRescanProgress)
-        val tvRescan = findViewById<TextView>(R.id.tvRescanMessage)
-        val pbRescan = findViewById<android.widget.ProgressBar>(R.id.pbRescan)
-        var previousPhase = "idle"
-
         lifecycleScope.launch {
-            RescanManager.progress.collect { progress ->
-                if (progress.phase == "idle") {
-                    layoutRescan.visibility = View.GONE
-                    layoutRescan.clearAnimation()
+            RescanManager.progress.collect { state ->
+                if (state.phase == "idle" || state.phase == "done") {
+                    rescanProgressLayout.visibility = View.GONE
                 } else {
-                    if (layoutRescan.visibility != View.VISIBLE) {
-                        layoutRescan.visibility = View.VISIBLE
-                        startRescanPulseAnimation(layoutRescan)
-                    }
-                    tvRescan.text = progress.message.ifBlank { "Reescaneando sistema..." }
-                    pbRescan.progress = progress.pct
-                    pbRescan.isIndeterminate = progress.total == 0 && progress.pct < 100
-                }
-
-                if (progress.phase == "done" && previousPhase != "done") {
-                    android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Reescaneo completado")
-                        .setMessage(
-                            "Biblioteca actualizada: ${progress.totalSongsLibrary} canciones en total.\n" +
-                            "Tiempo empleado: ${progress.durationSec / 60} min ${progress.durationSec % 60} s."
-                        )
-                        .setPositiveButton("Aceptar", null)
-                        .show()
-                } else if (progress.phase == "error" && previousPhase != "error") {
-                    android.app.AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Error en el reescaneo")
-                        .setMessage(progress.message.ifBlank { "Ocurrió un error durante el reescaneo." })
-                        .setPositiveButton("Aceptar", null)
-                        .show()
-                }
-                previousPhase = progress.phase
-            }
-        }
-
-        
-        // Iniciar monitoreo por si ya había uno en curso en el server
-        RescanManager.startMonitoring(lifecycleScope)
-    }
-
-    private fun startRescanPulseAnimation(view: View) {
-        view.alpha = 1.0f
-        view.animate()
-            .alpha(0.6f)
-            .setDuration(1200)
-            .withEndAction {
-                if (view.visibility == View.VISIBLE) {
-                    view.animate()
-                        .alpha(1.0f)
-                        .setDuration(1200)
-                        .withEndAction { startRescanPulseAnimation(view) }
-                        .start()
+                    rescanProgressLayout.visibility = View.VISIBLE
+                    rescanProgressBar.isIndeterminate = (state.pct <= 0)
+                    if (state.pct > 0) rescanProgressBar.progress = state.pct
+                    rescanMessage.text = state.message
                 }
             }
-            .start()
-    }
-
-
-
-    private fun applyAppSettings() {
-        // 1. Aplicar Tema de color
-        when (sessionManager.getAppColor()) {
-            "Azul" -> setTheme(R.style.Theme_Localfly_Blue)
-            "Rojo" -> setTheme(R.style.Theme_Localfly_Red)
-            "Púrpura" -> setTheme(R.style.Theme_Localfly_Purple)
-            else -> setTheme(R.style.Theme_Localfly) // Verde por defecto
-        }
-        
-        // Forzar fondo negro o color del tema para evitar que Android use colores dinámicos del sistema
-        window.decorView.setBackgroundColor(android.graphics.Color.BLACK)
-
-        // 2. Aplicar Tamaño de fuente
-        val scale = when (sessionManager.getTextSize()) {
-            "Extra pequeño" -> 0.75f
-            "Normal" -> 1.0f
-            "Grande" -> 1.25f
-            "Extra grande" -> 1.45f
-            else -> 1.0f
-        }
-        
-        val configuration = resources.configuration
-        configuration.fontScale = scale
-        val metrics = resources.displayMetrics
-        val wm = getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
-        @Suppress("DEPRECATION")
-        wm.defaultDisplay.getMetrics(metrics)
-        @Suppress("DEPRECATION")
-        metrics.scaledDensity = configuration.fontScale * metrics.density
-        @Suppress("DEPRECATION")
-        resources.updateConfiguration(configuration, metrics)
-    }
-
-
-    /**
-     * En Android 13+ (garantizado siempre, minSdk 34) las notificaciones
-     * son opt-in: si nunca se pide este permiso, la notificación de
-     * reproducción (con like/dislike/siguiente incluidos) no se muestra
-     * nunca, aunque el resto del código esté perfecto.
-     */
-    private fun requestNotificationPermissionIfNeeded() {
-        val granted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!granted) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    private fun initMiniPlayer() {
-        // Inicializar mini player
-        miniPlayer = findViewById(R.id.miniPlayer)
-        miniPlayerInfo = findViewById(R.id.miniPlayerInfo)
-        ivMiniCover = findViewById(R.id.ivMiniCover)
-        tvNowPlayingTitle = findViewById(R.id.tvNowPlayingTitle)
-        tvNowPlayingArtist = findViewById(R.id.tvNowPlayingArtist)
-        btnPlayPause = findViewById(R.id.btnPlayPause)
-        btnMiniLike = findViewById(R.id.btnMiniLike)
-        btnMiniDislike = findViewById(R.id.btnMiniDislike)
-        btnMiniEditMetadata = findViewById(R.id.btnMiniEditMetadata)
-        btnPrev = findViewById(R.id.btnPrev)
-        btnNext = findViewById(R.id.btnNext)
-
-        miniPlayerInfo.setOnClickListener {
-            if (playbackService?.currentSong != null) {
-                startActivity(Intent(this, NowPlayingActivity::class.java))
-            }
-        }
-        btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
-        btnMiniLike.setOnClickListener { playbackService?.toggleLike() }
-        btnMiniDislike.setOnClickListener { playbackService?.dislikeCurrentSong() }
-        btnMiniEditMetadata.setOnClickListener {
-            val song = playbackService?.currentSong ?: return@setOnClickListener
-            EditSongMetadataDialog.show(
-                this,
-                song,
-                SongAdminStore.applyTo(song)
-            ) {
-                refreshMiniPlayer()
-            }
-        }
-        btnPrev?.setOnClickListener { playbackService?.prev() }
-        btnNext.setOnClickListener { playbackService?.next() }
-    }
-
-    /**
-     * Monitorea si el SERVIDOR es alcanzable (no "si hay internet"). Usa
-     * ConnectivityManager solo como disparador ("algo cambió en la red,
-     * vale la pena volver a comprobar"), pero la fuente de verdad siempre
-     * es un ping real a /api/config/ip con timeout corto. Además de
-     * reaccionar a cambios, hace polling cada 15s por si el servidor cae
-     * sin que cambie el estado de la red del móvil (p.ej. se apaga el PC).
-     */
-    private fun setupServerConnectivityMonitoring() {
-        connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-
-        lifecycleScope.launch { checkServerReachabilityNow() }
-
-        val request = NetworkRequest.Builder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .build()
-
-        networkCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                lifecycleScope.launch { checkServerReachabilityNow() }
-            }
-
-            override fun onLost(network: Network) {
-                runOnUiThread { updateBottomNavForServer(false) }
-            }
-        }
-        connectivityManager.registerNetworkCallback(request, networkCallback!!)
-
-        connectivityPollJob?.cancel()
-        connectivityPollJob = lifecycleScope.launch {
-            while (true) {
-                kotlinx.coroutines.delay(15000)
-                checkServerReachabilityNow()
-            }
-        }
-    }
-
-    private suspend fun checkServerReachabilityNow() {
-        val reachable = ServerReachability.isServerReachable()
-        updateBottomNavForServer(reachable)
-    }
-
-    /**
-     * Muestra/oculta pestañas del menú inferior según se pueda alcanzar el
-     * SERVIDOR o no. Solo "Descargas" queda siempre visible.
-     */
-    private fun updateBottomNavForServer(online: Boolean) {
-        if (isServerOnline == online) return
-        isServerOnline = online
-
-        // IMPORTANTE: no ocultar (isVisible = false) ni deshabilitar los ítems
-        // del menú. Ocultar/deshabilitar 3 de 5 ítems deja la barra inferior
-        // casi vacía ("no se muestra la botonería") y puede provocar el crash
-        // "IllegalStateException: Expected exactly 3 items". Los ítems quedan
-        // siempre activos; cada fragmento ya muestra su aviso si no hay servidor.
-
-        if (online) {
-            // El servidor volvió: aprovechar para subir letras encontradas
-            // por internet directo mientras estaba caído (ver Parte C).
-            playbackService?.flushPendingLyricsUploads()
-
-            // Subir al servidor las playlists modificadas sin conexión:
-            // listas nuevas (con sus canciones) y canciones añadidas offline
-            // a listas que ya existían.
-            lifecycleScope.launch {
-                PlaylistSyncManager.sync(sessionManager)
-                // Refrescar la pantalla de Listas si es la que está abierta ahora mismo
-                (supportFragmentManager.findFragmentById(R.id.container) as? PlaylistsFragment)?.reloadAfterSync()
-            }
-
-            // Disparar auto-descarga inteligente para mantener el móvil lleno (hasta 500 temas)
-            lifecycleScope.launch {
-                downloadHelper.autoDownloadSmart(sessionManager)
-            }
-        }
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleIntent(intent)
-    }
-
-    private fun handleIntent(intent: Intent?) {
-        val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-        
-        if (intent == null) {
-            bottomNav.selectedItemId = R.id.nav_home
-            replaceFragment(HomeFragment())
-            return
-        }
-
-        when (intent.action) {
-            "com.example.localfly.ACTION_OPEN_ARTIST" -> {
-                val artistName = intent.getStringExtra("artist_name")
-                if (artistName != null) {
-                    openArtistByName(artistName)
-                } else {
-                    bottomNav.selectedItemId = R.id.nav_home
-                    replaceFragment(HomeFragment())
-                }
-            }
-            else -> {
-                bottomNav.selectedItemId = R.id.nav_home
-                replaceFragment(HomeFragment())
-            }
-        }
-    }
-
-    private fun openArtistByName(name: String) {
-        lifecycleScope.launch {
-            try {
-                // Seleccionar primero la pestaña de buscador para que el fragmento base sea el correcto
-                val bottomNav = findViewById<BottomNavigationView>(R.id.bottomNavigation)
-                if (bottomNav.selectedItemId != R.id.nav_search) {
-                    bottomNav.selectedItemId = R.id.nav_search
-                }
-
-                val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = name)
-                if (response.isSuccessful && response.body() != null) {
-                    val artists = response.body()!!.items
-                    val match = artists.find { it.name.equals(name, ignoreCase = true) } 
-                                ?: artists.find { it.name.contains(name, ignoreCase = true) }
-                                ?: artists.firstOrNull()
-                                
-                    if (match != null) {
-                        val fragment = com.example.localfly.fragments.CollectionDetailFragment.newInstance(
-                            match.id, match.name, "ARTIST", match.coverId
-                        )
-                        replaceFragment(fragment, addToBackStack = true)
-                    } else {
-                        Toast.makeText(this@MainActivity, "No se encontró al artista \"$name\"", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Error al buscar artista", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
-
-    private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false) {
-        if (isFinishing || isDestroyed) return
-
-        val transaction = supportFragmentManager.beginTransaction()
-            .replace(R.id.container, fragment)
-
-        if (addToBackStack) {
-            transaction.addToBackStack(null)
-        }
-        transaction.commitAllowingStateLoss()
-        findViewById<View>(R.id.container)?.post {
-            applyFontFamilyToView(findViewById(R.id.container))
-        }
-    }
-
-    private fun parseColorSafely(value: String?, fallback: String): Int {
-        return try {
-            Color.parseColor(value ?: fallback)
-        } catch (_: Exception) {
-            Color.parseColor(fallback)
-        }
-    }
+    // ===== Fondo personalizado =====
+    
+    private var backgroundJob: Job? = null
+    private var cachedOriginalBitmap: Bitmap? = null
+    private var cachedUriString: String? = null
+    private var cachedBlurredBitmap: Bitmap? = null
+    private var cachedBlurValue: Int = -1
+    private var cachedRotationValue: Int = -1
 
     fun applyBackgroundAppearance() {
-        val root = findViewById<View>(R.id.rootMain) ?: findViewById(android.R.id.content)
-        val mode = sessionManager.getBackgroundMode()
-        val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
-        val solidColor = sessionManager.getBackgroundSolidColor()
-        val fallbackSolid = parseColorSafely(solidColor, "#121212")
+        val root = findViewById<View>(R.id.rootMain) ?: return
+        backgroundJob?.cancel()
 
-        bottomNav.visibility = View.VISIBLE
-        bottomNav.alpha = 1.0f
+        val mode = sessionManager.getBackgroundMode().lowercase()
+        val fallbackSolid = parseColorSafely(sessionManager.getBackgroundSolidColor(), "#121212")
+        val alphaPct = sessionManager.getBackgroundAlphaPct()
+        val alpha = (alphaPct * 255) / 100
 
-        when (mode.lowercase()) {
+        when (mode) {
+            "solid" -> {
+                val base = ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                applyFinalBackground(root, base)
+            }
             "gradient" -> {
-                backgroundJob?.cancel()
-                val baseDrawable = GradientDrawable(
-                    GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(
-                        parseColorSafely(sessionManager.getBackgroundGradientStart(), "#4A148C"),
-                        parseColorSafely(sessionManager.getBackgroundGradientEnd(), "#F06292")
-                    )
-                ).apply {
-                    shape = GradientDrawable.RECTANGLE
+                val start = parseColorSafely(sessionManager.getBackgroundGradientStart(), "#1DB954")
+                val end = parseColorSafely(sessionManager.getBackgroundGradientEnd(), "#121212")
+                val base = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
                     this.alpha = alpha
                 }
-                applyFinalBackground(root, baseDrawable)
+                applyFinalBackground(root, base)
             }
             "image" -> {
-                // El decode + rotación + difuminado se hace fuera del hilo
-                // principal. `delay` actúa de debounce: si el usuario arrastra
-                // un slider, el cálculo anterior se cancela y solo se calcula
-                // el último valor (sin ANR).
-                val generation = ++backgroundGeneration
-                backgroundJob?.cancel()
                 backgroundJob = lifecycleScope.launch {
-                    delay(80)
+                    delay(80) 
                     val bitmap = withContext(Dispatchers.IO) { buildImageBackgroundBitmap() }
-                    if (generation != backgroundGeneration) {
-                        bitmap?.recycle()
-                        return@launch
-                    }
-                    val base: android.graphics.drawable.Drawable = if (bitmap != null) {
+                    val base: Drawable = if (bitmap != null) {
                         BitmapDrawable(resources, bitmap).apply { this.alpha = alpha }
                     } else {
                         ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
@@ -589,22 +183,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             else -> {
-                backgroundJob?.cancel()
-                applyFinalBackground(root, ColorDrawable(fallbackSolid).apply { this.alpha = alpha })
+                applyFinalBackground(root, ColorDrawable(fallbackSolid).apply { this.alpha = 255 })
             }
         }
     }
 
-    // ===== Fondo personalizado =====
-    // El trabajo pesado (decode/rotación/difuminado) va en un Job cancelable
-    // para no bloquear el hilo principal (fix del ANR en los sliders).
-    private var backgroundJob: Job? = null
-    @Volatile private var backgroundGeneration = 0
-
-    /** Compone el fondo final. En modo imagen, el color elegido va DETRÁS de
-     *  la imagen (se ve por las zonas transparentes/semitransparentes). */
-    private fun applyFinalBackground(root: View, base: android.graphics.drawable.Drawable) {
-        val finalDrawable: android.graphics.drawable.Drawable =
+    private fun applyFinalBackground(root: View, base: Drawable) {
+        val finalDrawable: Drawable =
             if (sessionManager.getBackgroundMode().lowercase() == "image") {
                 val behindColor = parseColorSafely(sessionManager.getBackgroundOverlayColor(), "#66000000")
                 val behindAlpha = (sessionManager.getBackgroundOverlayAlphaPct() * 255) / 100
@@ -613,60 +198,78 @@ class MainActivity : AppCompatActivity() {
             } else {
                 base
             }
-        root.background = finalDrawable
-        if (window != null) {
-            window.decorView.background = finalDrawable
-        }
+            
+        // IMPORTANTE: Para evitar el efecto de "fantasma" o "Windows XP" (ghosting) al desplazar
+        // listas sobre fondos transparentes, el fondo debe aplicarse a la VENTANA (Window).
+        // Esto permite que el sistema use el fondo como buffer de limpieza optimizado.
+        window.setBackgroundDrawable(finalDrawable)
+        
+        // Quitar el fondo del root para no dibujar dos veces (overdraw)
+        root.background = null
     }
 
-    /**
-     * Carga la imagen de fondo y le aplica la rotación acumulada (0-359) y el
-     * difuminado. La rotación se aplica SIEMPRE desde la imagen original
-     * (almacenada sin girar) sobre un lienzo del mismo tamaño, escalando para
-     * que el contenido girado siga cubriendo toda la pantalla: así la imagen
-     * no se encoge con cada giro ni aparecen esquinas negras (JPEG sin alfa).
-     */
     private fun buildImageBackgroundBitmap(): Bitmap? {
         val uriString = sessionManager.getBackgroundImageUri()?.trim() ?: return null
         if (uriString.isBlank()) return null
         val uri = try { Uri.parse(uriString) } catch (_: Exception) { null }
         if (uri == null || (uri.scheme.isNullOrBlank() && !uriString.startsWith("/"))) return null
 
-        val original = decodeBackgroundBitmap(uri) ?: return null
+        val rotation = sessionManager.getBackgroundImageRotation()
+        val blur = sessionManager.getBackgroundBlur()
+
+        if (uriString == cachedUriString && rotation == cachedRotationValue && blur == cachedBlurValue && cachedBlurredBitmap != null) {
+            return cachedBlurredBitmap!!.copy(cachedBlurredBitmap!!.config ?: Bitmap.Config.ARGB_8888, true)
+        }
+
+        val original = if (uriString == cachedUriString && cachedOriginalBitmap != null) {
+            cachedOriginalBitmap!!
+        } else {
+            val decoded = decodeBackgroundBitmap(uri) ?: return null
+            cachedOriginalBitmap?.recycle()
+            cachedOriginalBitmap = decoded
+            cachedUriString = uriString
+            decoded
+        }
+
         var result: Bitmap = original
         try {
-            val rotation = sessionManager.getBackgroundImageRotation()
             val w = original.width
             val h = original.height
             if (rotation != 0) {
                 val m = Matrix().apply { setRotate(rotation.toFloat(), w / 2f, h / 2f) }
-                if (rotation % 90 != 0) {
-                    // Giros de 45°/135°/...: escalar para que el contenido
-                    // girado cubra el lienzo completo (sin esquinas vacías).
-                    val rad = Math.toRadians(rotation.toDouble())
-                    val cos = Math.abs(Math.cos(rad))
-                    val sin = Math.abs(Math.sin(rad))
-                    val cover = maxOf((w * cos + h * sin) / w, (w * sin + h * cos) / h)
-                    m.postScale(cover.toFloat(), cover.toFloat(), w / 2f, h / 2f)
-                }
+                val rad = Math.toRadians(rotation.toDouble())
+                val cos = Math.abs(Math.cos(rad))
+                val sin = Math.abs(Math.sin(rad))
+                val scale = max( (w * cos + h * sin) / w, (w * sin + h * cos) / h )
+                m.postScale(scale.toFloat(), scale.toFloat(), w / 2f, h / 2f)
+                
                 val rotated = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(rotated)
-                val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
-                canvas.drawBitmap(result, m, paint)
-                if (rotated !== result) result.recycle()
+                canvas.drawBitmap(result, m, Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG))
+                if (result !== original) result.recycle()
                 result = rotated
             }
-            val blur = sessionManager.getBackgroundBlur()
             if (blur > 0) {
                 val blurred = blurBitmap(result, blur)
                 if (blurred !== result) {
-                    result.recycle()
+                    if (result !== original) result.recycle()
                     result = blurred
                 }
             }
-            return result
-        } catch (_: Exception) {
-            result.recycle()
+            
+            cachedBlurredBitmap?.recycle()
+            cachedBlurredBitmap = result.copy(result.config ?: Bitmap.Config.ARGB_8888, true)
+            cachedBlurValue = blur
+            cachedRotationValue = rotation
+            
+            return if (result === original) {
+                result.copy(result.config ?: Bitmap.Config.ARGB_8888, true)
+            } else {
+                result
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Error procesando fondo", e)
+            if (result !== original) result.recycle()
             return null
         }
     }
@@ -679,225 +282,41 @@ class MainActivity : AppCompatActivity() {
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
             val maxDimension = 1800
-            val ratio = maxOf(bounds.outWidth / maxDimension.toFloat(), bounds.outHeight / maxDimension.toFloat(), 1f)
-            val sample = maxOf(1, ceil(ratio).toInt())
-            val options = BitmapFactory.Options().apply {
-                inSampleSize = sample
-                inPreferredConfig = Bitmap.Config.RGB_565
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
+                sampleSize *= 2
             }
-            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-        } catch (_: Exception) {
+
+            val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+        } catch (e: Exception) {
             null
         }
     }
 
-    /**
-     * Desenfoque sencillo y barato (sin RenderScript, que ya no existe en
-     * API 31+): reducir la imagen y volverla a escalar produce un degradado
-     * suave tipo "blur" suficiente para el fondo de la app.
-     */
     private fun blurBitmap(bitmap: Bitmap, blur: Int): Bitmap {
-        val factor = (blur / 7) + 1 // 1..15
+        val factor = (blur / 7) + 1
         if (factor <= 1) return bitmap
-        val small = Bitmap.createScaledBitmap(bitmap, bitmap.width / factor, bitmap.height / factor, true)
-        val result = Bitmap.createScaledBitmap(small, bitmap.width, bitmap.height, true)
-        if (small !== bitmap) small.recycle()
-        return result
+        return try {
+            val small = Bitmap.createScaledBitmap(bitmap, bitmap.width / factor, bitmap.height / factor, true)
+            val result = Bitmap.createScaledBitmap(small, bitmap.width, bitmap.height, true)
+            if (small !== bitmap) small.recycle()
+            result
+        } catch (e: Exception) { bitmap }
     }
 
-    private fun applyFontFamilyToView(view: View?) {
-        if (view == null) return
-        val typeface = when (sessionManager.getFontFamily()) {
-            "Serif" -> Typeface.SERIF
-            "Monospace" -> Typeface.MONOSPACE
-            else -> Typeface.DEFAULT
-        }
-
-        if (view is TextView) {
-            view.typeface = typeface
-        }
-
-        if (view is ViewGroup) {
-            for (i in 0 until view.childCount) {
-                applyFontFamilyToView(view.getChildAt(i) ?: continue)
-            }
-        }
-    }
-
-    private fun refreshMiniPlayer() {
-        val song = playbackService?.currentSong
-        if (song == null) {
-            miniPlayer.visibility = View.GONE
-            return
-        }
-        miniPlayer.visibility = View.VISIBLE
-        tvNowPlayingTitle.text = song.title
-        
-        // Ajuste solicitado: "nombre del artista después de la palabra artista: artist - A.B. Quintanilla III"
-        tvNowPlayingArtist.text = if (song.artist != null) "Artista: ${song.artist}" else "Artista desconocido"
-
-        val coverUrl = "$serverBaseUrl/cover/${song.id}"
-        val seed = song.id
-
-        if (isFinishing || isDestroyed) return
-        Glide.with(this)
-            .load(coverUrl)
-            .placeholder(CoverPlaceholder.drawable(seed))
-            .error(CoverPlaceholder.drawable(seed))
-            .centerCrop()
-            .into(ivMiniCover)
-
-        btnMiniLike.setImageResource(
-            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
-        )
-        
-        btnMiniDislike.setImageResource(R.drawable.ic_dislike_off)
-
-        val isPlaying = playbackService?.player?.isPlaying == true
-        btnPlayPause.setImageResource(
-            if (isPlaying) android.R.drawable.ic_media_pause
-            else android.R.drawable.ic_media_play
-        )
-
-        btnPrev?.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
-        btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
-    }
-
-    // ===== DESCARGA =====
-    private fun toggleDownload(song: Song) {
-        if (downloadHelper.isDownloaded(song.id)) {
-            downloadHelper.removeDownload(song.id)
-            Toast.makeText(this, "Descarga eliminada", Toast.LENGTH_SHORT).show()
-            adapter.refreshDownloadStates()
-        } else {
-            Toast.makeText(this, "Descargando \"${song.title}\"...", Toast.LENGTH_SHORT).show()
-            lifecycleScope.launch {
-                val audioUrl = "$serverBaseUrl/audio/${song.id}"
-                val success = downloadHelper.download(song, audioUrl)
-                if (success) {
-                    Toast.makeText(this@MainActivity, "Descarga completa", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, "Error al descargar", Toast.LENGTH_SHORT).show()
-                }
-                adapter.refreshDownloadStates()
-            }
-        }
-    }
-
-    // ===== REPRODUCIR DESDE DESCARGA =====
-    fun playDownloadedSong(downloaded: DownloadedSong) {
-        val allDownloads = downloadHelper.getDownloadedSongs()
-        val startIndex = allDownloads.indexOfFirst { it.id == downloaded.id }
-        if (startIndex == -1) return
-
-        val songs = allDownloads.map {
-            Song(
-                id = it.id,
-                title = it.title,
-                artist = it.artist,
-                album = null,
-                year = null,
-                duration = it.duration,
-                bpm = it.bpm,
-                key = it.key,
-                liked = it.liked,
-                hasCover = it.hasCover,
-                hasLyrics = it.hasLyrics
-            )
-        }
-        val localPaths = allDownloads.map { downloadHelper.getLocalFilePath(it.id) }
-
-        playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
-    }
-
-    // ===== LIKES / DISLIKES =====
-    private fun toggleLikeInLibrary(song: Song, position: Int) {
-        val newLiked = !song.liked
-        adapter.updateSongAt(position, song.copy(liked = newLiked))
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.api.likeSong(
-                    song.id,
-                    LikeRequest(sessionManager.getUserId(), newLiked)
-                )
-                if (!response.isSuccessful) {
-                    sessionManager.addPendingLike(song.id, newLiked)
-                }
-            } catch (e: Exception) {
-                // Sin conexión: guardar el like para sincronizarlo al volver al servidor
-                sessionManager.addPendingLike(song.id, newLiked)
-            }
-        }
-    }
-
-    private fun hideSongInLibrary(song: Song, position: Int) {
-        // Registrar localmente para que el admin pueda revisarla y, si quiere,
-        // borrarla por completo del disco.
-        SongAdminStore.recordDislikedSong(song)
-        adapter.removeAt(position)
-        lifecycleScope.launch {
-            try {
-                val response = RetrofitClient.api.hideSong(song.id, HideRequest(sessionManager.getUserId()))
-                if (!response.isSuccessful) {
-                    sessionManager.addPendingDislike(song.id)
-                }
-            } catch (e: Exception) {
-                // Sin conexión: guardar el dislike para sincronizarlo al volver al servidor
-                sessionManager.addPendingDislike(song.id)
-            }
-        }
-    }
-
-    // ===== CARGAR BIBLIOTECA (opcional) =====
-    private fun loadLibrary() {
-        // Implementación similar a la de MainActivity original
-        // Puedes dejarla vacía si no la necesitas
-    }
-
-    // ===== CICLO DE VIDA =====
-    override fun onStart() {
-        super.onStart()
-        if (isBound) return // Ya estamos conectados
-        
-        Intent(this, PlaybackService::class.java).apply { action = PlaybackService.ACTION_LOCAL_BIND }.also { intent ->
-            // Usamos un Handler para retrasar ligeramente el bind. 
-            // Esto ayuda en algunos dispositivos Android 13/14 a que el sistema 
-            // reconozca que la actividad ya está en primer plano y permita el bind/start.
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                try {
-                    bindService(intent, connection, Context.BIND_AUTO_CREATE)
-                } catch (e: Exception) {
-                    com.example.localfly.utils.LocalLogger.log(this, "Error bindeando PlaybackService en onStart", e)
-                }
-            }, 100)
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        if (isBound) {
-            unbindService(connection)
-            isBound = false
+    private fun parseColorSafely(hex: String?, fallback: String): Int {
+        return try {
+            Color.parseColor(hex ?: fallback)
+        } catch (_: Exception) {
+            Color.parseColor(fallback)
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        connectivityPollJob?.cancel()
-        networkCallback?.let {
-            try {
-                connectivityManager.unregisterNetworkCallback(it)
-            } catch (e: Exception) {
-                // Ya estaba desregistrado o la actividad se está destruyendo; ignorar
-            }
-        }
-    }
-
-    fun playSongWithQueue(songs: List<Song>, startIndex: Int) {
-        val localPaths = songs.map { downloadHelper.getLocalFilePath(it.id) }
-        playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
-    }
-    fun playSongs(songs: List<Song>, startIndex: Int, localPaths: List<String?>) {
-        playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
+        backgroundJob?.cancel()
+        cachedOriginalBitmap?.recycle()
+        cachedBlurredBitmap?.recycle()
     }
 }
