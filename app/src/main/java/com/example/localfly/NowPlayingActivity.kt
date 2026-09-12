@@ -91,6 +91,13 @@ class NowPlayingActivity : AppCompatActivity() {
     private var lyricsAdapter: LyricsAdapter? = null
     private var lyricsUpdateJob: Job? = null
 
+    // Estado del scroll del usuario en la vista de letras: evita que el
+    // auto-scroll "pelee" con el dedo y cause el efecto de texto atrasado.
+    private var userScrollingLyrics = false
+    private var lastAutoScrollLyricsPos = -1
+    private val lyricsScrollHandler = Handler(Looper.getMainLooper())
+    private val lyricsScrollResumeRunnable = Runnable { userScrollingLyrics = false }
+
     // Vistas del mini-reproductor en el diálogo de letras
     private var ivLyricsMiniCover: ImageView? = null
     private var tvLyricsMiniTitle: TextView? = null
@@ -541,6 +548,30 @@ class NowPlayingActivity : AppCompatActivity() {
         val progressBar = dialog.findViewById<android.widget.ProgressBar>(R.id.progressLyrics)
         val skeleton = dialog.findViewById<android.view.View>(R.id.llLyricsSkeleton)
         val btnClose = dialog.findViewById<ImageButton>(R.id.btnCloseLyrics)
+
+        // ANTI "TEXTO SUPERPUESTO": sin animaciones de cambio entre ítems.
+        // El DefaultItemAnimator hace un cross-fade del holder viejo y el nuevo
+        // al llamar notifyItemChanged(), lo que duplica visualmente el texto
+        // durante un instante.
+        rvLyrics.itemAnimator = null
+
+        // ANTI "TEXTO ATRASADO": mientras el usuario mueve la letra, el
+        // auto-scroll no debe interrumpir su desplazamiento. Se reanuda con una
+        // pequeña pausa después de que la lista quede en reposo.
+        rvLyrics.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: androidx.recyclerview.widget.RecyclerView, newState: Int) {
+                when (newState) {
+                    androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_DRAGGING -> {
+                        userScrollingLyrics = true
+                        lyricsScrollHandler.removeCallbacks(lyricsScrollResumeRunnable)
+                    }
+                    androidx.recyclerview.widget.RecyclerView.SCROLL_STATE_IDLE -> {
+                        lyricsScrollHandler.removeCallbacks(lyricsScrollResumeRunnable)
+                        lyricsScrollHandler.postDelayed(lyricsScrollResumeRunnable, 500)
+                    }
+                }
+            }
+        })
         
         // Enlazar mini-reproductor del diálogo
         ivLyricsMiniCover = dialog.findViewById(R.id.ivLyricsMiniCover)
@@ -560,6 +591,8 @@ class NowPlayingActivity : AppCompatActivity() {
 
         btnClose.setOnClickListener { 
             lyricsUpdateJob?.cancel()
+            lyricsScrollHandler.removeCallbacks(lyricsScrollResumeRunnable)
+            userScrollingLyrics = false
             lyricsDialog = null
             resetLyricsMiniPlayerViews()
             dialog.dismiss() 
@@ -640,10 +673,16 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun startLyricsUpdateLoop(recyclerView: androidx.recyclerview.widget.RecyclerView) {
         lyricsUpdateJob?.cancel()
         lyricsUpdateJob = lifecycleScope.launch {
+            lastAutoScrollLyricsPos = -1
             while (true) {
                 val currentTime = playbackService?.getProgressMs() ?: 0L
                 val activePos = lyricsAdapter?.updateActiveLine(currentTime) ?: -1
-                if (activePos != -1) {
+                // Solo desplazar cuando CAMBIA la línea activa y el usuario no está
+                // moviendo la letra. Llamar smoothScrollToPosition cada 300 ms aunque
+                // la posición no cambiara reiniciaba la animación de scroll constantemente
+                // y producía el efecto de "texto atrasado"/tirones al mover la letra.
+                if (activePos != -1 && activePos != lastAutoScrollLyricsPos && !userScrollingLyrics) {
+                    lastAutoScrollLyricsPos = activePos
                     recyclerView.smoothScrollToPosition(activePos)
                 }
                 delay(300)

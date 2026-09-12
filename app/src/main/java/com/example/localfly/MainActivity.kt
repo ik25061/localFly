@@ -147,6 +147,9 @@ class MainActivity : AppCompatActivity() {
     private var cachedBlurredBitmap: Bitmap? = null
     private var cachedBlurValue: Int = -1
     private var cachedRotationValue: Int = -1
+    // Bitmap reutilizable donde se compone el fondo final (siempre opaco) para
+    // eliminar el efecto de "texto fantasma/superpuesto" al desplazar las listas.
+    private var compositedBackgroundBitmap: Bitmap? = null
 
     fun applyBackgroundAppearance() {
         val root = findViewById<View>(R.id.rootMain) ?: return
@@ -188,6 +191,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun applyFinalBackground(root: View, base: Drawable) {
         val finalDrawable: Drawable =
             if (sessionManager.getBackgroundMode().lowercase() == "image") {
@@ -198,14 +202,48 @@ class MainActivity : AppCompatActivity() {
             } else {
                 base
             }
-            
-        // IMPORTANTE: Para evitar el efecto de "fantasma" o "Windows XP" (ghosting) al desplazar
-        // listas sobre fondos transparentes, el fondo debe aplicarse a la VENTANA (Window).
-        // Esto permite que el sistema use el fondo como buffer de limpieza optimizado.
-        window.setBackgroundDrawable(finalDrawable)
-        
+
+        // ANTI-GHOSTING (prioridad): el texto se veía "superpuesto/atrasado" al desplazar
+        // listas porque el fondo de la ventana se pintaba con alpha < 255 (transparencia
+        // del usuario y/o color de overlay en modo imagen). Al hacer scroll, el renderer
+        // solo repinta las regiones "sucias" y mezcla ese fondo translúcido SOBRE el frame
+        // anterior, dejando los textos viejos visibles (efecto "Windows XP"/fantasma).
+        //
+        // Solución: pintar SIEMPRE en la ventana un fondo 100% OPACO. Se pre-compone el
+        // drawable (respetando la transparencia configurada por el usuario) sobre negro
+        // opaco: el resultado visual es exactamente el mismo (la ventana opaca ya mezclaba
+        // el fondo translúcido sobre negro), pero cada repintado limpia la región por
+        // completo y la superposición/retraso del texto desaparece.
+        val opaqueDrawable: Drawable =
+            if (finalDrawable.getOpacity() == PixelFormat.OPAQUE) {
+                finalDrawable
+            } else {
+                compositeOverOpaqueBlack(finalDrawable)
+            }
+
+        window.setBackgroundDrawable(opaqueDrawable)
+
         // Quitar el fondo del root para no dibujar dos veces (overdraw)
         root.background = null
+    }
+
+    /**
+     * Dibuja [drawable] sobre una base negra opaca y devuelve un drawable opaco
+     * equivalente. Reutiliza el mismo bitmap para no generar basura de memoria
+     * cuando el usuario mueve los sliders de apariencia en Ajustes.
+     */
+    private fun compositeOverOpaqueBlack(drawable: Drawable): Drawable {
+        val w = max(resources.displayMetrics.widthPixels, 1)
+        val h = max(resources.displayMetrics.heightPixels, 1)
+        var bitmap = compositedBackgroundBitmap
+        if (bitmap == null || bitmap.isRecycled || bitmap.width != w || bitmap.height != h) {
+            bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            compositedBackgroundBitmap = bitmap
+        }
+        bitmap.eraseColor(Color.BLACK)
+        drawable.setBounds(0, 0, w, h)
+        drawable.draw(Canvas(bitmap))
+        return BitmapDrawable(resources, bitmap)
     }
 
     private fun buildImageBackgroundBitmap(): Bitmap? {
@@ -318,5 +356,8 @@ class MainActivity : AppCompatActivity() {
         backgroundJob?.cancel()
         cachedOriginalBitmap?.recycle()
         cachedBlurredBitmap?.recycle()
+        // compositedBackgroundBitmap NO se recicla aquí: el drawable de la ventana
+        // todavía puede estar referenciándolo durante el último frame en vuelo.
+        // El GC lo reclama automáticamente al destruirse la actividad.
     }
 }

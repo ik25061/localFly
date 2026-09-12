@@ -50,22 +50,19 @@ class LyricsAdapter(
             }
         }
         
+        // Se asignan los valores DIRECTAMENTE (sin animate()): al re-vincular views
+        // reciclados durante el desplazamiento, animar escala/alpha en cada bind
+        // provocaba el efecto de "texto atrasado/ondulante" en la lista de letras.
         if (position == activePosition) {
             holder.tvLine.setTextColor(Color.WHITE)
             holder.tvLine.alpha = 1.0f
-            holder.tvLine.animate()
-                .scaleX(1.08f)
-                .scaleY(1.08f)
-                .setDuration(250)
-                .start()
+            holder.tvLine.scaleX = 1.08f
+            holder.tvLine.scaleY = 1.08f
         } else {
             holder.tvLine.setTextColor(Color.parseColor("#80FFFFFF"))
             holder.tvLine.alpha = 0.6f
-            holder.tvLine.animate()
-                .scaleX(1.0f)
-                .scaleY(1.0f)
-                .setDuration(250)
-                .start()
+            holder.tvLine.scaleX = 1.0f
+            holder.tvLine.scaleY = 1.0f
         }
 
         holder.itemView.setOnClickListener {
