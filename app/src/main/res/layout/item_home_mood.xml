@@ -3,27 +3,27 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
-    android:layout_margin="4dp"
-    app:cardCornerRadius="20dp"
+    android:layout_marginEnd="10dp"
+    app:cardCornerRadius="18dp"
+    app:cardBackgroundColor="#17171B"
     app:cardElevation="0dp"
-    app:strokeColor="#33FFFFFF"
-    app:strokeWidth="1dp"
-    app:cardBackgroundColor="#1A1A1A">
+    app:strokeColor="#2AFFFFFF"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp">
 
         <TextView
             android:id="@+id/tvMoodEmoji"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="⚡"
-            android:textSize="14sp"
+            android:textSize="15sp"
             android:layout_marginEnd="8dp" />
 
         <TextView
@@ -31,7 +31,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Energético"
-            android:textColor="#FFFFFF"
+            android:textColor="#F3F3F3"
             android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>

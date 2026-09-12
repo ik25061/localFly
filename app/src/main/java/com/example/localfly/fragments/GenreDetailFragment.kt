@@ -101,7 +101,7 @@ override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 
         songsAdapter = SongAdapter(
             songs = mutableListOf(),
-            serverBaseUrl = ApiConfig.BASE_URL,
+            serverBaseUrl = RetrofitClient.getBaseUrl(),
             downloadHelper = downloadHelper,
             onSongClick = { song, position ->
                 val allSongs = songsAdapter.currentSongs()
@@ -276,7 +276,7 @@ private fun refreshMeta() {
     }
 
     private fun toggleDownload(song: Song) {
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         if (downloadHelper.isDownloaded(song.id)) {
             downloadHelper.removeDownload(song.id)
             songsAdapter.refreshDownloadStates()

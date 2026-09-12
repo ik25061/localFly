@@ -3,61 +3,79 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="20dp">
+    android:padding="20dp"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/chipGroupBackgroundSubTabs"
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:singleSelection="true"
-            app:selectionRequired="true"
-            app:chipSpacingHorizontal="8dp"
-            android:gravity="center">
+            app:cardBackgroundColor="#17171B"
+            app:cardCornerRadius="22dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#2AFFFFFF"
+            app:strokeWidth="1dp">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipSubTabSolid"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Sólido"
-                android:textAlignment="center"
-                app:checkedIconVisible="false" />
+                android:orientation="vertical"
+                android:padding="12dp">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipSubTabGradient"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Degradado"
-                android:textAlignment="center"
-                app:checkedIconVisible="false" />
+                <com.google.android.material.chip.ChipGroup
+                    android:id="@+id/chipGroupBackgroundSubTabs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    app:singleSelection="true"
+                    app:selectionRequired="true"
+                    app:chipSpacingHorizontal="8dp"
+                    android:gravity="center">
 
-            <com.google.android.material.chip.Chip
-                android:id="@+id/chipSubTabImage"
-                style="@style/Widget.Material3.Chip.Filter"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Imagen"
-                android:textAlignment="center"
-                app:checkedIconVisible="false" />
-        </com.google.android.material.chip.ChipGroup>
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipSubTabSolid"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Sólido"
+                        android:textAlignment="center"
+                        app:checkedIconVisible="false" />
 
-        <!-- Preview Card -->
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipSubTabGradient"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Degradado"
+                        android:textAlignment="center"
+                        app:checkedIconVisible="false" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chipSubTabImage"
+                        style="@style/Widget.Material3.Chip.Filter"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Imagen"
+                        android:textAlignment="center"
+                        app:checkedIconVisible="false" />
+                </com.google.android.material.chip.ChipGroup>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="180dp"
-            android:layout_marginTop="24dp"
-            app:cardCornerRadius="16dp"
+            android:layout_marginTop="20dp"
+            app:cardCornerRadius="18dp"
             app:strokeWidth="1dp"
-            app:strokeColor="#33FFFFFF">
+            app:strokeColor="#33FFFFFF"
+            app:cardBackgroundColor="#111318">
             <View
                 android:id="@+id/viewBgPreviewLarge"
                 android:layout_width="match_parent"
@@ -71,71 +89,92 @@
                 android:textStyle="italic" />
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Sub-section content -->
         <FrameLayout
             android:id="@+id/backgroundSubContentFrame"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp" />
+            android:layout_marginTop="20dp" />
 
-        <!-- Common Sliders -->
-        <TextView
-            android:id="@+id/tvLabelTransparency"
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Transparencia"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-            <SeekBar
-                android:id="@+id/seekBgAlphaRedesign"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_toStartOf="@id/tvValueAlpha"
-                android:max="100"
-                android:progress="100" />
-            <TextView
-                android:id="@+id/tvValueAlpha"
-                android:layout_width="40dp"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:gravity="end"
-                android:text="100%"
-                android:textColor="#E91E63"
-                android:textSize="12sp" />
-        </RelativeLayout>
+            android:layout_marginTop="20dp"
+            app:cardBackgroundColor="#17171B"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#2AFFFFFF"
+            app:strokeWidth="1dp">
 
-        <TextView
-            android:id="@+id/tvLabelBlur"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Difuminado"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp" />
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-            <SeekBar
-                android:id="@+id/seekBgBlurRedesign"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_toStartOf="@id/tvValueBlur"
-                android:max="100"
-                android:progress="0" />
-            <TextView
-                android:id="@+id/tvValueBlur"
-                android:layout_width="40dp"
-                android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
-                android:gravity="end"
-                android:text="0px"
-                android:textColor="#E91E63"
-                android:textSize="12sp" />
-        </RelativeLayout>
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:id="@+id/tvLabelTransparency"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Transparencia"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <SeekBar
+                        android:id="@+id/seekBgAlphaRedesign"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_toStartOf="@id/tvValueAlpha"
+                        android:max="100"
+                        android:progress="100" />
+                    <TextView
+                        android:id="@+id/tvValueAlpha"
+                        android:layout_width="48dp"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:gravity="end"
+                        android:text="100%"
+                        android:textColor="#1DB954"
+                        android:textSize="12sp" />
+                </RelativeLayout>
+
+                <TextView
+                    android:id="@+id/tvLabelBlur"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="Difuminado"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <RelativeLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp">
+                    <SeekBar
+                        android:id="@+id/seekBgBlurRedesign"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_toStartOf="@id/tvValueBlur"
+                        android:max="100"
+                        android:progress="0" />
+                    <TextView
+                        android:id="@+id/tvValueBlur"
+                        android:layout_width="48dp"
+                        android:layout_height="wrap_content"
+                        android:layout_alignParentEnd="true"
+                        android:gravity="end"
+                        android:text="0px"
+                        android:textColor="#1DB954"
+                        android:textSize="12sp" />
+                </RelativeLayout>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
 </ScrollView>

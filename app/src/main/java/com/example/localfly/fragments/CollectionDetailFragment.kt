@@ -132,7 +132,7 @@ class CollectionDetailFragment : Fragment() {
             }
         }
         
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         val coverUrl = when (itemType) {
             "ARTIST" -> {
                 // El servidor sirve la foto del artista en /artist-cover/{nombre}
@@ -359,7 +359,7 @@ class CollectionDetailFragment : Fragment() {
     }
 
     private fun toggleDownload(song: Song) {
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         if (downloadHelper.isDownloaded(song.id)) {
             downloadHelper.removeDownload(song.id)
             adapter.refreshDownloadStates()

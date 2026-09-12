@@ -14,7 +14,17 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
+    /** URL base efectiva actual. Interna; leer con [getBaseUrl]. */
     private var currentBaseUrl = "${ApiConfig.BASE_URL}/"
+
+    private val currentBaseUrlLock = Object()
+
+    /**
+     * URL base efectiva para construir URLs de audio/portadas/descargas,
+     * sin "/" al final. Si el usuario cambió la IP del servidor (pantalla de
+     * Ajustes), aquí ya queda reflejado.
+     */
+    fun getBaseUrl(): String = currentBaseUrl.trimEnd('/')
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
@@ -60,12 +70,22 @@ object RetrofitClient {
         private set
 
     fun updateBaseUrl(newIp: String) {
-        val newUrl = "http://$newIp:5172/"
-        if (currentBaseUrl == newUrl) return
-        
-        currentBaseUrl = newUrl
-        retrofit = buildRetrofit(currentBaseUrl)
-        api = retrofit.create(ApiService::class.java)
+        // Acepta IP ("192.168.1.152"), IP:puerto o URL completa.
+        val cooked = ApiConfig.buildBaseUrl(newIp)
+        setBaseUrl(cooked)
+    }
+
+    /** Fija una URL base completa ("http://192.168.1.152:5002"). */
+    fun setBaseUrl(newBaseUrl: String) {
+        var newUrl = newBaseUrl.trim()
+        if (!newUrl.endsWith("/")) newUrl += "/"
+        synchronized(currentBaseUrlLock) {
+            if (currentBaseUrl == newUrl) return
+
+            currentBaseUrl = newUrl
+            retrofit = buildRetrofit(currentBaseUrl)
+            api = retrofit.create(ApiService::class.java)
+        }
     }
 
     private fun buildRetrofit(url: String): Retrofit {

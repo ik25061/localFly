@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
@@ -8,25 +9,29 @@
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingHorizontal="16dp">
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="6dp">
 
         <TextView
             android:id="@+id/tvSectionTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Sección"
-            android:textColor="#FFFFFF"
+            android:textColor="#F5F5F5"
             android:textSize="18sp"
-            android:textStyle="bold" />
+            android:textStyle="bold"
+            android:letterSpacing="0.02" />
 
         <TextView
             android:id="@+id/tvSectionSeeAll"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
             android:text="Ver todo"
-            android:textColor="#E91E63"
-            android:textSize="13sp" />
+            android:textColor="#8AB4FF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
     </RelativeLayout>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -34,6 +39,9 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:clipToPadding="false"
         android:orientation="horizontal"
         android:nestedScrollingEnabled="false" />
 

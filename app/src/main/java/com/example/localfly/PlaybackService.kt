@@ -65,7 +65,7 @@ class PlaybackService : MediaSessionService() {
     private val binder = LocalBinder()
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private val serverBaseUrl = ApiConfig.BASE_URL
+    private val serverBaseUrl = RetrofitClient.getBaseUrl()
 
     var player: ExoPlayer? = null
         private set

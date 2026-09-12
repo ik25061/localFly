@@ -53,7 +53,7 @@ object RescanManager {
         if (monitoringJob?.isActive == true) return
 
         monitoringJob = scope.launch(Dispatchers.IO) {
-            val url = "${ApiConfig.BASE_URL}/api/rescan-stream"
+            val url = "${RetrofitClient.getBaseUrl()}/api/rescan-stream"
             val request = Request.Builder().url(url).build()
 
             try {

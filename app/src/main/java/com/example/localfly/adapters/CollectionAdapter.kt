@@ -10,6 +10,7 @@ import com.bumptech.glide.Glide
 import com.example.localfly.network.Album
 import com.example.localfly.R
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
 import com.example.localfly.network.Year
@@ -37,7 +38,7 @@ class CollectionAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
         val context = holder.itemView.context
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
  
         when (item) {
             is Album -> {

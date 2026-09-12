@@ -1,37 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="wrap_content"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="160dp"
     android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:padding="4dp"
-    android:gravity="center_horizontal"
-    android:minWidth="120dp">
+    android:layout_marginEnd="12dp"
+    app:cardCornerRadius="22dp"
+    app:cardBackgroundColor="#17171B"
+    app:cardElevation="0dp"
+    app:strokeColor="#2AFFFFFF"
+    app:strokeWidth="1dp">
 
-    <ImageView
-        android:id="@+id/ivCardCover"
-        android:layout_width="100dp"
-        android:layout_height="100dp"
-        android:scaleType="centerCrop"
-        android:layout_marginBottom="4dp" />
-
-    <TextView
-        android:id="@+id/tvCardTitle"
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Título"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:maxLines="1"
-        android:ellipsize="end" />
+        android:orientation="vertical"
+        android:padding="10dp"
+        android:background="#17171B">
 
-    <TextView
-        android:id="@+id/tvCardSubtitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Subtítulo"
-        android:textColor="#A7A7A7"
-        android:textSize="12sp"
-        android:maxLines="1"
-        android:ellipsize="end" />
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="120dp"
+            android:layout_marginBottom="8dp">
 
-</LinearLayout>
+            <ImageView
+                android:id="@+id/ivCardCover"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_music_placeholder" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#33000000" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tvCardTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Título"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvCardSubtitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Subtítulo"
+            android:textColor="#A8A8AF"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

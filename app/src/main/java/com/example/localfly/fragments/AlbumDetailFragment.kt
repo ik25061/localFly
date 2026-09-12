@@ -78,7 +78,7 @@ class AlbumDetailFragment : Fragment() {
 
         tvName.text = albumName
         
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         val seed = albumName ?: albumId ?: "Álbum"
 
         if (coverId.isNullOrBlank()) {
@@ -214,7 +214,7 @@ class AlbumDetailFragment : Fragment() {
     }
 
     private fun toggleDownload(song: Song) {
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         if (downloadHelper.isDownloaded(song.id)) {
             downloadHelper.removeDownload(song.id)
             adapter.refreshDownloadStates()

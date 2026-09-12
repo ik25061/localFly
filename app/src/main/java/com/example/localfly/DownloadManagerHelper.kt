@@ -224,7 +224,7 @@ class DownloadManagerHelper private constructor(context: Context) {
         } catch (e: Exception) { }
 
         // 3. Fallback: buscar en /resources/ del servidor (patrón antiguo)
-        val baseUrl = com.example.localfly.network.ApiConfig.BASE_URL
+        val baseUrl = com.example.localfly.network.RetrofitClient.getBaseUrl()
         val variants = listOf(
             song.title,
             "${song.artist} - ${song.title}",
@@ -334,7 +334,7 @@ class DownloadManagerHelper private constructor(context: Context) {
 
         if (toDownload.isNotEmpty()) {
             android.util.Log.d("DownloadManager", "Auto-descarga: descargando ${toDownload.size} canciones recomendadas.")
-            downloadAll(toDownload, com.example.localfly.network.ApiConfig.BASE_URL)
+            downloadAll(toDownload, com.example.localfly.network.RetrofitClient.getBaseUrl())
         } else {
             android.util.Log.d("DownloadManager", "Auto-descarga: no se encontraron temas nuevos para descargar.")
         }

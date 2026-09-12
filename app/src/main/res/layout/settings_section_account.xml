@@ -7,16 +7,53 @@
     android:gravity="center"
     android:padding="20dp">
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnLogoutRedesign"
-        style="@style/Widget.Material3.Button.TonalButton"
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Cerrar Sesión"
-        android:textAllCaps="false"
-        android:textColor="#FF4444"
-        app:icon="@android:drawable/ic_lock_power_off"
-        app:iconTint="#FF4444"
-        app:cornerRadius="12dp" />
+        app:cardBackgroundColor="#17171B"
+        app:cardCornerRadius="22dp"
+        app:cardElevation="0dp"
+        app:strokeColor="#2AFFFFFF"
+        app:strokeWidth="1dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Cuenta"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnServerIpRedesign"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Servidor · IP del PC"
+                android:textAllCaps="false"
+                app:icon="@android:drawable/ic_menu_compass"
+                app:cornerRadius="16dp"
+                android:layout_marginBottom="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLogoutRedesign"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Cerrar Sesión"
+                android:textAllCaps="false"
+                android:textColor="#FF7C7C"
+                app:icon="@android:drawable/ic_lock_power_off"
+                app:iconTint="#FF7C7C"
+                app:cornerRadius="16dp" />
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
 </LinearLayout>

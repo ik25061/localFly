@@ -5,13 +5,12 @@
     android:layout_height="match_parent"
     android:background="@android:color/transparent">
 
-    <!-- Background Blurred Album Art -->
     <ImageView
         android:id="@+id/ivBlurredBackground"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:alpha="0.4" />
+        android:alpha="0.45" />
 
     <View
         android:layout_width="match_parent"
@@ -22,13 +21,13 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Top Bar -->
     <ImageButton
         android:id="@+id/btnClose"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
         android:layout_margin="16dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@android:drawable/arrow_down_float"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -41,13 +40,12 @@
         android:textColor="#FFFFFF"
         android:textSize="12sp"
         android:textStyle="bold"
-        android:letterSpacing="0.1"
+        android:letterSpacing="0.11"
         app:layout_constraintBottom_toBottomOf="@id/btnClose"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Circular Image (Artist or Album) -->
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivCircularImage"
         android:layout_width="280dp"
@@ -58,16 +56,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btnClose"
         app:shapeAppearanceOverlay="@style/CircleImage"
-        app:strokeColor="#FFFFFF"
+        app:strokeColor="#D9FFFFFF"
         app:strokeWidth="1dp" />
 
     <ImageButton
         android:id="@+id/btnShowQueueTop"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@android:drawable/ic_menu_sort_by_size"
         app:layout_constraintEnd_toStartOf="@id/btnAddToPlaylist"
         app:layout_constraintTop_toTopOf="parent"
@@ -75,11 +74,12 @@
 
     <ImageButton
         android:id="@+id/btnAddToPlaylist"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@drawable/ic_playlist"
         app:layout_constraintEnd_toStartOf="@id/btnLyrics"
         app:layout_constraintTop_toTopOf="parent"
@@ -87,10 +87,11 @@
 
     <ImageButton
         android:id="@+id/btnLyrics"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_margin="16dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@drawable/ic_lyrics_sheet"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -98,23 +99,24 @@
 
     <ImageButton
         android:id="@+id/btnFullEditMetadata"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="8dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@android:drawable/ic_menu_edit"
         app:layout_constraintEnd_toStartOf="@id/btnShowQueueTop"
         app:layout_constraintTop_toTopOf="parent"
         app:tint="#FFFFFF" />
 
-    <!-- Metadata area -->
     <ImageButton
         android:id="@+id/btnFullDislike"
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginStart="24dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@drawable/ic_dislike_off"
         app:layout_constraintBottom_toBottomOf="@id/tvFullArtist"
         app:layout_constraintStart_toStartOf="parent"
@@ -155,14 +157,14 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_marginEnd="24dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
         android:src="@drawable/ic_like_off"
         app:layout_constraintBottom_toBottomOf="@id/tvFullArtist"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@id/tvFullTitle"
         app:tint="#FFFFFF" />
 
-    <!-- Progress -->
     <com.masoudss.lib.WaveformSeekBar
         android:id="@+id/waveformSeekBar"
         android:layout_width="0dp"
@@ -201,7 +203,6 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@id/waveformSeekBar" />
 
-    <!-- Controls -->
     <LinearLayout
         android:id="@+id/llControls"
         android:layout_width="match_parent"
@@ -215,7 +216,8 @@
             android:id="@+id/btnDeleteSong"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1E1E25"
             android:src="@drawable/ic_delete"
             app:tint="#FF4444" />
 
@@ -223,7 +225,8 @@
             android:id="@+id/btnFullPrev"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1E1E25"
             android:src="@android:drawable/ic_media_previous"
             app:tint="#FFFFFF" />
 
@@ -242,7 +245,8 @@
             android:id="@+id/btnFullNext"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1E1E25"
             android:src="@android:drawable/ic_media_next"
             app:tint="#FFFFFF" />
 
@@ -250,7 +254,8 @@
             android:id="@+id/btnRepeat"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1E1E25"
             android:src="@android:drawable/ic_menu_revert"
             app:tint="#AAAAAA" />
 

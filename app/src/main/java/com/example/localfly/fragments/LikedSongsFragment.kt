@@ -57,7 +57,7 @@ class LikedSongsFragment : Fragment() {
             parentFragmentManager.popBackStack()
         }
 
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         adapter = SongAdapter(
             songs = mutableListOf(),
             serverBaseUrl = serverBaseUrl,
@@ -203,7 +203,7 @@ class LikedSongsFragment : Fragment() {
     }
 
     private fun toggleDownload(song: Song) {
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
         if (downloadHelper.isDownloaded(song.id)) {
             downloadHelper.removeDownload(song.id)
             adapter.refreshDownloadStates()

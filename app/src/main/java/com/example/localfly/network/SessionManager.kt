@@ -61,7 +61,24 @@ class SessionManager(context: Context) {
         // canciones "no me gusta" y géneros personalizados). Es un complemento
         // local que no modifica el comportamiento existente.
         SongAdminStore.ensureContext(context)
+
+        // Aplicar la URL base del servidor guardada por el usuario (si existe),
+        // para que toda la app (Retrofit, reproducción, portadas) use la misma.
+        val saved = prefs.getString("server_base_url", null)
+        if (saved != null && saved.isNotBlank() && saved != RetrofitClient.getBaseUrl()) {
+            RetrofitClient.setBaseUrl(saved)
+        }
     }
+
+    // --- URL base del servidor (ip:puerto configurada por el usuario) ---
+
+    fun setServerBaseUrl(url: String) {
+        prefs.edit().putString("server_base_url", url).apply()
+        RetrofitClient.setBaseUrl(url)
+    }
+
+    fun getServerBaseUrl(): String =
+        prefs.getString("server_base_url", null) ?: RetrofitClient.getBaseUrl()
 
     fun saveSession(token: String, userId: String, username: String) {
         prefs.edit()
@@ -307,8 +324,17 @@ class SessionManager(context: Context) {
     fun getBackgroundImageUri(): String? = prefs.getString("app_bg_image_uri", null)
     fun setBackgroundImageUri(uri: String?) = prefs.edit().putString("app_bg_image_uri", uri).apply()
 
+    fun getBackgroundImageRotation(): Int = prefs.getInt("app_bg_image_rotation", 0).coerceIn(0, 359)
+    fun setBackgroundImageRotation(degrees: Int) = prefs.edit().putInt("app_bg_image_rotation", degrees.coerceIn(0, 359)).apply()
+
     fun getBackgroundImageAlpha(): Int = prefs.getInt("app_bg_image_alpha", 80)
     fun setBackgroundImageAlpha(alpha: Int) = prefs.edit().putInt("app_bg_image_alpha", alpha).apply()
+
+    fun getBackgroundOverlayColor(): String = prefs.getString("app_bg_overlay_color", "#66000000") ?: "#66000000"
+    fun setBackgroundOverlayColor(color: String) = prefs.edit().putString("app_bg_overlay_color", color).apply()
+
+    fun getBackgroundOverlayAlphaPct(): Int = prefs.getInt("app_bg_overlay_alpha", 35).coerceIn(0, 100)
+    fun setBackgroundOverlayAlphaPct(alpha: Int) = prefs.edit().putInt("app_bg_overlay_alpha", alpha.coerceIn(0, 100)).apply()
 
     /** Transparencia general del fondo (0 = invisible, 100 = opaco). */
     fun getBackgroundAlphaPct(): Int = prefs.getInt("app_bg_alpha_pct", 100).coerceIn(0, 100)

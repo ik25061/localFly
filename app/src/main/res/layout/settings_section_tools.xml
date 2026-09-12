@@ -3,42 +3,60 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="20dp">
+    android:padding="20dp"
+    android:clipToPadding="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnRescanLibraryRedesign"
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Reescanear Biblioteca"
-            android:textAllCaps="false"
-            app:icon="@android:drawable/ic_menu_rotate"
-            app:cornerRadius="12dp"
-            app:backgroundTint="#1DB954"
-            android:textColor="#000000" />
+            app:cardBackgroundColor="#17171B"
+            app:cardCornerRadius="20dp"
+            app:cardElevation="0dp"
+            app:strokeColor="#2AFFFFFF"
+            app:strokeWidth="1dp">
 
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/swMixPodcastsRedesign"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Mezclar música con podcasts"
-            android:textColor="#FFFFFF" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnRescanLibraryRedesign"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Reescanear Biblioteca"
+                    android:textAllCaps="false"
+                    app:icon="@android:drawable/ic_menu_rotate"
+                    app:cornerRadius="16dp"
+                    app:backgroundTint="#1DB954"
+                    android:textColor="#000000" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/swMixPodcastsRedesign"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="Mezclar música con podcasts"
+                    android:textColor="#FFFFFF" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnOpenAdminPanelRedesign"
             style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
+            android:layout_marginTop="20dp"
             android:text="Panel de Administrador"
             android:textAllCaps="false"
             app:icon="@android:drawable/ic_menu_preferences"
-            app:cornerRadius="12dp" />
+            app:cornerRadius="16dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnViewLogRedesign"
@@ -48,7 +66,7 @@
             android:layout_marginTop="16dp"
             android:text="Ver Registro de Errores (Log)"
             android:textAllCaps="false"
-            android:textColor="#888888" />
+            android:textColor="#A8A8AF" />
 
     </LinearLayout>
 </ScrollView>

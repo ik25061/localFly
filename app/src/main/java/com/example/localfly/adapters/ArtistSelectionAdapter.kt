@@ -11,6 +11,7 @@ import com.bumptech.glide.Glide
 import com.example.localfly.R
 import com.example.localfly.network.Artist
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
 
@@ -38,7 +39,7 @@ class ArtistSelectionAdapter(
 
         val artist = artists[position]
         val context = holder.itemView.context
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
  
         holder.tvName.text = artist.name
         val isSelected = selectedIds.contains(artist.id)

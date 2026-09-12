@@ -24,10 +24,11 @@
 
                 <ImageButton
                     android:id="@+id/btnBack"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_width="42dp"
+                    android:layout_height="42dp"
                     android:layout_gravity="start"
-                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:background="@drawable/bg_circle_white"
+                    android:backgroundTint="#1E1E25"
                     android:src="@android:drawable/ic_media_previous"
                     app:tint="#FFFFFF" />
 
@@ -36,26 +37,28 @@
                     android:layout_width="220dp"
                     android:layout_height="220dp"
                     android:scaleType="centerCrop"
-                    app:shapeAppearanceOverlay="@style/RoundedCorners4"
-                    android:layout_marginTop="8dp" />
+                    app:shapeAppearanceOverlay="@style/RoundedCorners8"
+                    android:layout_marginTop="18dp"
+                    app:strokeColor="#36FFFFFF"
+                    app:strokeWidth="1dp" />
 
                 <TextView
                     android:id="@+id/tvCollectionType"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="ARTISTA"
-                    android:textColor="#AAAAAA"
+                    android:textColor="#FF8AB5"
                     android:textSize="12sp"
                     android:textStyle="bold"
-                    android:letterSpacing="0.1"
-                    android:layout_marginTop="24dp" />
+                    android:letterSpacing="0.12"
+                    android:layout_marginTop="18dp" />
 
                 <TextView
                     android:id="@+id/tvCollectionName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textColor="#FFFFFF"
-                    android:textSize="28sp"
+                    android:textSize="30sp"
                     android:textStyle="bold"
                     android:gravity="center"
                     android:layout_marginTop="4dp"
@@ -67,23 +70,23 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="0 canciones · 0:00"
-                    android:textColor="#AAAAAA"
+                    android:textColor="#A8A8AF"
                     android:textSize="14sp"
                     android:layout_marginTop="8dp" />
 
                 <androidx.constraintlayout.widget.ConstraintLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp">
+                    android:layout_marginTop="20dp">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnPlayCollection"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="Reproducir"
-                        android:textColor="#000000"
+                        android:textColor="#0F1115"
                         app:icon="@android:drawable/ic_media_play"
-                        app:iconTint="#000000"
+                        app:iconTint="#0F1115"
                         app:backgroundTint="#1DB954"
                         app:cornerRadius="24dp"
                         android:textAllCaps="false"
@@ -97,7 +100,8 @@
                         android:layout_width="44dp"
                         android:layout_height="44dp"
                         android:layout_marginStart="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:background="@drawable/bg_circle_white"
+                        android:backgroundTint="#1E1E25"
                         android:src="@drawable/ic_like_off"
                         app:tint="#FFFFFF"
                         app:layout_constraintTop_toTopOf="@id/btnPlayCollection"
@@ -112,10 +116,10 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
                         android:text="2"
-                        android:textColor="#1DB954"
+                        android:textColor="#8AB4FF"
                         app:icon="@drawable/ic_download"
-                        app:iconTint="#1DB954"
-                        app:strokeColor="#1DB954"
+                        app:iconTint="#8AB4FF"
+                        app:strokeColor="#8AB4FF"
                         app:cornerRadius="24dp"
                         android:textAllCaps="false"
                         app:layout_constraintTop_toTopOf="@id/btnPlayCollection"
@@ -128,7 +132,8 @@
                         android:layout_width="44dp"
                         android:layout_height="44dp"
                         android:layout_marginStart="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:background="@drawable/bg_circle_white"
+                        android:backgroundTint="#1E1E25"
                         android:src="@drawable/ic_playlist"
                         app:tint="#FFFFFF"
                         app:layout_constraintTop_toTopOf="@id/btnPlayCollection"
@@ -141,7 +146,8 @@
                         android:layout_width="44dp"
                         android:layout_height="44dp"
                         android:layout_marginStart="8dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:background="@drawable/bg_circle_white"
+                        android:backgroundTint="#1E1E25"
                         android:src="@drawable/ic_dislike_off"
                         app:tint="#AAAAAA"
                         app:layout_constraintTop_toTopOf="@id/btnPlayCollection"
@@ -162,6 +168,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        android:padding="8dp" />
+        android:padding="10dp"
+        android:clipToPadding="false" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -36,9 +36,24 @@ object PlaylistSyncManager {
                 if (!createResp.isSuccessful || realPlaylist == null) continue
 
                 var allAdded = true
-                for (songId in creation.songIds) {
-                    val addResp = RetrofitClient.api.addSongToPlayList(realPlaylist.id, PlaylistSongRequest(songId))
-                    if (!addResp.isSuccessful) allAdded = false
+                // Subir todas las canciones de una vez con el endpoint masivo
+                // (el servidor ya lo soporta; evita N peticiones HTTP por lista).
+                if (creation.songIds.isNotEmpty()) {
+                    try {
+                        val bulkResp = RetrofitClient.api.addSongsToPlayListBulk(
+                            realPlaylist.id,
+                            PlaylistSongsBulkRequest(creation.songIds)
+                        )
+                        if (!bulkResp.isSuccessful) {
+                            // Fallback: intentar canción a canción (servidor antiguo).
+                            for (songId in creation.songIds) {
+                                val addResp = RetrofitClient.api.addSongToPlayList(realPlaylist.id, PlaylistSongRequest(songId))
+                                if (!addResp.isSuccessful) allAdded = false
+                            }
+                        }
+                    } catch (e: Exception) {
+                        allAdded = false
+                    }
                 }
 
                 if (allAdded) {

@@ -46,7 +46,7 @@ import java.util.Locale
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NowPlayingActivity : AppCompatActivity() {
 
-    private val serverBaseUrl = ApiConfig.BASE_URL
+    private val serverBaseUrl = RetrofitClient.getBaseUrl()
 
     private lateinit var ivCircularImage: ImageView
     private lateinit var ivBlurredBackground: ImageView
@@ -737,7 +737,7 @@ class NowPlayingActivity : AppCompatActivity() {
         for (variant in variants.distinct()) {
             try {
                 val encoded = java.net.URLEncoder.encode(variant, "UTF-8").replace("+", "%20")
-                val url = "${ApiConfig.BASE_URL}/resources/$encoded.lrc"
+                val url = "${RetrofitClient.getBaseUrl()}/resources/$encoded.lrc"
                 val request = Request.Builder().url(url).build()
                 client.newCall(request).execute().use { response ->
                     if (response.isSuccessful) {

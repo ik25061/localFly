@@ -40,7 +40,7 @@ class LibraryFragment : Fragment() {
     private var fullSongsList: MutableList<Song> = mutableListOf()
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
-    private val serverBaseUrl = ApiConfig.BASE_URL
+    private val serverBaseUrl = RetrofitClient.getBaseUrl()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_library, container, false)

@@ -5,14 +5,17 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@android:color/transparent"
-    android:padding="8dp">
+    android:padding="12dp">
 
-    <!-- Header -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingHorizontal="8dp"
-        android:layout_marginTop="8dp">
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="12dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="12dp"
+        android:background="#15181F"
+        android:clipToOutline="true">
 
         <TextView
             android:id="@+id/tvLibraryTitle"
@@ -20,7 +23,7 @@
             android:layout_height="wrap_content"
             android:text="Biblioteca"
             android:textColor="#FFFFFF"
-            android:textSize="24sp"
+            android:textSize="28sp"
             android:textStyle="bold"
             android:layout_centerVertical="true" />
 
@@ -28,32 +31,33 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentEnd="true"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnDownloadAll"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="40dp"
                 android:text="100"
-                android:textColor="#000000"
+                android:textColor="#0F1115"
+                android:textStyle="bold"
                 app:icon="@drawable/ic_download"
-                app:iconTint="#000000"
+                app:iconTint="#0F1115"
                 app:backgroundTint="#1DB954"
+                app:cornerRadius="18dp"
                 android:insetTop="0dp"
                 android:insetBottom="0dp"
-                app:cornerRadius="18dp"
                 android:textAllCaps="false" />
 
             <ImageButton
                 android:id="@+id/btnLibraryToPlaylist"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_marginStart="10dp"
+                android:background="@drawable/bg_circle_white"
+                android:backgroundTint="#1E1E25"
                 android:src="@drawable/ic_playlist"
                 app:tint="#FFFFFF" />
-
-
         </LinearLayout>
     </RelativeLayout>
 
@@ -63,42 +67,51 @@
         android:layout_height="wrap_content"
         android:visibility="gone"
         android:indeterminate="false"
-        android:layout_marginHorizontal="12dp"
+        android:layout_marginHorizontal="4dp"
         android:layout_marginTop="4dp"
         app:indicatorColor="#1DB954"
         app:trackColor="#333333" />
 
-    <!-- Search Bar -->
     <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="8dp"
-        app:cardBackgroundColor="#222222"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="0dp">
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="10dp"
+        app:cardBackgroundColor="#171B24"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:cardUseCompatPadding="true">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:padding="12dp"
-            android:gravity="center_vertical">
+            android:gravity="center_vertical"
+            android:background="#171B24">
 
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:src="@android:drawable/ic_menu_search"
-                app:tint="#888888" />
+            <FrameLayout
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="#202936"
+                android:layout_marginEnd="10dp">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_menu_search"
+                    app:tint="#9EA3AD" />
+            </FrameLayout>
 
             <EditText
                 android:id="@+id/etSearch"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
                 android:background="@null"
                 android:hint="Buscar en tu biblioteca"
                 android:textColor="#FFFFFF"
-                android:textColorHint="#888888"
+                android:textColorHint="#8E93A0"
                 android:textSize="14sp"
                 android:imeOptions="actionSearch"
                 android:inputType="text"
@@ -106,19 +119,18 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Info Bar -->
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingHorizontal="12dp"
-        android:layout_marginBottom="4dp">
+        android:paddingHorizontal="8dp"
+        android:layout_marginBottom="8dp">
 
         <TextView
             android:id="@+id/tvSongCountInfo"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="0 canciones"
-            android:textColor="#888888"
+            android:textColor="#A8A8AF"
             android:textSize="12sp"
             android:layout_centerVertical="true" />
 
@@ -129,6 +141,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:padding="0dp"
-        android:background="#121212" />
+        android:clipToPadding="false"
+        android:background="@android:color/transparent" />
 
 </LinearLayout>

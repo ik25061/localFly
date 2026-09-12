@@ -58,7 +58,7 @@ class DownloadsFragment : Fragment() {
 
         adapter = DownloadedSongAdapter(
             items = mutableListOf(),
-            serverBaseUrl = com.example.localfly.network.ApiConfig.BASE_URL,
+            serverBaseUrl = com.example.localfly.network.RetrofitClient.getBaseUrl(),
             onItemClick = { downloaded -> playDownloaded(downloaded) },
             onDeleteClick = { downloaded ->
                 downloadHelper.removeDownload(downloaded.id)

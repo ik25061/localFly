@@ -1,58 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:background="?attr/selectableItemBackground"
-    android:padding="12dp">
-
-    <FrameLayout
-        android:layout_width="52dp"
-        android:layout_height="52dp"
-        android:background="#222222">
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:layout_gravity="center"
-            android:src="@drawable/ic_playlist"
-            app:tint="#4DA6FF" />
-    </FrameLayout>
+    android:layout_marginHorizontal="4dp"
+    android:layout_marginBottom="10dp"
+    app:cardCornerRadius="22dp"
+    app:cardBackgroundColor="#17171B"
+    app:cardElevation="0dp"
+    app:strokeColor="#2AFFFFFF"
+    app:strokeWidth="1dp">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:layout_marginStart="14dp"
-        android:orientation="vertical">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="12dp">
 
-        <TextView
-            android:id="@+id/tvPlaylistName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end" />
+        <FrameLayout
+            android:layout_width="58dp"
+            android:layout_height="58dp"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1E2333">
 
-        <TextView
-            android:id="@+id/tvPlaylistCount"
-            android:layout_width="match_parent"
+            <ImageView
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_playlist"
+                app:tint="#8AB4FF" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="13sp"
-            android:layout_marginTop="2dp" />
+            android:layout_weight="1"
+            android:layout_marginStart="14dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvPlaylistName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tvPlaylistCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#A8A8AF"
+                android:textSize="13sp"
+                android:layout_marginTop="2dp" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/btnPlaylistMenu"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#242832"
+            android:src="@drawable/ic_menu"
+            app:tint="#E3E6EB" />
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/btnPlaylistMenu"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:src="@drawable/ic_menu"
-        app:tint="#AAAAAA" />
-
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

@@ -12,6 +12,10 @@ data class LoginResponse(
     val error: String? = null
 )
 
+data class VerifyTokenRequest(
+    val token: String
+)
+
 data class UserData(
     val id: String,
     val username: String

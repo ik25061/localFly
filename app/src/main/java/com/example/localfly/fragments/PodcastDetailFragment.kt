@@ -71,7 +71,7 @@ class PodcastDetailFragment : Fragment() {
 
         adapter = SongAdapter(
             songs = mutableListOf(),
-            serverBaseUrl = ApiConfig.BASE_URL,
+            serverBaseUrl = RetrofitClient.getBaseUrl(),
             downloadHelper = downloadHelper,
             onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity

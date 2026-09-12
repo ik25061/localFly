@@ -13,6 +13,7 @@ import com.bumptech.glide.Glide
 import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.utils.CoverPlaceholder
 import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
@@ -50,7 +51,7 @@ class LikedSongsAdapter(
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val song = SongAdminStore.applyTo(songs[position])
         val context = holder.itemView.context
-        val serverBaseUrl = ApiConfig.BASE_URL
+        val serverBaseUrl = RetrofitClient.getBaseUrl()
 
         holder.tvIndex.text = (position + 1).toString()
         holder.tvTitle.text = song.title

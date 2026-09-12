@@ -22,7 +22,7 @@ object ServerReachability {
     suspend fun isServerReachable(): Boolean = withContext(Dispatchers.IO) {
         try {
             val request = Request.Builder()
-                .url("${ApiConfig.BASE_URL}/api/config/ip")
+                .url("${RetrofitClient.getBaseUrl()}/api/config/ip")
                 .build()
             client.newCall(request).execute().use { response -> response.isSuccessful }
         } catch (e: Exception) {

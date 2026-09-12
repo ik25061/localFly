@@ -1,5 +1,6 @@
 package com.example.localfly.fragments
 
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -33,9 +34,10 @@ class HomeFragment : Fragment() {
 
     private lateinit var sessionManager: SessionManager
     private lateinit var downloadHelper: DownloadManagerHelper
+    private var selectedMoodIndex = 0
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
-    private val serverBaseUrl = ApiConfig.BASE_URL
+    private val serverBaseUrl = RetrofitClient.getBaseUrl()
 
     // Adaptadores
     private lateinit var likedAdapter: LikedSongsAdapter
@@ -45,8 +47,8 @@ class HomeFragment : Fragment() {
     private lateinit var artistAdapter: HorizontalCardAdapter
     private lateinit var genreAdapter: HorizontalCardAdapter
     private lateinit var yearAdapter: HorizontalCardAdapter
-    private lateinit var recommendationsAdapter: LikedSongsAdapter
-    private lateinit var librarySectionAdapter: LikedSongsAdapter
+    private var recommendationsAdapter: LikedSongsAdapter? = null
+    private var librarySectionAdapter: LikedSongsAdapter? = null
 
     private val moods = listOf(
         "Energético" to "⚡",
@@ -93,13 +95,6 @@ class HomeFragment : Fragment() {
                 .addToBackStack(null)
                 .commit()
         }
-        binding.tvSeeAllLiked.setOnClickListener {
-            parentFragmentManager.beginTransaction()
-                .replace(R.id.container, LikedSongsFragment())
-                .addToBackStack(null)
-                .commit()
-        }
-        
         // Configurar secciones estándar
         setupSection(binding.sectionPodcasts.root, "Podcasts") { parentFragmentManager.beginTransaction().replace(R.id.container, PodcastsFragment()).addToBackStack(null).commit() }
         setupSection(binding.sectionAlbums.root, "Álbumes") { openSeeAll(CollectionListFragment.Type.ALBUM) }
@@ -117,11 +112,20 @@ class HomeFragment : Fragment() {
 
     private fun setupMoods() {
         binding.layoutHomeMoods.removeAllViews()
-        moods.forEach { (name, emoji) ->
+        moods.forEachIndexed { index, (name, emoji) ->
             val moodView = layoutInflater.inflate(R.layout.item_home_mood, binding.layoutHomeMoods, false)
-            moodView.findViewById<TextView>(R.id.tvMoodEmoji).text = emoji
-            moodView.findViewById<TextView>(R.id.tvMoodName).text = name
+            val emojiText = moodView.findViewById<TextView>(R.id.tvMoodEmoji)
+            val nameText = moodView.findViewById<TextView>(R.id.tvMoodName)
+            val selected = index == selectedMoodIndex
+            emojiText.text = emoji
+            nameText.text = name
+            val card = moodView as? com.google.android.material.card.MaterialCardView
+            card?.setCardBackgroundColor(if (selected) Color.parseColor("#1DB954") else Color.parseColor("#1B1B1F"))
+            card?.strokeColor = if (selected) Color.parseColor("#7EF6AB") else Color.parseColor("#32FFFFFF")
+            nameText.setTextColor(if (selected) Color.WHITE else Color.parseColor("#F3F3F3"))
             moodView.setOnClickListener {
+                selectedMoodIndex = index
+                setupMoods()
                 Toast.makeText(requireContext(), "Filtrando por $name...", Toast.LENGTH_SHORT).show()
             }
             binding.layoutHomeMoods.addView(moodView)
@@ -166,18 +170,21 @@ class HomeFragment : Fragment() {
 
     private fun setupCategories(genres: List<Genre>) {
         binding.chipGroupHomeCategories.removeAllViews()
-        
-        // "Todo" chip
+
         val allChip = Chip(requireContext())
         allChip.text = "Todo"
         allChip.isCheckable = true
         allChip.isChecked = true
+        allChip.setTextColor(Color.WHITE)
+        allChip.setChipBackgroundColorResource(android.R.color.transparent)
         binding.chipGroupHomeCategories.addView(allChip)
-        
+
         genres.take(10).forEach { genre ->
             val chip = Chip(requireContext())
             chip.text = genre.name
             chip.isCheckable = true
+            chip.setTextColor(Color.WHITE)
+            chip.setChipBackgroundColorResource(android.R.color.transparent)
             binding.chipGroupHomeCategories.addView(chip)
         }
     }
@@ -271,55 +278,6 @@ class HomeFragment : Fragment() {
         binding.sectionYears.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.sectionYears.rvSectionContent.adapter = yearAdapter
 
-        // Recomendaciones
-        recommendationsAdapter = LikedSongsAdapter(
-            mutableListOf(),
-            downloadHelper,
-            onLikeClick = { song -> toggleLike(song) },
-            onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> 
-                activity?.playbackService?.playSong(song)
-            },
-            onDownloadClick = { song -> toggleDownload(song) },
-            onPlayNextClick = { song ->
-                activity?.playbackService?.playNext(song)
-                Toast.makeText(requireContext(), "Se reproducirá a continuación", Toast.LENGTH_SHORT).show()
-            },
-            onAddToQueueClick = { song ->
-                activity?.playbackService?.addToQueue(song)
-                Toast.makeText(requireContext(), "Añadida al final de la cola", Toast.LENGTH_SHORT).show()
-            },
-            onDeleteClick = { song -> removeSongFromHome(song) },
-            onAddToPlaylistClick = { song ->
-                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
-            }
-        )
-        binding.rvRecommendations.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvRecommendations.adapter = recommendationsAdapter
-
-        // Nueva Sección: Tu Biblioteca
-        librarySectionAdapter = LikedSongsAdapter(
-            mutableListOf(),
-            downloadHelper,
-            onLikeClick = { song -> toggleLike(song) },
-            onDislikeClick = { song -> hideSong(song) },
-            onItemClick = { song -> 
-                activity?.playbackService?.playSong(song)
-            },
-            onDownloadClick = { song -> toggleDownload(song) },
-            onPlayNextClick = { song ->
-                activity?.playbackService?.playNext(song)
-            },
-            onAddToQueueClick = { song ->
-                activity?.playbackService?.addToQueue(song)
-            },
-            onDeleteClick = { song -> removeSongFromHome(song) },
-            onAddToPlaylistClick = { song ->
-                AddToPlaylistDialog.show(requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager)
-            }
-        )
-        binding.rvLibrarySection.layoutManager = LinearLayoutManager(requireContext())
-        binding.rvLibrarySection.adapter = librarySectionAdapter
     }
 
     private fun loadData() {
@@ -329,15 +287,40 @@ class HomeFragment : Fragment() {
             return
         }
 
+        fun applyHomeSongs(songs: List<Song>) {
+            if (songs.isEmpty()) return
+            likedAdapter.updateSongs(songs)
+        }
+
         // Usar viewLifecycleOwner para que se cancele al destruir la vista
         viewLifecycleOwner.lifecycleScope.launch {
-            // 1. Canciones que me gustan
+            // 1. Canciones que me gustan / fallback a biblioteca para no dejar la home vacía.
             try {
                 val likedResp = RetrofitClient.api.getLikedSongs(userId = userId, limit = 20)
                 if (likedResp.isSuccessful && likedResp.body() != null) {
-                    likedAdapter.updateSongs(likedResp.body()!!.songs)
+                    val likedSongs = likedResp.body()!!.songs
+                    if (likedSongs.isNotEmpty()) {
+                        applyHomeSongs(likedSongs)
+                    } else {
+                        val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                        if (libraryResp.isSuccessful && libraryResp.body() != null) {
+                            applyHomeSongs(libraryResp.body()!!.songs)
+                        }
+                    }
+                } else {
+                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                    if (libraryResp.isSuccessful && libraryResp.body() != null) {
+                        applyHomeSongs(libraryResp.body()!!.songs)
+                    }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                try {
+                    val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 20)
+                    if (libraryResp.isSuccessful && libraryResp.body() != null) {
+                        applyHomeSongs(libraryResp.body()!!.songs)
+                    }
+                } catch (_: Exception) { }
+            }
 
             // 2. Playlists
             try {
@@ -407,13 +390,10 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 7. Recomendaciones con IA
+            // 7. Recomendaciones con IA (sin UI dedicada en este layout)
             try {
                 val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(requireContext()))
-                val recommendations = aiManager.getRecommendations()
-                if (isAdded) {
-                    recommendationsAdapter.updateSongs(recommendations)
-                }
+                aiManager.getRecommendations()
             } catch (e: Exception) { }
 
             // 8. Tu Biblioteca (previsualización de los primeros 10)
@@ -421,11 +401,11 @@ class HomeFragment : Fragment() {
                 val libResp = RetrofitClient.api.getLibrary(userId = userId, limit = 100)
                 if (libResp.isSuccessful && libResp.body() != null) {
                     val songs = libResp.body()!!.songs
-                    librarySectionAdapter.updateSongs(songs.take(10))
-                    
+                    librarySectionAdapter?.updateSongs(songs.take(10))
+
                     if (isAdded && songs.isNotEmpty()) {
                         updateFeatured(songs.shuffled().first())
-                        
+
                         // Buscar último podcast escuchado
                         val lastEp = songs.find { it.isEpisode && it.lastPositionMs > 0 }
                         if (lastEp != null) updateLastPodcast(lastEp)
@@ -445,13 +425,13 @@ class HomeFragment : Fragment() {
             val idxLiked = likedAdapter.indexOf(song.id)
             if (idxLiked != -1) likedAdapter.updateSongAt(idxLiked, updated)
         }
-        if (::recommendationsAdapter.isInitialized) {
-            val idxRec = recommendationsAdapter.indexOf(song.id)
-            if (idxRec != -1) recommendationsAdapter.updateSongAt(idxRec, updated)
+        recommendationsAdapter?.let {
+            val idxRec = it.indexOf(song.id)
+            if (idxRec != -1) it.updateSongAt(idxRec, updated)
         }
-        if (::librarySectionAdapter.isInitialized) {
-            val idxLib = librarySectionAdapter.indexOf(song.id)
-            if (idxLib != -1) librarySectionAdapter.updateSongAt(idxLib, updated)
+        librarySectionAdapter?.let {
+            val idxLib = it.indexOf(song.id)
+            if (idxLib != -1) it.updateSongAt(idxLib, updated)
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -475,8 +455,8 @@ class HomeFragment : Fragment() {
         // borrarla por completo del disco.
         SongAdminStore.recordDislikedSong(song)
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
-        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
-        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
+        recommendationsAdapter?.removeSongById(song.id)
+        librarySectionAdapter?.removeSongById(song.id)
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
@@ -518,16 +498,16 @@ class HomeFragment : Fragment() {
     /** Elimina la canción de la lista del Home (si aparece en alguna). */
     private fun removeSongFromHome(song: Song) {
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
-        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
-        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
+        recommendationsAdapter?.removeSongById(song.id)
+        librarySectionAdapter?.removeSongById(song.id)
         Toast.makeText(requireContext(), "Canción eliminada de la lista", Toast.LENGTH_SHORT).show()
     }
 
     /** Refresca el icono de descarga de las listas visibles. */
     private fun refreshDownloadStates() {
         if (::likedAdapter.isInitialized) likedAdapter.refreshDownloadStates()
-        if (::recommendationsAdapter.isInitialized) recommendationsAdapter.refreshDownloadStates()
-        if (::librarySectionAdapter.isInitialized) librarySectionAdapter.refreshDownloadStates()
+        recommendationsAdapter?.refreshDownloadStates()
+        librarySectionAdapter?.refreshDownloadStates()
     }
 
     override fun onResume() {

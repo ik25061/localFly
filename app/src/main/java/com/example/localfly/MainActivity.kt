@@ -10,9 +10,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Matrix
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -27,6 +29,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import kotlin.math.ceil
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -94,7 +97,7 @@ class MainActivity : AppCompatActivity() {
     private var connectivityPollJob: kotlinx.coroutines.Job? = null
 
     // Base URL del servidor (debe coincidir con RetrofitClient/ApiConfig)
-    private val serverBaseUrl = ApiConfig.BASE_URL
+    private val serverBaseUrl = RetrofitClient.getBaseUrl()
 
     // ===== SERVICE CONNECTION =====
     private val connection = object : ServiceConnection {
@@ -524,22 +527,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun parseColorSafely(value: String?, fallback: String): Int {
+        return try {
+            Color.parseColor(value ?: fallback)
+        } catch (_: Exception) {
+            Color.parseColor(fallback)
+        }
+    }
+
     fun applyBackgroundAppearance() {
         val root = findViewById<View>(R.id.rootMain) ?: findViewById(android.R.id.content)
         val mode = sessionManager.getBackgroundMode()
         val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
+        val solidColor = sessionManager.getBackgroundSolidColor()
+        val fallbackSolid = parseColorSafely(solidColor, "#121212")
 
-        // Asegurar visibilidad de los controles de navegación
         bottomNav.visibility = View.VISIBLE
         bottomNav.alpha = 1.0f
 
-        val drawable = when (mode.lowercase()) {
+        val baseDrawable = when (mode.lowercase()) {
             "gradient" -> {
                 GradientDrawable(
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     intArrayOf(
-                        Color.parseColor(sessionManager.getBackgroundGradientStart()),
-                        Color.parseColor(sessionManager.getBackgroundGradientEnd())
+                        parseColorSafely(sessionManager.getBackgroundGradientStart(), "#4A148C"),
+                        parseColorSafely(sessionManager.getBackgroundGradientEnd(), "#F06292")
                     )
                 ).apply {
                     shape = GradientDrawable.RECTANGLE
@@ -547,30 +559,89 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             "image" -> {
-                val uriString = sessionManager.getBackgroundImageUri() ?: sessionManager.getBackgroundSolidColor()
-                val uri = Uri.parse(uriString)
-                try {
-                    val stream = contentResolver.openInputStream(uri)
-                    val original = BitmapFactory.decodeStream(stream)
-                    stream?.close()
-                    if (original != null) {
-                        var result = Bitmap.createScaledBitmap(original, 1440, 2560, true)
-                        if (result !== original) original.recycle()
-                        val blur = sessionManager.getBackgroundBlur()
-                        if (blur > 0) result = blurBitmap(result, blur)
-                        BitmapDrawable(resources, result).apply { this.alpha = alpha }
-                    } else {
-                        ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
+                val uriString = sessionManager.getBackgroundImageUri()?.trim()
+                if (uriString.isNullOrBlank()) {
+                    ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                } else {
+                    val uri = try {
+                        Uri.parse(uriString)
+                    } catch (_: Exception) {
+                        null
                     }
-                } catch (_: Exception) {
-                    ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
+                    if (uri == null || (uri.scheme.isNullOrBlank() && !uriString.startsWith("/"))) {
+                        ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                    } else {
+                        try {
+                            val original = decodeBackgroundBitmap(uri)
+                            if (original != null) {
+                                var result = original
+                                val rotation = sessionManager.getBackgroundImageRotation()
+                                if (rotation != 0) {
+                                    val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
+                                    val rotated = Bitmap.createBitmap(original, 0, 0, original.width, original.height, matrix, true)
+                                    if (rotated !== original) {
+                                        original.recycle()
+                                        result = rotated
+                                    }
+                                }
+                                val blur = sessionManager.getBackgroundBlur()
+                                if (blur > 0) {
+                                    val blurred = blurBitmap(result, blur)
+                                    if (blurred !== result) {
+                                        result.recycle()
+                                        result = blurred
+                                    }
+                                }
+                                BitmapDrawable(resources, result).apply { this.alpha = alpha }
+                            } else {
+                                ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                            }
+                        } catch (_: Exception) {
+                            ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+                        }
+                    }
                 }
             }
-            else -> ColorDrawable(Color.parseColor(sessionManager.getBackgroundSolidColor())).apply { this.alpha = alpha }
+            else -> ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
+        }
+
+        val overlayColor = try {
+            parseColorSafely(sessionManager.getBackgroundOverlayColor(), "#66000000")
+        } catch (_: Exception) {
+            Color.argb(120, 0, 0, 0)
+        }
+        val overlayAlpha = (sessionManager.getBackgroundOverlayAlphaPct() * 255) / 100
+        val drawable = if (overlayColor != Color.TRANSPARENT && overlayAlpha > 0) {
+            val overlayDrawable = ColorDrawable(overlayColor).apply { this.alpha = overlayAlpha }
+            LayerDrawable(arrayOf(baseDrawable, overlayDrawable))
+        } else {
+            baseDrawable
         }
 
         root.background = drawable
-        window.decorView.background = drawable
+        if (window != null) {
+            window.decorView.background = drawable
+        }
+    }
+
+    private fun decodeBackgroundBitmap(uri: Uri?): Bitmap? {
+        if (uri == null) return null
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+            val maxDimension = 1800
+            val ratio = maxOf(bounds.outWidth / maxDimension.toFloat(), bounds.outHeight / maxDimension.toFloat(), 1f)
+            val sample = maxOf(1, ceil(ratio).toInt())
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = sample
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**

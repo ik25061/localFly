@@ -27,7 +27,10 @@ interface ApiService {
     ): Response<LibraryResponse>
 
     @GET("api/auth/verify")
-    suspend fun verify(@Query("userId") userId: String?): Response<LoginResponse>
+    suspend fun verify(@Query("token") token: String?): Response<LoginResponse>
+
+    @POST("api/auth/verify")
+    suspend fun verifyToken(@Body request: VerifyTokenRequest): Response<LoginResponse>
 
     @POST("api/songs/{id}/like")
     suspend fun likeSong(
