@@ -643,6 +643,19 @@ class SettingsFragment : Fragment() {
             RescanManager.triggerRescan(viewLifecycleOwner.lifecycleScope)
         }
 
+        view.findViewById<MaterialButton>(R.id.btnRescanPodcasts).setOnClickListener {
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val resp = RetrofitClient.api.rescanPodcasts()
+                    if (resp.isSuccessful) {
+                        Toast.makeText(requireContext(), "Reescaneo de podcasts iniciado", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(requireContext(), "Error al iniciar reescaneo", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
         val swMix = view.findViewById<MaterialSwitch>(R.id.swMixPodcastsRedesign)
         swMix.isChecked = sessionManager.isPodcastMixingEnabled()
         swMix.setOnCheckedChangeListener { _, isChecked -> sessionManager.setPodcastMixingEnabled(isChecked) }

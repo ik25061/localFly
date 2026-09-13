@@ -4,6 +4,7 @@ import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,9 +12,12 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.util.UnstableApi
 import com.example.localfly.DownloadManagerHelper
+import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.DislikedSong
@@ -124,13 +128,50 @@ class DislikedSongsAdminFragment : Fragment() {
         row.findViewById<MaterialButton>(R.id.btnRemoveFromList).setOnClickListener {
             SongAdminStore.removeDislikedSong(song.songId)
             refresh()
+            Toast.makeText(requireContext(), "Quitada de la lista local", Toast.LENGTH_SHORT).show()
         }
 
         row.findViewById<MaterialButton>(R.id.btnDeleteFromDisk).setOnClickListener {
             confirmDeleteFromDisk(song)
         }
 
+        row.findViewById<MaterialButton>(R.id.btnPlayDisliked).setOnClickListener {
+            playSong(song)
+        }
+
         return row
+    }
+
+    @OptIn(UnstableApi::class)
+    private fun playSong(disliked: DislikedSong) {
+        val activity = requireActivity() as? MainActivity
+        if (activity?.playbackService == null) {
+            Toast.makeText(requireContext(), "Servicio de música no disponible", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                // Obtener detalles completos de la canción desde el servidor para poder reproducirla
+                val response = RetrofitClient.api.getSongsByIds(disliked.songId, sessionManager.getUserId())
+                if (response.isSuccessful && response.body() != null) {
+                    val songs = response.body()!!.songs
+                    if (songs.isNotEmpty()) {
+                        val fullSong = songs[0]
+                        activity.playbackService?.playSong(fullSong)
+                        Toast.makeText(requireContext(), "Escuchando: ${fullSong.title}", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(requireContext(), "Canción no encontrada en el catálogo", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Log.e("DislikedAdmin", "Error server: ${response.code()} ${response.errorBody()?.string()}")
+                    Toast.makeText(requireContext(), "Error del servidor al cargar audio", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e("DislikedAdmin", "Error playback", e)
+                Toast.makeText(requireContext(), "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun confirmDeleteFromDisk(song: DislikedSong) {

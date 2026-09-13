@@ -19,6 +19,8 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import com.example.localfly.ai.AIRecommendationManager
+import com.example.localfly.ai.AIWeightsStore
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.example.localfly.network.ApiConfig
@@ -28,6 +30,7 @@ import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.ProgressUpdateRequest
 import com.example.localfly.network.RetrofitClient
+import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.example.localfly.utils.LocalLogger
@@ -159,9 +162,11 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                     handleAutoAdvance()
                 }
+                // Cada vez que cambiamos de canción, verificar si la cola se está agotando
+                checkAndRefillQueue()
             }
         })
 
@@ -497,6 +502,60 @@ class PlaybackService : MediaSessionService() {
         onStateChanged?.invoke()
     }
 
+    /**
+     * Verifica si quedan menos de 10 canciones por delante en la cola.
+     * Si es así, rellena con recomendaciones (online) o con descargas (offline).
+     */
+    private fun checkAndRefillQueue() {
+        val pendingCount = queue.size - (currentIndex + 1)
+        if (pendingCount >= 10) return
+
+        serviceScope.launch {
+            try {
+                if (ServerReachability.isServerReachable()) {
+                    // MODO ONLINE: Usar IA para obtener recomendaciones
+                    val aiManager = AIRecommendationManager(
+                        sessionManager,
+                        AIWeightsStore(this@PlaybackService)
+                    )
+                    val recommendations = aiManager.getRecommendations(
+                        limit = 15,
+                        seedSong = currentSong
+                    )
+                    val existingIds = queue.map { it.id }.toSet()
+                    val newSongs = recommendations.filter { it.id !in existingIds }
+                    if (newSongs.isNotEmpty()) {
+                        addListToQueue(newSongs)
+                    }
+                } else {
+                    // MODO OFFLINE: Usar canciones descargadas
+                    val downloads = downloadHelper.getDownloadedSongs()
+                    if (downloads.size > 1) {
+                        val existingIds = queue.map { it.id }.toSet()
+                        val toAdd = downloads
+                            .filter { it.id !in existingIds }
+                            .shuffled()
+                            .take(15)
+                            .map { d ->
+                                Song(
+                                    id = d.id, title = d.title, artist = d.artist,
+                                    album = null, year = null, duration = d.duration,
+                                    bpm = d.bpm, key = d.key, liked = d.liked,
+                                    hasCover = d.hasCover, hasLyrics = d.hasLyrics,
+                                    isEpisode = d.isEpisode, lastPositionMs = 0L
+                                )
+                            }
+                        if (toAdd.isNotEmpty()) {
+                            addListToQueue(toAdd)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                LocalLogger.log(this@PlaybackService, "Error rellenando cola: ${e.message}")
+            }
+        }
+    }
+
     private fun handleAutoAdvance() {
         if (!hasNext()) return
         val songToHandle = currentSong
@@ -516,13 +575,17 @@ class PlaybackService : MediaSessionService() {
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
             val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
             if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
+            
+            // Punto 2: Corregir URL de podcast (usar /podcast-audio en lugar de /audio si es episodio)
+            val baseAudioUrl = if (nextSong.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
             val nextMediaItem = MediaItem.Builder()
-                .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$serverBaseUrl/audio/${nextSong.id}"))
+                .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$baseAudioUrl${nextSong.id}"))
                 .setMediaMetadata(nextMetaBuilder.build())
                 .build()
             player?.addMediaItem(nextMediaItem)
         }
         onStateChanged?.invoke()
+        updateMediaSessionCustomLayout()
         checkAutoDelete(songToHandle, indexToHandle)
     }
 
@@ -562,8 +625,12 @@ class PlaybackService : MediaSessionService() {
         currentSong = song
         val metaBuilder = MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album)
         if (localPath == null) metaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${song.id}"))
+        
+        // Punto 2: Corregir URL de podcast (usar /podcast-audio en lugar de /audio si es episodio)
+        val baseAudioUrl = if (song.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
+        
         val mediaItem = MediaItem.Builder()
-            .setUri(if (localPath != null) Uri.fromFile(File(localPath)) else Uri.parse("$serverBaseUrl/audio/${song.id}"))
+            .setUri(if (localPath != null) Uri.fromFile(File(localPath)) else Uri.parse("$baseAudioUrl${song.id}"))
             .setMediaMetadata(metaBuilder.build())
             .build()
         player?.setMediaItem(mediaItem)
@@ -572,8 +639,11 @@ class PlaybackService : MediaSessionService() {
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
             val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
             if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
+            
+            // También para el siguiente item en el buffer
+            val nextBaseUrl = if (nextSong.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
             val nextMediaItem = MediaItem.Builder()
-                .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$serverBaseUrl/audio/${nextSong.id}"))
+                .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$nextBaseUrl${nextSong.id}"))
                 .setMediaMetadata(nextMetaBuilder.build())
                 .build()
             player?.addMediaItem(nextMediaItem)

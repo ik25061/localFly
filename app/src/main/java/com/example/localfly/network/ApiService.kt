@@ -233,6 +233,9 @@ interface ApiService {
     @POST("api/rescan")
     suspend fun rescanLibrary(): Response<Unit>
 
+    @POST("api/podcasts/rescan")
+    suspend fun rescanPodcasts(): Response<Unit>
+
     // --- Podcasts ---
 
     @GET("api/podcasts")

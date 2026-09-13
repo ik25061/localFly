@@ -75,12 +75,15 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnClearDisliked"
-            style="@style/Widget.Material3.Button.TextButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
             android:text="Vaciar lista local (no borra archivos)"
             android:textAllCaps="false"
-            android:textColor="#FF6666" />
+            android:textColor="#FF6666"
+            app:strokeColor="#FF6666"
+            app:cornerRadius="12dp" />
 
     </LinearLayout>
 </ScrollView>

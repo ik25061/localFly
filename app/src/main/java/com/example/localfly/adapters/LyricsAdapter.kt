@@ -16,6 +16,7 @@ data class LyricLine(
 
 class LyricsAdapter(
     private val lines: List<LyricLine>,
+    private val isInlineMode: Boolean = false,
     private val onLineClick: (LyricLine) -> Unit
 ) : RecyclerView.Adapter<LyricsAdapter.ViewHolder>() {
 
@@ -23,11 +24,12 @@ class LyricsAdapter(
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
         val tvLine: TextView = view.findViewById(R.id.tvLyricLine)
-        val tvTranslation: TextView = view.findViewById(R.id.tvLyricTranslation)
+        val tvTranslation: TextView? = view.findViewById(R.id.tvLyricTranslation)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_lyric_line, parent, false)
+        val layout = if (isInlineMode) R.layout.item_lyric_inline else R.layout.item_lyric_line
+        val view = LayoutInflater.from(parent.context).inflate(layout, parent, false)
         return ViewHolder(view)
     }
 
@@ -35,32 +37,34 @@ class LyricsAdapter(
         val line = lines[position]
         holder.tvLine.text = line.content
 
-        if (!line.translation.isNullOrBlank()) {
-            holder.tvTranslation.text = line.translation
-            holder.tvTranslation.visibility = View.VISIBLE
-        } else {
-            holder.tvTranslation.visibility = View.GONE
+        if (holder.tvTranslation != null) {
+            if (!line.translation.isNullOrBlank()) {
+                holder.tvTranslation.text = line.translation
+                holder.tvTranslation.visibility = View.VISIBLE
+            } else {
+                holder.tvTranslation.visibility = View.GONE
+            }
         }
         
-        // Evitar que la primera letra se oculte al escalar
-        holder.tvLine.pivotX = 0f
+        // Evitar que la primera letra se oculte al escalar si no es centrado
+        if (!isInlineMode) {
+            holder.tvLine.pivotX = 0f
+        }
+        
         holder.tvLine.post {
             if (position < lines.size) {
                 holder.tvLine.pivotY = holder.tvLine.height / 2f
             }
         }
         
-        // Se asignan los valores DIRECTAMENTE (sin animate()): al re-vincular views
-        // reciclados durante el desplazamiento, animar escala/alpha en cada bind
-        // provocaba el efecto de "texto atrasado/ondulante" en la lista de letras.
         if (position == activePosition) {
             holder.tvLine.setTextColor(Color.WHITE)
             holder.tvLine.alpha = 1.0f
-            holder.tvLine.scaleX = 1.08f
-            holder.tvLine.scaleY = 1.08f
+            holder.tvLine.scaleX = if (isInlineMode) 1.05f else 1.08f
+            holder.tvLine.scaleY = if (isInlineMode) 1.05f else 1.08f
         } else {
-            holder.tvLine.setTextColor(Color.parseColor("#80FFFFFF"))
-            holder.tvLine.alpha = 0.6f
+            holder.tvLine.setTextColor(if (isInlineMode) Color.parseColor("#B3FFFFFF") else Color.parseColor("#80FFFFFF"))
+            holder.tvLine.alpha = if (isInlineMode) 0.8f else 0.6f
             holder.tvLine.scaleX = 1.0f
             holder.tvLine.scaleY = 1.0f
         }

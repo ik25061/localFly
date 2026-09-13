@@ -48,6 +48,7 @@ import com.example.localfly.fragments.*
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.RescanManager
+import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.SongAdminStore
@@ -142,6 +143,7 @@ class MainActivity : AppCompatActivity() {
 
         if (savedInstanceState == null) {
             replaceFragment(HomeFragment())
+            handleIntent(intent)
         }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -216,6 +218,39 @@ class MainActivity : AppCompatActivity() {
                 else -> false
             }
             true
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) return
+        if (intent.action == "com.example.localfly.ACTION_OPEN_ARTIST") {
+            val artistName = intent.getStringExtra("artist_name")
+            if (!artistName.isNullOrBlank()) {
+                openArtistByName(artistName)
+            }
+        }
+    }
+
+    private fun openArtistByName(name: String) {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getArtists(sessionManager.getUserId(), search = name)
+                if (response.isSuccessful && response.body() != null) {
+                    val artists = response.body()!!.items
+                    val match = artists.find { it.name.equals(name, ignoreCase = true) } ?: artists.firstOrNull()
+                    if (match != null) {
+                        val fragment = CollectionDetailFragment.newInstance(match.id, match.name, "ARTIST", match.coverId)
+                        replaceFragment(fragment, addToBackStack = true)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Error opening artist from intent", e)
+            }
         }
     }
 

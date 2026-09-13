@@ -8,13 +8,17 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.adapters.LyricLine
 import com.example.localfly.adapters.LyricsAdapter
@@ -41,6 +45,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.net.URLEncoder
 import java.util.Locale
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
@@ -67,7 +72,11 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnEditMetadata: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
-    private lateinit var tvUpcomingHeader: TextView
+    private lateinit var tvHeaderType: TextView
+    private lateinit var ivPodcastHeader: ImageView
+    private lateinit var cardTranscript: CardView
+    private lateinit var rvTranscriptInline: RecyclerView
+    private var transcriptAdapter: LyricsAdapter? = null
     private lateinit var btnSmartReorder: com.google.android.material.button.MaterialButton
     private lateinit var queueOverlay: androidx.constraintlayout.widget.ConstraintLayout
     private lateinit var ivQueueMiniThumb: ImageView
@@ -174,7 +183,12 @@ class NowPlayingActivity : AppCompatActivity() {
         btnEditMetadata = findViewById(R.id.btnFullEditMetadata)
         btnShowQueueTop = findViewById(R.id.btnShowQueueTop)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
-        tvUpcomingHeader = findViewById(R.id.tvUpcomingHeader)
+        
+        tvHeaderType = findViewById(R.id.tvHeaderType)
+        ivPodcastHeader = findViewById(R.id.ivPodcastHeader)
+        cardTranscript = findViewById(R.id.cardTranscript)
+        rvTranscriptInline = findViewById(R.id.rvTranscriptInline)
+
         btnSmartReorder = findViewById(R.id.btnSmartReorder)
         queueOverlay = findViewById(R.id.queueOverlay)
         ivQueueMiniThumb = findViewById(R.id.ivQueueMiniThumb)
@@ -900,23 +914,61 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         if (isFinishing || isDestroyed) return
-        val song = playbackService?.currentSong ?: run { finish(); return }
+        val rawSong = playbackService?.currentSong ?: run { finish(); return }
+        val song = SongAdminStore.applyTo(rawSong)
+        
+        // Determinar modo
+        val isPodcast = song.isEpisode
+        
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
         
+        // Ajustar diseño para Podcast vs Música
+        if (isPodcast) {
+            tvHeaderType.text = "PODCAST"
+            tvTitle.textSize = 18f // Tamaño reducido para nombres largos
+            ivCircularImage.visibility = View.GONE
+            ivBlurredBackground.visibility = View.GONE
+            ivPodcastHeader.visibility = View.VISIBLE
+            findViewById<View>(R.id.vPodcastGradient).visibility = View.VISIBLE
+            findViewById<View>(R.id.backgroundScrim).visibility = View.GONE
+            
+            // Cargar imagen de cabecera grande
+            val coverUrl = "$serverBaseUrl/cover/${song.id}"
+            Glide.with(this)
+                .load(coverUrl)
+                .placeholder(CoverPlaceholder.drawable(song.id))
+                .centerCrop()
+                .into(ivPodcastHeader)
+                
+            // Cargar letras/transcripción automáticamente
+            loadTranscriptInline(song)
+        } else {
+            tvHeaderType.text = "REPRODUCIENDO"
+            tvTitle.textSize = 22f
+            ivCircularImage.visibility = View.VISIBLE
+            ivBlurredBackground.visibility = View.VISIBLE
+            ivPodcastHeader.visibility = View.GONE
+            findViewById<View>(R.id.vPodcastGradient).visibility = View.GONE
+            findViewById<View>(R.id.backgroundScrim).visibility = View.VISIBLE
+            cardTranscript.visibility = View.GONE
+            
+            val artistEncoded = URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
+            val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
+            val albumImageUrl = "$serverBaseUrl/cover/${song.id}"
+            val albumSeed = song.id
+            val artistSeed = song.artist ?: song.id
+            
+            Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop().override(100, 100).into(ivBlurredBackground)
+            Glide.with(this).load(artistImageUrl).placeholder(CoverPlaceholder.drawable(artistSeed)).error(CoverPlaceholder.drawable(artistSeed)).error(Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop()).centerCrop().into(ivCircularImage)
+        }
+
         // Actualizar mini-reproductor de letras si el diálogo está abierto
         refreshLyricsMiniPlayer()
 
         // Cargar waveform
         loadWaveform(song)
 
-        val artistEncoded = java.net.URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
-        val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
-        val albumImageUrl = "$serverBaseUrl/cover/${song.id}"
-        val albumSeed = song.id
-        val artistSeed = song.artist ?: song.id
-        Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop().override(100, 100).into(ivBlurredBackground)
-        Glide.with(this).load(artistImageUrl).placeholder(CoverPlaceholder.drawable(artistSeed)).error(CoverPlaceholder.drawable(artistSeed)).error(Glide.with(this).load(albumImageUrl).placeholder(CoverPlaceholder.drawable(albumSeed)).error(CoverPlaceholder.drawable(albumSeed)).centerCrop()).centerCrop().into(ivCircularImage)
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
@@ -926,6 +978,43 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext.isEnabled = playbackService?.hasNext() == true
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
         if (queueIsVisible) updateQueueUI()
+    }
+
+    private fun loadTranscriptInline(song: Song) {
+        lifecycleScope.launch {
+            val lines = fetchLyrics(song)
+            if (lines != null && lines.isNotEmpty()) {
+                cardTranscript.visibility = View.VISIBLE
+                val cleanedLines = lines.map { it.copy(content = it.content.replace(Regex("\\[\\d{1,2}:\\d{2}([.:]\\d{2,3})?\\]"), "").trim()) }
+                
+                transcriptAdapter = LyricsAdapter(cleanedLines, isInlineMode = true) { clickedLine ->
+                    if (clickedLine.timeMs > 0) playbackService?.seekTo(clickedLine.timeMs)
+                }
+                rvTranscriptInline.layoutManager = LinearLayoutManager(this@NowPlayingActivity)
+                rvTranscriptInline.adapter = transcriptAdapter
+                
+                // Iniciar bucle de actualización para el scroll automático
+                startTranscriptUpdateLoop()
+            } else {
+                cardTranscript.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun startTranscriptUpdateLoop() {
+        lyricsUpdateJob?.cancel()
+        lyricsUpdateJob = lifecycleScope.launch {
+            var lastPos = -1
+            while (true) {
+                val currentTime = playbackService?.getProgressMs() ?: 0L
+                val activePos = transcriptAdapter?.updateActiveLine(currentTime) ?: -1
+                if (activePos != -1 && activePos != lastPos && !userScrollingLyrics) {
+                    lastPos = activePos
+                    rvTranscriptInline.smoothScrollToPosition(activePos)
+                }
+                delay(300)
+            }
+        }
     }
 
     private fun updateProgress() {

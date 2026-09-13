@@ -3,8 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/transparent">
+    android:background="#000000">
 
+    <!-- Fondo desenfocado (Solo para música) -->
     <ImageView
         android:id="@+id/ivBlurredBackground"
         android:layout_width="match_parent"
@@ -13,13 +14,30 @@
         android:alpha="0.45" />
 
     <View
+        android:id="@+id/backgroundScrim"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#66000000"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:background="#66000000" />
+
+    <!-- Imagen de Cabecera para Podcast (PodTime style) -->
+    <ImageView
+        android:id="@+id/ivPodcastHeader"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        app:layout_constraintHeight_percent="0.6"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Gradiente sobre la imagen del podcast -->
+    <View
+        android:id="@+id/vPodcastGradient"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_podcast_scrim"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/ivPodcastHeader"
+        app:layout_constraintTop_toTopOf="@id/ivPodcastHeader" />
 
     <ImageButton
         android:id="@+id/btnClose"
@@ -27,25 +45,29 @@
         android:layout_height="44dp"
         android:layout_margin="16dp"
         android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
+        android:backgroundTint="#33000000"
+        android:elevation="4dp"
         android:src="@android:drawable/arrow_down_float"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
         app:tint="#FFFFFF" />
 
     <TextView
+        android:id="@+id/tvHeaderType"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="REPRODUCIENDO AHORA"
+        android:text="REPRODUCIENDO"
         android:textColor="#FFFFFF"
         android:textSize="12sp"
         android:textStyle="bold"
         android:letterSpacing="0.11"
+        android:elevation="4dp"
         app:layout_constraintBottom_toBottomOf="@id/btnClose"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
+    <!-- Arte Circular para Música -->
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivCircularImage"
         android:layout_width="280dp"
@@ -59,139 +81,116 @@
         app:strokeColor="#D9FFFFFF"
         app:strokeWidth="1dp" />
 
-    <ImageButton
-        android:id="@+id/btnShowQueueTop"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="8dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
-        android:src="@android:drawable/ic_menu_sort_by_size"
-        app:layout_constraintEnd_toStartOf="@id/btnAddToPlaylist"
-        app:layout_constraintTop_toTopOf="parent"
-        app:tint="#FFFFFF" />
+    <!-- Info de la canción/podcast -->
+    <LinearLayout
+        android:id="@+id/llTrackInfo"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="24dp"
+        app:layout_constraintTop_toBottomOf="@id/ivCircularImage"
+        android:layout_marginTop="32dp">
+
+        <TextView
+            android:id="@+id/tvFullTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Título de la pista"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvFullArtist"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Nombre del Artista"
+            android:textColor="#1DB954"
+            android:textSize="14sp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackground" />
+    </LinearLayout>
 
     <ImageButton
-        android:id="@+id/btnAddToPlaylist"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="8dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
-        android:src="@drawable/ic_playlist"
-        app:layout_constraintEnd_toStartOf="@id/btnLyrics"
-        app:layout_constraintTop_toTopOf="parent"
-        app:tint="#FFFFFF" />
-
-    <ImageButton
-        android:id="@+id/btnLyrics"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_margin="16dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
-        android:src="@drawable/ic_lyrics_sheet"
+        android:id="@+id/btnFullLike"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginEnd="12dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_like_off"
+        app:layout_constraintBottom_toBottomOf="@id/llTrackInfo"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:tint="#FFFFFF" />
-
-    <ImageButton
-        android:id="@+id/btnFullEditMetadata"
-        android:layout_width="42dp"
-        android:layout_height="42dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="8dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
-        android:src="@android:drawable/ic_menu_edit"
-        app:layout_constraintEnd_toStartOf="@id/btnShowQueueTop"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toTopOf="@id/llTrackInfo"
         app:tint="#FFFFFF" />
 
     <ImageButton
         android:id="@+id/btnFullDislike"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginStart="24dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
+        android:layout_marginStart="8dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_dislike_off"
-        app:layout_constraintBottom_toBottomOf="@id/tvFullArtist"
+        app:layout_constraintBottom_toBottomOf="@id/llTrackInfo"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tvFullTitle"
+        app:layout_constraintTop_toTopOf="@id/llTrackInfo"
         app:tint="#FFFFFF"
-        android:visibility="visible"/>
+        android:visibility="gone" />
 
-    <TextView
-        android:id="@+id/tvFullTitle"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="40dp"
-        android:layout_marginEnd="16dp"
-        android:textColor="#FFFFFF"
-        android:textSize="22sp"
-        android:textStyle="bold"
-        app:layout_constraintEnd_toStartOf="@+id/btnFullLike"
-        app:layout_constraintStart_toEndOf="@id/btnFullDislike"
-        app:layout_constraintTop_toBottomOf="@id/ivCircularImage" />
+    <!-- Área de Transcripción Automática (Diseño 2da imagen) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardTranscript"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginHorizontal="20dp"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
+        android:visibility="gone"
+        app:cardBackgroundColor="#1AFFFFFF"
+        app:cardCornerRadius="24dp"
+        app:cardElevation="0dp"
+        app:layout_constraintBottom_toTopOf="@id/waveformSeekBar"
+        app:layout_constraintTop_toBottomOf="@id/llTrackInfo">
 
-    <TextView
-        android:id="@+id/tvFullArtist"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
-        android:textColor="#AAAAAA"
-        android:textSize="16sp"
-        android:clickable="true"
-        android:focusable="true"
-        android:background="?attr/selectableItemBackground"
-        app:layout_constraintEnd_toEndOf="@id/tvFullTitle"
-        app:layout_constraintStart_toStartOf="@id/tvFullTitle"
-        app:layout_constraintTop_toBottomOf="@id/tvFullTitle" />
-
-    <ImageButton
-        android:id="@+id/btnFullLike"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_marginEnd="24dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1E1E25"
-        android:src="@drawable/ic_like_off"
-        app:layout_constraintBottom_toBottomOf="@id/tvFullArtist"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tvFullTitle"
-        app:tint="#FFFFFF" />
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/rvTranscriptInline"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:clipToPadding="false" />
+    </androidx.cardview.widget.CardView>
 
     <com.masoudss.lib.WaveformSeekBar
         android:id="@+id/waveformSeekBar"
         android:layout_width="0dp"
         android:layout_height="64dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="24dp"
         android:layout_marginEnd="16dp"
-        app:wave_width="3dp"
-        app:wave_gap="2dp"
-        app:wave_min_height="4dp"
-        app:wave_corner_radius="2dp"
-        app:wave_background_color="#33FFFFFF"
-        app:wave_progress_color="#1DB954"
-        app:wave_gravity="center"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@id/tvCurrentTime"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvFullArtist" />
+        app:wave_background_color="#33FFFFFF"
+        app:wave_corner_radius="2dp"
+        app:wave_gap="2dp"
+        app:wave_gravity="center"
+        app:wave_min_height="4dp"
+        app:wave_progress_color="#1DB954"
+        app:wave_width="3dp" />
 
     <TextView
         android:id="@+id/tvCurrentTime"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="24dp"
+        android:layout_marginBottom="16dp"
         android:textColor="#AAAAAA"
         android:textSize="12sp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/waveformSeekBar" />
+        app:layout_constraintBottom_toTopOf="@id/llControls"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/tvTotalTime"
@@ -200,43 +199,41 @@
         android:layout_marginEnd="24dp"
         android:textColor="#AAAAAA"
         android:textSize="12sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/waveformSeekBar" />
+        app:layout_constraintBottom_toTopOf="@id/llControls"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <LinearLayout
         android:id="@+id/llControls"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginBottom="32dp"
         android:gravity="center"
         android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/tvCurrentTime">
+        app:layout_constraintBottom_toBottomOf="parent">
 
         <ImageButton
-            android:id="@+id/btnDeleteSong"
+            android:id="@+id/btnRepeat"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1E1E25"
-            android:src="@drawable/ic_delete"
-            app:tint="#FF4444" />
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_revert"
+            app:tint="#AAAAAA" />
 
         <ImageButton
             android:id="@+id/btnFullPrev"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1E1E25"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_previous"
             app:tint="#FFFFFF" />
 
         <ImageButton
             android:id="@+id/btnFullPlayPause"
-            android:layout_width="80dp"
-            android:layout_height="80dp"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
             android:layout_marginHorizontal="16dp"
             android:background="@drawable/bg_circle_white"
-            android:padding="20dp"
+            android:padding="18dp"
             android:scaleType="centerInside"
             android:src="@android:drawable/ic_media_play"
             app:tint="#000000" />
@@ -245,38 +242,80 @@
             android:id="@+id/btnFullNext"
             android:layout_width="64dp"
             android:layout_height="64dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1E1E25"
+            android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_next"
             app:tint="#FFFFFF" />
 
         <ImageButton
-            android:id="@+id/btnRepeat"
+            android:id="@+id/btnShowQueueTop"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1E1E25"
-            android:src="@android:drawable/ic_menu_revert"
-            app:tint="#AAAAAA" />
-
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_sort_by_size"
+            app:tint="#FFFFFF" />
     </LinearLayout>
 
-    <!-- Eliminado el botón flotante inferior de cola por redundancia -->
+    <!-- Botones Extra (Arriba derecha) -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:orientation="horizontal"
+        android:elevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
 
-    <!-- Panel de cola de reproducción: oculto por defecto, sube desde abajo -->
+        <ImageButton
+            android:id="@+id/btnFullEditMetadata"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_edit"
+            app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnAddToPlaylist"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_playlist"
+            app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnDeleteSong"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_delete"
+            app:tint="#FF4444" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnLyrics"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_margin="16dp"
+        android:visibility="gone"
+        android:background="@drawable/bg_circle_white"
+        android:backgroundTint="#1E1E25"
+        android:src="@drawable/ic_lyrics_sheet"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:tint="#FFFFFF" />
+
+    <!-- Panel de cola de reproducción -->
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/queueOverlay"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:background="#0D0D0D"
         android:visibility="gone"
-        android:elevation="8dp"
+        android:elevation="10dp"
         app:layout_constraintTop_toBottomOf="@id/btnClose"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintBottom_toBottomOf="parent">
 
-        <!-- Mini cabecera: lo que está sonando ahora, resumido -->
         <ImageView
             android:id="@+id/ivQueueMiniThumb"
             android:layout_width="40dp"
@@ -309,11 +348,10 @@
             android:layout_marginEnd="16dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/arrow_down_float"
-            android:scaleType="centerInside"
-            app:tint="#FFFFFF"
+            app:layout_constraintBottom_toBottomOf="@id/ivQueueMiniThumb"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintTop_toTopOf="@id/ivQueueMiniThumb"
-            app:layout_constraintBottom_toBottomOf="@id/ivQueueMiniThumb" />
+            app:tint="#FFFFFF" />
 
         <View
             android:id="@+id/dividerQueue"
@@ -335,7 +373,6 @@
             android:textColor="#AAAAAA"
             android:textSize="12sp"
             android:textStyle="bold"
-            android:letterSpacing="0.1"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/dividerQueue" />
 
