@@ -24,9 +24,11 @@ import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.launch
 
 /**
- * Pestaña "Canciones que no me gustan" del administrador. Permite ver las
- * canciones marcadas como "No me gusta" (registradas localmente) y eliminarlas
- * por completo del disco del servidor si se desea.
+ * Pestaña "Canciones que no me gustan" del administrador. Combina el registro
+ * local (SongAdminStore) con lo que el SERVIDOR tiene marcado como oculto
+ * (GET /api/hidden-songs): cualquier canción oculta en el servidor que no
+ * estuviera ya en el registro local se "adopta" automáticamente la primera
+ * vez que se abre esta pantalla, para que ambas fuentes queden sincronizadas.
  */
 class DislikedSongsAdminFragment : Fragment() {
 
@@ -50,7 +52,7 @@ class DislikedSongsAdminFragment : Fragment() {
         view.findViewById<ImageButton>(R.id.btnBackDisliked).setOnClickListener {
             parentFragmentManager.popBackStack()
         }
-        
+
         if (parentFragment is SettingsFragment) {
             view.findViewById<View>(R.id.btnBackDisliked).visibility = View.GONE
             view.background = ColorDrawable(Color.TRANSPARENT)
@@ -69,6 +71,31 @@ class DislikedSongsAdminFragment : Fragment() {
         }
 
         refresh()
+        syncFromServerThenRefresh()
+    }
+
+    /** Trae lo que el servidor tiene oculto y adopta en el registro local
+     *  cualquier canción que faltara, sin duplicar las que ya están. */
+    private fun syncFromServerThenRefresh() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getHiddenSongs(sessionManager.getUserId(), limit = 200)
+                if (response.isSuccessful) {
+                    val serverHidden = response.body()?.songs ?: emptyList()
+                    val localIds = SongAdminStore.getDislikedSongs().map { it.songId }.toSet()
+                    var addedAny = false
+                    serverHidden.forEach { song ->
+                        if (song.id !in localIds) {
+                            SongAdminStore.recordDislikedSong(song)
+                            addedAny = true
+                        }
+                    }
+                    if (addedAny && isAdded) refresh()
+                }
+            } catch (e: Exception) {
+                // Sin conexión: se muestra igualmente lo que ya hay en local.
+            }
+        }
     }
 
     private fun refresh() {
@@ -122,7 +149,6 @@ class DislikedSongsAdminFragment : Fragment() {
                     DeleteSongRequest(id = song.songId, userId = sessionManager.getUserId())
                 )
                 if (response.isSuccessful) {
-                    // Quitar también la descarga local si la hubiera.
                     val helper = DownloadManagerHelper.getInstance(requireContext())
                     if (helper.isDownloaded(song.songId)) {
                         helper.removeDownload(song.songId)

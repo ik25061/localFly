@@ -103,6 +103,14 @@ interface ApiService {
         @Query("offset") offset: Int = 0
     ): Response<LikedSongsResponse>
 
+    // Punto 6: fuente de verdad del servidor para "no me gusta" / ocultas.
+    @GET("api/hidden-songs")
+    suspend fun getHiddenSongs(
+        @Query("userId") userId: String?,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
+    ): Response<LikedSongsResponse>
+
     @GET("api/albums/{id}/songs")
     suspend fun getAlbumSongs(
         @Path("id") albumId: String,

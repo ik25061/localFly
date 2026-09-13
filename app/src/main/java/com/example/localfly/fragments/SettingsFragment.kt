@@ -305,19 +305,53 @@ class SettingsFragment : Fragment() {
                 }
                 "image" -> {
                     val d = resources.displayMetrics.density
-                    val row = LinearLayout(requireContext()).apply {
+
+                    val rowFit = LinearLayout(requireContext()).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply { topMargin = (12 * d).toInt(); bottomMargin = (12 * d).toInt() }
+                    }
+                    val fitOptions = listOf("cover" to "Cubrir", "fit_width" to "Ancho", "fit_height" to "Alto")
+                    fitOptions.forEachIndexed { idx, (value, label) ->
+                        rowFit.addView(MaterialButton(requireContext(), null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                            text = label
+                            val isSelected = sessionManager.getBackgroundImageFitMode() == value
+                            if (isSelected) {
+                                setBackgroundColor(Color.parseColor("#1DB954"))
+                                setTextColor(Color.BLACK)
+                                strokeWidth = 0
+                            } else {
+                                setBackgroundColor(Color.TRANSPARENT)
+                                setTextColor(Color.WHITE)
+                                setStrokeColor(ColorStateList.valueOf(Color.parseColor("#33FFFFFF")))
+                                strokeWidth = (1 * d).toInt()
+                            }
+                            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                                if (idx > 0) leftMargin = (8 * d).toInt()
+                            }
+                            setOnClickListener {
+                                sessionManager.setBackgroundImageFitMode(value)
+                                (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+                                attachBackgroundActionsForMode("image")
+                            }
+                        })
+                    }
+                    addFullWidth(rowFit)
+
+                    val rowImageActions = LinearLayout(requireContext()).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                     }
 
-                    row.addView(MaterialButton(requireContext()).apply {
+                    rowImageActions.addView(MaterialButton(requireContext()).apply {
                         text = "Elegir imagen"
                         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
                         setOnClickListener { pickBackgroundImage.launch("image/*") }
                     })
 
                     // Rotar 45°: solo icono
-                    row.addView(ImageButton(requireContext()).apply {
+                    rowImageActions.addView(ImageButton(requireContext()).apply {
                         setImageResource(android.R.drawable.ic_menu_rotate)
                         contentDescription = "Rotar"
                         setImageTintList(ColorStateList.valueOf(Color.WHITE))
@@ -330,7 +364,7 @@ class SettingsFragment : Fragment() {
                     })
 
                     // Selector del color DETRÁS
-                    row.addView(ImageButton(requireContext()).apply {
+                    rowImageActions.addView(ImageButton(requireContext()).apply {
                         contentDescription = "Color fondo"
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
@@ -347,7 +381,7 @@ class SettingsFragment : Fragment() {
                             }
                         }
                     })
-                    addFullWidth(row)
+                    addFullWidth(rowImageActions)
                 }
             }
             subContentFrame.addView(container)

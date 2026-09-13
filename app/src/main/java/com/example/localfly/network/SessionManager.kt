@@ -344,5 +344,10 @@ class SessionManager(context: Context) {
     fun getBackgroundBlur(): Int = prefs.getInt("app_bg_blur", 0).coerceIn(0, 100)
     fun setBackgroundBlur(blur: Int) = prefs.edit().putInt("app_bg_blur", blur.coerceIn(0, 100)).apply()
 
+    /** Modo de ajuste de la imagen de fondo: "cover" (recorta, por defecto),
+     *  "fit_width" (ajusta al ancho) o "fit_height" (ajusta al alto). */
+    fun getBackgroundImageFitMode(): String = prefs.getString("app_bg_image_fit", "cover") ?: "cover"
+    fun setBackgroundImageFitMode(mode: String) = prefs.edit().putString("app_bg_image_fit", mode).apply()
+
     fun isAdmin(): Boolean = getUsername()?.equals("Rafael", ignoreCase = true) == true
 }
