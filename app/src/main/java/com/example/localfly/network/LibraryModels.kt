@@ -258,6 +258,37 @@ data class IpConfigResponse(
     val ip: String
 )
 
+// --- Sincronización de metadatos offline (admin) ---
+
+data class MetadataSyncRequest(
+    val userId: String?,
+    val edits: List<SongAdminEditPayload>,
+    val removals: List<String> = emptyList()
+)
+
+data class SongAdminEditPayload(
+    val songId: String,
+    val title: String? = null,
+    val artist: String? = null,
+    val album: String? = null,
+    val year: Int? = null,
+    val genres: List<String> = emptyList(),
+    val moods: List<String> = emptyList(),
+    val originalTitle: String? = null
+)
+
+data class MetadataSyncConflict(
+    val songId: String,
+    val reason: String,
+    val serverTitle: String? = null
+)
+
+data class MetadataSyncResponse(
+    val success: Boolean = false,
+    val applied: List<String> = emptyList(),
+    val conflicts: List<MetadataSyncConflict> = emptyList()
+)
+
 // --- Favorite Artists ---
 data class FavoriteArtistRequest(
     val userId: String?,

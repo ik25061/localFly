@@ -259,6 +259,42 @@ interface ApiService {
         @Body request: ProgressUpdateRequest
     ): Response<Unit>
 
+    // --- Radio (emisión en vivo a otros usuarios) ---
+
+    /** Sincroniza las ediciones offline del administrador al reconectar. */
+    @POST("api/metadata/sync")
+    suspend fun syncMetadata(
+        @Body request: MetadataSyncRequest
+    ): Response<MetadataSyncResponse>
+
+    /** El host publica qué está sonando y por dónde va (cada ~5 s). */
+    @POST("api/radio/publish")
+    suspend fun publishRadioState(
+        @Body request: RadioPublishRequest
+    ): Response<Unit>
+
+    /** Lista de radios activas a las que uno puede unirse. */
+    @GET("api/radio/stations")
+    suspend fun getRadioStations(): Response<RadioStationsResponse>
+
+    /** Estado actual de la radio de un host (lo consulta cada oyente). */
+    @GET("api/radio/status")
+    suspend fun getRadioStatus(
+        @Query("hostId") hostId: String
+    ): Response<RadioStatusResponse>
+
+    /** Registrar al usuario como oyente de una radio. */
+    @POST("api/radio/join")
+    suspend fun joinRadio(
+        @Body request: RadioJoinRequest
+    ): Response<Unit>
+
+    /** Dejar de emitir (host) o dejar de escuchar (oyente). */
+    @POST("api/radio/leave")
+    suspend fun leaveRadio(
+        @Body request: RadioJoinRequest
+    ): Response<Unit>
+
     // --- Comentarios ---
 
     @GET("api/songs/{id}/comments")

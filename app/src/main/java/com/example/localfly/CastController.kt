@@ -112,14 +112,13 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
 
     /**
      * Se llama en cada refresh de la UI: si la cancion cambio mientras hay una
-     * sesion activa, la emite al Chromecast. El play/pausa NO se sincroniza aqui:
-     * durante el cast el reproductor local queda en pausa a proposito.
+     * sesion activa, la emite al Chromecast.
      */
-    fun autoCast() {
+    fun autoCast(localPlaying: Boolean) {
         val song = songProvider?.invoke() ?: return
         val remote = remoteClient() ?: return
         if (lastSentUrl == song.streamUrl && hasSentMedia(remote)) return
-        sendSong(remote, song, remoteShouldPlay)
+        sendSong(remote, song, localPlaying)
     }
 
     /** Emite la cancion indicada al receptor activo. */

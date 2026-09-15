@@ -25,6 +25,8 @@ import com.example.localfly.adapters.LyricLine
 import com.example.localfly.adapters.LyricsAdapter
 import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
+import com.example.localfly.network.RadioManager
+import com.example.localfly.network.RadioStation
 import com.example.localfly.network.Song
 import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.SessionManager
@@ -130,6 +132,9 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var castController: CastController
     private lateinit var btnCast: MediaRouteButton
     private var wasPlayingBeforeCast = false
+
+    // Radio en vivo (emisión / escucha compartida)
+    private lateinit var btnRadio: ImageButton
     private lateinit var sessionManager: SessionManager
     private lateinit var amplituda: linc.com.amplituda.Amplituda
 
@@ -260,6 +265,10 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         castController.setUpMediaRouteButton(btnCast)
         castController.refreshSessionState()
+
+        // ===== Radio en vivo =====
+        btnRadio = findViewById(R.id.btnRadio)
+        btnRadio.setOnClickListener { showRadioDialog() }
 
         btnPlayPause.setOnClickListener {
             val wasPlaying = playbackService?.player?.isPlaying == true
@@ -432,16 +441,17 @@ class NowPlayingActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             // Garantizar SIEMPRE al menos 10 canciones por delante.
-            // Si la cola está vacía o quedan pocas, generar recomendaciones.
+            // Si la cola está vacía o quedan pocas: recomendaciones de IA si
+            // hay conexión, o solo descargas si no la hay.
             val pendingCount = service.queue.size - (service.currentIndex + 1)
-            
+
             if (pendingCount < 10) {
-                // En modo descargas (la canción actual es una descarga) rellenar
-                // solo con descargas por género; nunca con IA del catálogo entero.
-                if (service.isDownloadedMode()) {
+                if (!ServerReachability.isOnline) {
                     val existingIds = service.queue.map { it.id }.toSet()
-                    val mix = service.buildDownloadMix(service.currentSong, existingIds, limit = 10)
-                    if (mix.isNotEmpty()) service.addListToQueue(mix)
+                    val offlineFill = service.buildOfflineSmartMix(existingIds, limit = 10 - pendingCount)
+                    if (offlineFill.isNotEmpty()) {
+                        service.addListToQueue(offlineFill)
+                    }
                 } else {
                     try {
                         val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
@@ -1006,6 +1016,105 @@ class NowPlayingActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    // ===== RADIO EN VIVO =====
+
+    /** Menú del botón de radio según el estado actual (emitiendo / escuchando / libre). */
+    private fun showRadioDialog() {
+        val service = playbackService
+        if (service == null) {
+            Toast.makeText(this, "Inicia la reproducción primero", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val options = when {
+            RadioManager.isHost -> arrayOf(
+                "🔴 Detener mi radio",
+                "Ver radios activas…"
+            )
+            RadioManager.isListener -> arrayOf(
+                "✋ Dejar de escuchar esta radio",
+                "Ver radios activas…"
+            )
+            else -> arrayOf(
+                "📡 Emitir mi música (crear radio)",
+                "🎧 Ver radios activas…"
+            )
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Radio en vivo")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> when {
+                        RadioManager.isHost -> {
+                            service.stopRadioBroadcast()
+                            Toast.makeText(this, "Tu radio se detuvo", Toast.LENGTH_SHORT).show()
+                        }
+                        RadioManager.isListener -> {
+                            service.leaveRadio()
+                            Toast.makeText(this, "Dejaste de escuchar la radio", Toast.LENGTH_SHORT).show()
+                        }
+                        else -> {
+                            if (service.startRadioBroadcast()) {
+                                Toast.makeText(this, "Estás emitiendo: otros pueden unirse desde Inicio → Radio", Toast.LENGTH_LONG).show()
+                            } else {
+                                Toast.makeText(this, "Reproduce una canción primero", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    1 -> fetchAndShowRadioStations()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Carga las radios activas del servidor y muestra el selector. */
+    private fun fetchAndShowRadioStations() {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getRadioStations()
+                val stations = response.body()?.stations.orEmpty()
+                    .filter { it.hostId != sessionManager.getUserId() } // no unirse a tu propia radio
+                if (stations.isEmpty()) {
+                    Toast.makeText(this@NowPlayingActivity, "No hay radios activas ahora mismo", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val labels = stations.map { st ->
+                    "${st.hostName ?: st.hostId.take(8)} — ${st.title}" +
+                        (if (st.listeners > 0) " (${st.listeners} 👥)" else "")
+                }
+                androidx.appcompat.app.AlertDialog.Builder(this@NowPlayingActivity)
+                    .setTitle("Radios activas")
+                    .setItems(labels.toTypedArray()) { _, which ->
+                        val station = stations.getOrNull(which) ?: return@setItems
+                        RadioManager.joinAsListener(station.hostId)
+                        Toast.makeText(
+                            this@NowPlayingActivity,
+                            "Escuchando la radio de ${station.hostName ?: "otro usuario"}",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(this@NowPlayingActivity, "No se pudieron cargar las radios", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Resalta el botón de radio cuando estamos emitiendo o escuchando. */
+    private fun updateRadioButtonState() {
+        if (!::btnRadio.isInitialized) return
+        btnRadio.backgroundTintList = android.content.res.ColorStateList.valueOf(
+            when {
+                RadioManager.isHost -> android.graphics.Color.parseColor("#1DB954")
+                RadioManager.isListener -> android.graphics.Color.parseColor("#FFA500")
+                else -> android.graphics.Color.parseColor("#22000000")
+            }
+        )
+    }
+
     /** Construye los datos de la cancion actual para transmitirla a Chromecast. */
     private fun buildCastSongData(): CastController.CastSong? {
         val service = playbackService ?: return null
@@ -1111,6 +1220,9 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext.isEnabled = playbackService?.hasNext() == true
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
         if (queueIsVisible) updateQueueUI()
+
+        // Estado del botón de radio (emitiendo / escuchando)
+        updateRadioButtonState()
 
         // Mantener al dia el Chromecast si hay una sesion activa
         if (::castController.isInitialized) castController.autoCast(playbackService?.player?.isPlaying == true)
