@@ -4,10 +4,11 @@ package com.example.localfly.dialogs
 // géneros, año y estado de ánimo. Se guarda en SongAdminStore y se conserva
 // aunque la biblioteca se reescanee.
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.EditText
@@ -40,16 +41,15 @@ object EditSongMetadataDialog {
         val view = LayoutInflater.from(context)
             .inflate(R.layout.dialog_edit_song_metadata, null)
 
+        val sessionManager = SessionManager(context)
         val existing = SongAdminStore.getEdit(serverSong.id)
 
-        view.findViewById<TextView>(R.id.tvEditSongTitle).text = displayedSong.title
-        view.findViewById<TextView>(R.id.tvEditSongArtist).text = displayedSong.artist ?: "Artista desconocido"
-
-        // Referencia del servidor
+        // Referencia del servidor para depuración visual
         val serverParts = mutableListOf<String>()
-        serverSong.title?.let { serverParts.add("Título: $it") }
-        serverSong.album?.let { serverParts.add("Álbum: $it") }
-        serverSong.year?.let { serverParts.add("Año: $it") }
+        serverSong.title?.let { serverParts.add("T: $it") }
+        serverSong.artist?.let { serverParts.add("A: $it") }
+        serverSong.album?.let { serverParts.add("Al: $it") }
+        serverSong.year?.let { serverParts.add("Y: $it") }
         if (serverParts.isNotEmpty()) {
             val tvServer = view.findViewById<TextView>(R.id.tvServerInfo)
             tvServer.text = "Servidor: ${serverParts.joinToString(" · ")}"
@@ -57,56 +57,89 @@ object EditSongMetadataDialog {
         }
 
         val etTitle = view.findViewById<EditText>(R.id.etEditTitle)
+        val etArtist = view.findViewById<EditText>(R.id.etEditArtist)
         val etAlbum = view.findViewById<EditText>(R.id.etEditAlbum)
         val etYear = view.findViewById<EditText>(R.id.etEditYear)
-        val etGenres = view.findViewById<EditText>(R.id.etEditGenres)
-
-        etTitle.setText(existing?.title ?: serverSong.title ?: "")
-        etAlbum.setText(existing?.album ?: serverSong.album ?: "")
-        etYear.setText((existing?.year ?: serverSong.year)?.toString() ?: "")
-        
-        // Cargar géneros del servidor si no hay edición local
-        val initialGenres = if (existing != null) existing.genres else serverSong.genre ?: emptyList()
-        etGenres.setText(initialGenres.joinToString(", "))
-
+        val etSearchGenres = view.findViewById<EditText>(R.id.etSearchGenres)
+        val chipGroupGenres = view.findViewById<ChipGroup>(R.id.chipGroupEditGenres)
         val chipGroupMoods = view.findViewById<ChipGroup>(R.id.chipGroupEditMoods)
-        val selectedMoodNames = (existing?.moods ?: serverSong.moods?.map { it.name } ?: emptyList()).toMutableSet()
+
+        etTitle.setText(existing?.title ?: displayedSong.title ?: "")
+        etArtist.setText(existing?.originalArtist ?: displayedSong.artist ?: "")
+        etAlbum.setText(existing?.album ?: displayedSong.album ?: "")
         
-        // Compatibilidad con campo 'mood' antiguo
+        // El año a veces viene null si no se ha configurado, pero el user dice que no aparece
+        // aun habiéndolo seleccionado de una lista de 1997.
+        val yearToShow = existing?.year ?: displayedSong.year ?: serverSong.year
+        etYear.setText(yearToShow?.toString() ?: "")
+
+        val selectedGenreNames = (existing?.genres ?: displayedSong.genre ?: serverSong.genre ?: emptyList()).toMutableSet()
+        val selectedMoodNames = (existing?.moods ?: displayedSong.moods?.map { it.name } ?: serverSong.moods?.map { it.name } ?: emptyList()).toMutableSet()
         existing?.mood?.let { selectedMoodNames.add(it) }
+
+        var allServerGenres = emptyList<Genre>()
+
+        fun populateGenres(filter: String = "") {
+            chipGroupGenres.removeAllViews()
+            
+            // Unir géneros del servidor con los seleccionados localmente que podrían no estar en el top del servidor
+            val baseList = if (filter.isBlank()) {
+                (selectedGenreNames.map { Genre(id = it, name = it, coverId = null, songCount = 0) } + allServerGenres).distinctBy { it.name }
+            } else {
+                allServerGenres.filter { it.name.contains(filter, ignoreCase = true) }
+            }
+
+            baseList.forEach { genre ->
+                val chip = Chip(context)
+                chip.text = genre.name
+                chip.isCheckable = true
+                chip.isChecked = genre.name in selectedGenreNames
+                updateChipStyle(chip, chip.isChecked)
+                chip.setOnCheckedChangeListener { _, isChecked ->
+                    if (isChecked) selectedGenreNames.add(genre.name) else selectedGenreNames.remove(genre.name)
+                    updateChipStyle(chip, isChecked)
+                }
+                chipGroupGenres.addView(chip)
+            }
+        }
+
+        // Cargar géneros del servidor
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val resp = RetrofitClient.api.getGenres(userId = sessionManager.getUserId(), limit = 1000)
+                if (resp.isSuccessful) {
+                    allServerGenres = resp.body()?.items ?: emptyList()
+                    populateGenres()
+                }
+            } catch (_: Exception) {}
+        }
+
+        etSearchGenres.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { populateGenres(s.toString()) }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
 
         fun addMoodChip(name: String) {
             val chip = Chip(context)
             chip.text = name
             chip.isCheckable = true
             chip.isChecked = name in selectedMoodNames
-            
-            // Estilo
-            chip.chipBackgroundColor = ColorStateList.valueOf(if (chip.isChecked) Color.parseColor("#1DB954") else Color.parseColor("#333333"))
-            chip.setTextColor(if (chip.isChecked) Color.BLACK else Color.WHITE)
-            
+            updateChipStyle(chip, chip.isChecked)
             chip.setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) selectedMoodNames.add(name) else selectedMoodNames.remove(name)
-                chip.chipBackgroundColor = ColorStateList.valueOf(if (isChecked) Color.parseColor("#1DB954") else Color.parseColor("#333333"))
-                chip.setTextColor(if (isChecked) Color.BLACK else Color.WHITE)
+                updateChipStyle(chip, isChecked)
             }
             chipGroupMoods.addView(chip)
         }
 
-        // Poblar con predefinidos primero
         PREDEFINED_MOODS.forEach { addMoodChip(it) }
         
-        // Cargar moods adicionales del servidor
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val resp = RetrofitClient.api.getMoods()
                 if (resp.isSuccessful) {
-                    val serverMoods = resp.body()?.moods ?: emptyList()
-                    serverMoods.forEach { m ->
-                        if (m.name !in PREDEFINED_MOODS) {
-                            addMoodChip(m.name)
-                        }
-                    }
+                    resp.body()?.moods?.forEach { m -> if (m.name !in PREDEFINED_MOODS) addMoodChip(m.name) }
                 }
             } catch (_: Exception) {}
         }
@@ -117,34 +150,26 @@ object EditSongMetadataDialog {
         val btnRevert = view.findViewById<MaterialButton>(R.id.btnRevertEdit)
         btnRevert.visibility = if (existing == null) View.GONE else View.VISIBLE
         btnRevert.setOnClickListener {
-            AlertDialog.Builder(context)
-                .setTitle("Revertir metadatos")
-                .setMessage("¿Volver a los datos del servidor? Se eliminará la edición local.")
-                .setPositiveButton("Revertir") { _, _ ->
-                    SongAdminStore.removeEdit(serverSong.id)
-                    dialog.dismiss()
-                    onSaved()
-                }
-                .setNegativeButton("Cancelar", null)
-                .show()
+            SongAdminStore.removeEdit(serverSong.id)
+            dialog.dismiss()
+            onSaved()
         }
 
         view.findViewById<MaterialButton>(R.id.btnSaveEdit).setOnClickListener {
-            val titleRaw = etTitle.text.toString().trim()
-            val albumRaw = etAlbum.text.toString().trim()
-            val yearRaw = etYear.text.toString().trim()
-            val genresRaw = etGenres.text.toString()
-
-            val year = yearRaw.toIntOrNull()
+            val title = etTitle.text.toString().trim().takeIf { it.isNotEmpty() }
+            val artist = etArtist.text.toString().trim().takeIf { it.isNotEmpty() }
+            val album = etAlbum.text.toString().trim().takeIf { it.isNotEmpty() }
+            val year = etYear.text.toString().toIntOrNull()
 
             SongAdminStore.saveEdit(
                 SongEdit(
                     songId = serverSong.id,
-                    title = if (titleRaw.isEmpty()) null else titleRaw,
-                    album = if (albumRaw.isEmpty()) null else albumRaw,
-                    genres = genresRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() },
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    genres = selectedGenreNames.toList(),
                     year = year,
-                    mood = if (selectedMoodNames.isEmpty()) null else selectedMoodNames.first(),
+                    mood = selectedMoodNames.firstOrNull(),
                     moods = selectedMoodNames.toList(),
                     originalTitle = serverSong.title,
                     originalArtist = serverSong.artist,
@@ -152,12 +177,21 @@ object EditSongMetadataDialog {
                     originalYear = serverSong.year
                 )
             )
-            Toast.makeText(context, "Metadatos guardados localmente", Toast.LENGTH_SHORT).show()
             dialog.dismiss()
             onSaved()
         }
 
         dialog.setContentView(view)
         dialog.show()
+    }
+
+    private fun updateChipStyle(chip: Chip, isChecked: Boolean) {
+        if (isChecked) {
+            chip.chipBackgroundColor = ColorStateList.valueOf(Color.parseColor("#1DB954"))
+            chip.setTextColor(Color.BLACK)
+        } else {
+            chip.chipBackgroundColor = ColorStateList.valueOf(Color.parseColor("#333333"))
+            chip.setTextColor(Color.WHITE)
+        }
     }
 }

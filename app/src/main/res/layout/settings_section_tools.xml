@@ -48,6 +48,18 @@
                     app:icon="@android:drawable/ic_menu_rotate"
                     app:cornerRadius="16dp" />
 
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnStartDJSession"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Iniciar Sesión DJ"
+                    android:textAllCaps="false"
+                    app:icon="@drawable/ic_comment"
+                    app:cornerRadius="16dp"
+                    android:visibility="gone" />
+
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/swMixPodcastsRedesign"
                     android:layout_width="match_parent"

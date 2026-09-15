@@ -14,6 +14,16 @@ import java.util.concurrent.TimeUnit
  */
 object ServerReachability {
 
+    /**
+     * Última respuesta conocida, actualizada por el monitor de conectividad
+     * de MainActivity. Se lee de forma síncrona (sin suspender) desde
+     * PlaybackService para decidir, al vuelo, si la cola debe limitarse a
+     * canciones descargadas. Empieza en `true` (optimista) hasta la primera
+     * comprobación real, para no bloquear la reproducción nada más abrir la app.
+     */
+    @Volatile
+    var isOnline: Boolean = true
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(2500, TimeUnit.MILLISECONDS)
         .readTimeout(2500, TimeUnit.MILLISECONDS)

@@ -637,6 +637,15 @@ class SettingsFragment : Fragment() {
     private fun showToolsSettings() {
         clearContentArea()
         val view = layoutInflater.inflate(R.layout.settings_section_tools, contentFrame, false)
+        
+        val btnDJ = view.findViewById<MaterialButton>(R.id.btnStartDJSession)
+        if (sessionManager.isDJ()) {
+            btnDJ.visibility = View.VISIBLE
+            btnDJ.setOnClickListener {
+                Toast.makeText(requireContext(), "Modo DJ: Transmitiendo...", Toast.LENGTH_SHORT).show()
+                // Aquí iría la lógica de broadcast del DJ
+            }
+        }
         contentFrame.addView(view)
 
         view.findViewById<MaterialButton>(R.id.btnRescanLibraryRedesign).setOnClickListener {

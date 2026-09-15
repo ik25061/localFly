@@ -229,6 +229,31 @@ data class MoodsResponse(
     val moods: List<Mood>
 )
 
+// --- Comentarios y Valoraciones ---
+
+data class Comment(
+    val id: String,
+    val songId: String,
+    val userId: String,
+    val username: String,
+    val text: String,
+    val rating: Int, // 1-5 estrellas
+    val createdAt: String
+)
+
+data class CommentsResponse(
+    val comments: List<Comment>,
+    val averageRating: Double,
+    val totalCount: Int
+)
+
+data class PostCommentRequest(
+    val userId: String?,
+    val songId: String,
+    val text: String,
+    val rating: Int
+)
+
 data class IpConfigResponse(
     val ip: String
 )

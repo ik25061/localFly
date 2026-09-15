@@ -48,4 +48,9 @@
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">50%</item>
     </style>
+
+    <style name="RatingBarGreen" parent="Theme.AppCompat">
+        <item name="colorControlNormal">#44FFFFFF</item>
+        <item name="colorControlActivated">#1DB954</item>
+    </style>
 </resources>

@@ -80,11 +80,12 @@ class SessionManager(context: Context) {
     fun getServerBaseUrl(): String =
         prefs.getString("server_base_url", null) ?: RetrofitClient.getBaseUrl()
 
-    fun saveSession(token: String, userId: String, username: String) {
+    fun saveSession(token: String, userId: String, username: String, role: String? = "USER") {
         prefs.edit()
             .putString("token", token)
             .putString("user_id", userId)
             .putString("username", username)
+            .putString("role", role ?: "USER")
             .apply()
     }
 
@@ -92,6 +93,7 @@ class SessionManager(context: Context) {
 
     fun getUsername(): String? = prefs.getString("username", null)
     fun getUserId(): String? = prefs.getString("user_id", null)
+    fun getRole(): String = prefs.getString("role", "USER") ?: "USER"
     fun clearSession() {
         prefs.edit().clear().apply()
     }
@@ -340,7 +342,6 @@ class SessionManager(context: Context) {
     fun getBackgroundAlphaPct(): Int = prefs.getInt("app_bg_alpha_pct", 100).coerceIn(0, 100)
     fun setBackgroundAlphaPct(pct: Int) = prefs.edit().putInt("app_bg_alpha_pct", pct.coerceIn(0, 100)).apply()
 
-    /** Desenfoque del fondo (0 = sin desenfoque, 100 = máximo). */
     fun getBackgroundBlur(): Int = prefs.getInt("app_bg_blur", 0).coerceIn(0, 100)
     fun setBackgroundBlur(blur: Int) = prefs.edit().putInt("app_bg_blur", blur.coerceIn(0, 100)).apply()
 
@@ -349,5 +350,6 @@ class SessionManager(context: Context) {
     fun getBackgroundImageFitMode(): String = prefs.getString("app_bg_image_fit", "cover") ?: "cover"
     fun setBackgroundImageFitMode(mode: String) = prefs.edit().putString("app_bg_image_fit", mode).apply()
 
-    fun isAdmin(): Boolean = getUsername()?.equals("Rafael", ignoreCase = true) == true
+    fun isAdmin(): Boolean = getRole() == "ADMIN" || getUsername()?.equals("Rafael", ignoreCase = true) == true
+    fun isDJ(): Boolean = getRole() == "DJ" || isAdmin()
 }

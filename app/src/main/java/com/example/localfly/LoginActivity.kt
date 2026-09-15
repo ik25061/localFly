@@ -67,7 +67,7 @@ class LoginActivity : AppCompatActivity() {
                     val token = body.token
                     val user = body.user
                     if (token != null && user != null) {
-                        sessionManager.saveSession(token, user.id, user.username)
+                        sessionManager.saveSession(token, user.id, user.username, user.role)
                         goToMain()
                     } else {
                         showError("Respuesta inesperada del servidor")

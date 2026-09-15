@@ -84,14 +84,79 @@
             android:layout_marginBottom="8dp" />
 
         <!-- Canciones del género -->
-        <TextView
+        <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Canciones del género"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:layout_centerVertical="true"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnSelectBatch"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="Seleccionar"
+                android:textAllCaps="false"
+                android:textColor="#1DB954"
+                android:textSize="12sp" />
+        </RelativeLayout>
+
+        <!-- Batch Action Bar (hidden by default) -->
+        <LinearLayout
+            android:id="@+id/layoutBatchActions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:paddingHorizontal="12dp"
-            android:text="Canciones del género"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:layout_marginBottom="8dp"
+            android:visibility="gone"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tvSelectedCount"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="0 seleccionadas"
+                android:textColor="#1DB954"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBatchMove"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_metadata"
+                app:iconTint="#FFFFFF"
+                android:contentDescription="Mover a otro género" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBatchRemove"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@drawable/ic_delete"
+                app:iconTint="#FF4444"
+                android:contentDescription="Quitar de este género" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCancelSelection"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:icon="@android:drawable/ic_menu_close_clear_cancel"
+                app:iconTint="#AAAAAA"
+                android:contentDescription="Cancelar selección" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tvNoGenreSongs"

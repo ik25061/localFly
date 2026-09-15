@@ -33,6 +33,7 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
+import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.LocalLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -416,6 +417,27 @@ class PlaybackService : MediaSessionService() {
 
     fun setQueueAndPlay(songs: List<Song>, startIndex: Int, localPaths: List<String?>? = null) {
         if (songs.isEmpty() || startIndex !in songs.indices) return
+
+        if (!ServerReachability.isOnline) {
+            // Offline: la cola solo puede contener lo que ya está en el teléfono.
+            val requestedSong = songs.getOrNull(startIndex)
+            val indexed = songs.withIndex().filter { (_, s) -> downloadHelper.isDownloaded(s.id) }
+            if (indexed.isEmpty()) {
+                LocalLogger.log(this, "setQueueAndPlay: sin conexión y nada de esta lista está descargado")
+                return
+            }
+            val filteredSongs = indexed.map { it.value }
+            val filteredPaths = indexed.map { (i, s) -> localPaths?.getOrNull(i) ?: downloadHelper.getLocalFilePath(s.id) }
+            val newStartIndex = requestedSong?.let { req -> filteredSongs.indexOfFirst { it.id == req.id } }
+                ?.takeIf { it >= 0 } ?: 0
+
+            queue = filteredSongs
+            queueLocalPaths = filteredPaths
+            currentIndex = newStartIndex
+            playCurrentIndex()
+            return
+        }
+
         queue = songs
         queueLocalPaths = localPaths ?: List(songs.size) { null }
         currentIndex = startIndex
@@ -424,6 +446,42 @@ class PlaybackService : MediaSessionService() {
 
     fun playSong(song: Song, localFilePath: String? = null) {
         setQueueAndPlay(listOf(song), 0, listOf(localFilePath))
+    }
+
+    /** Quita de lo que queda por sonar (nunca de lo ya reproducido) cualquier
+     *  canción que no esté descargada, cuando detectamos que estamos offline.
+     *  Cubre el caso de "empecé a reproducir con conexión y la perdí a mitad
+     *  de la cola" — [setQueueAndPlay] ya cubre el caso de arrancar sin conexión. */
+    private fun pruneQueueToDownloadedIfOffline() {
+        if (ServerReachability.isOnline || queue.isEmpty()) return
+        val history = queue.take(currentIndex + 1)
+        val upcoming = queue.drop(currentIndex + 1)
+        val prunedUpcoming = upcoming.filter { downloadHelper.isDownloaded(it.id) }
+        if (prunedUpcoming.size == upcoming.size) return
+
+        val newQueue = history + prunedUpcoming
+        queue = newQueue
+        queueLocalPaths = newQueue.map { downloadHelper.getLocalFilePath(it.id) }
+        onStateChanged?.invoke()
+    }
+
+    /** Mezcla aleatoria de todo lo descargado en el teléfono, excluyendo
+     *  [excludeIds] (normalmente lo que ya sonó en esta sesión). La usa el
+     *  botón "DJ Smart" cuando no hay conexión. */
+    fun buildOfflineSmartMix(excludeIds: Set<String>, limit: Int = 40): List<Song> {
+        return downloadHelper.getDownloadedSongs()
+            .filter { it.id !in excludeIds }
+            .shuffled()
+            .take(limit)
+            .map { d ->
+                Song(
+                    id = d.id, title = d.title, artist = d.artist,
+                    album = null, year = null, duration = d.duration,
+                    bpm = d.bpm, key = d.key, liked = d.liked,
+                    hasCover = d.hasCover, hasLyrics = d.hasLyrics,
+                    isEpisode = d.isEpisode, lastPositionMs = 0L
+                )
+            }
     }
 
     fun playNext(song: Song) {
@@ -507,6 +565,7 @@ class PlaybackService : MediaSessionService() {
      * Si es así, rellena con recomendaciones (online) o con descargas (offline).
      */
     private fun checkAndRefillQueue() {
+        pruneQueueToDownloadedIfOffline()
         val pendingCount = queue.size - (currentIndex + 1)
         if (pendingCount >= 10) return
 
@@ -557,6 +616,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun handleAutoAdvance() {
+        pruneQueueToDownloadedIfOffline()
         if (!hasNext()) return
         val songToHandle = currentSong
         val indexToHandle = currentIndex
@@ -590,6 +650,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun next() {
+        checkAndRefillQueue()
         val songToHandle = currentSong
         val indexToHandle = currentIndex
         if (currentIndex + 1 < queue.size) {
@@ -623,19 +684,29 @@ class PlaybackService : MediaSessionService() {
         val song = queue.getOrNull(currentIndex) ?: return
         val localPath = queueLocalPaths.getOrNull(currentIndex)
         currentSong = song
-        val metaBuilder = MediaMetadata.Builder().setTitle(song.title).setArtist(song.artist).setAlbumTitle(song.album)
-        if (localPath == null) metaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${song.id}"))
+        
+        // Aplicar metadatos locales (ediciones del admin) antes de construir el MediaItem
+        val displayedSong = SongAdminStore.applyTo(song)
+        
+        val metaBuilder = MediaMetadata.Builder()
+            .setTitle(displayedSong.title)
+            .setArtist(displayedSong.artist)
+            .setAlbumTitle(displayedSong.album)
+            
+        if (localPath == null) metaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${displayedSong.id}"))
         
         // Punto 2: Corregir URL de podcast (usar /podcast-audio en lugar de /audio si es episodio)
-        val baseAudioUrl = if (song.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
+        val baseAudioUrl = if (displayedSong.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
         
         val mediaItem = MediaItem.Builder()
-            .setUri(if (localPath != null) Uri.fromFile(File(localPath)) else Uri.parse("$baseAudioUrl${song.id}"))
+            .setUri(if (localPath != null) Uri.fromFile(File(localPath)) else Uri.parse("$baseAudioUrl${displayedSong.id}"))
             .setMediaMetadata(metaBuilder.build())
             .build()
         player?.setMediaItem(mediaItem)
         if (hasNext()) {
-            val nextSong = queue[currentIndex + 1]
+            val nextSongRaw = queue[currentIndex + 1]
+            val nextSong = SongAdminStore.applyTo(nextSongRaw)
+            
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
             val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
             if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
@@ -651,8 +722,8 @@ class PlaybackService : MediaSessionService() {
         player?.prepare()
         
         // Continuar episodio donde se dejó
-        if (song.isEpisode && song.lastPositionMs > 0) {
-            player?.seekTo(song.lastPositionMs)
+        if (displayedSong.isEpisode && displayedSong.lastPositionMs > 0) {
+            player?.seekTo(displayedSong.lastPositionMs)
         }
 
         fadeOutStartedForCurrentSong = false

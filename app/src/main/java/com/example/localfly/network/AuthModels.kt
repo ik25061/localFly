@@ -18,5 +18,6 @@ data class VerifyTokenRequest(
 
 data class UserData(
     val id: String,
-    val username: String
+    val username: String,
+    val role: String? = "USER"
 )

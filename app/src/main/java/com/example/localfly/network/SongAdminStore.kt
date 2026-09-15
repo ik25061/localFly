@@ -26,6 +26,7 @@ import com.google.gson.reflect.TypeToken
 data class SongEdit(
     val songId: String,
     val title: String? = null,
+    val artist: String? = null,
     val album: String? = null,
     val genres: List<String> = emptyList(),
     val year: Int? = null,
@@ -135,6 +136,7 @@ object SongAdminStore {
         val edit = editsCache[song.id] ?: return song
         return song.copy(
             title = edit.title ?: song.title,
+            artist = edit.artist ?: song.artist,
             album = edit.album ?: song.album,
             year = edit.year ?: song.year
         )
@@ -160,7 +162,7 @@ object SongAdminStore {
     fun getEditedMoods(songId: String): List<String> = editsCache[songId]?.moods ?: emptyList()
 
     fun saveEdit(edit: SongEdit) {
-        if (edit.title.isNullOrBlank() && edit.album.isNullOrBlank() &&
+        if (edit.title.isNullOrBlank() && edit.artist.isNullOrBlank() && edit.album.isNullOrBlank() &&
             edit.genres.isEmpty() && edit.year == null && edit.mood.isNullOrBlank() &&
             edit.moods.isEmpty()
         ) {
@@ -263,6 +265,11 @@ object SongAdminStore {
     fun removeSongFromGenre(genreId: String, songId: String) {
         val genre = getGenre(genreId) ?: return
         saveGenre(genre.copy(songIds = genre.songIds.filter { it != songId }))
+    }
+
+    fun removeSongsFromGenre(genreId: String, songIdsToRemove: Set<String>) {
+        val genre = getGenre(genreId) ?: return
+        saveGenre(genre.copy(songIds = genre.songIds.filter { it !in songIdsToRemove }))
     }
 
     private fun persistGenres() {

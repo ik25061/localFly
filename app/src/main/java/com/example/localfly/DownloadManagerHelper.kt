@@ -1,6 +1,7 @@
 package com.example.localfly
 
 import android.content.Context
+import com.example.localfly.ai.AIWeightsStore
 import com.example.localfly.network.Song
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
@@ -323,7 +324,7 @@ class DownloadManagerHelper private constructor(context: Context) {
         val limit = 500 - currentCount
         android.util.Log.d("DownloadManager", "Auto-descarga: iniciando búsqueda de $limit temas nuevos...")
         
-        val weightsStore = appContext?.let { com.example.localfly.ai.AIWeightsStore(it) }
+        val weightsStore = AIWeightsStore(appContext)
         val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, weightsStore)
         
         // Obtener recomendaciones (la IA ya usa los likes y artistas favoritos)

@@ -11,6 +11,7 @@ import android.os.Looper
 import android.view.View
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.RatingBar
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -33,10 +34,13 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.lyrics.LyricsTranslator
 import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.dialogs.AddToPlaylistDialog
+import com.example.localfly.dialogs.CommentsBottomSheet
 import com.example.localfly.dialogs.EditSongMetadataDialog
+import com.example.localfly.dialogs.LyricsEditorDialog
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.LocalLogger
 import com.example.localfly.utils.CoverPlaceholder
+import com.example.localfly.utils.SmartReorderUtils
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +61,9 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var ivBlurredBackground: ImageView
     private lateinit var tvTitle: TextView
     private lateinit var tvArtist: TextView
+    private lateinit var tvAlbumYear: TextView
+    private lateinit var rbSongAvg: RatingBar
+    private lateinit var tvRatingText: TextView
     private lateinit var waveformSeekBar: com.masoudss.lib.WaveformSeekBar
     private lateinit var tvCurrentTime: TextView
     private lateinit var tvTotalTime: TextView
@@ -69,6 +76,8 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnAddToPlaylist: ImageButton
     private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
+    private lateinit var btnEditLyrics: ImageButton
+    private lateinit var btnComments: ImageButton
     private lateinit var btnEditMetadata: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
@@ -168,6 +177,9 @@ class NowPlayingActivity : AppCompatActivity() {
         ivBlurredBackground = findViewById(R.id.ivBlurredBackground)
         tvTitle = findViewById(R.id.tvFullTitle)
         tvArtist = findViewById(R.id.tvFullArtist)
+        tvAlbumYear = findViewById(R.id.tvAlbumYear)
+        rbSongAvg = findViewById(R.id.rbSongAvg)
+        tvRatingText = findViewById(R.id.tvRatingText)
         waveformSeekBar = findViewById(R.id.waveformSeekBar)
         tvCurrentTime = findViewById(R.id.tvCurrentTime)
         tvTotalTime = findViewById(R.id.tvTotalTime)
@@ -180,6 +192,8 @@ class NowPlayingActivity : AppCompatActivity() {
         btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
         btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
+        btnEditLyrics = findViewById(R.id.btnEditLyrics)
+        btnComments = findViewById(R.id.btnComments)
         btnEditMetadata = findViewById(R.id.btnFullEditMetadata)
         btnShowQueueTop = findViewById(R.id.btnShowQueueTop)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
@@ -213,6 +227,14 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
         btnLyrics.setOnClickListener { showLyrics() }
+        btnEditLyrics.setOnClickListener {
+            val song = playbackService?.currentSong ?: return@setOnClickListener
+            LyricsEditorDialog.show(this, song)
+        }
+        btnComments.setOnClickListener {
+            val song = playbackService?.currentSong ?: return@setOnClickListener
+            CommentsBottomSheet.show(this, supportFragmentManager, song.id, lifecycleScope, sessionManager)
+        }
         btnEditMetadata.setOnClickListener {
             val song = playbackService?.currentSong ?: return@setOnClickListener
             EditSongMetadataDialog.show(this, song, SongAdminStore.applyTo(song)) {
@@ -482,17 +504,28 @@ class NowPlayingActivity : AppCompatActivity() {
         if (service.queue.isEmpty()) return
 
         lifecycleScope.launch {
-            Toast.makeText(this@NowPlayingActivity, "🤖 IA mezclando tu sesión...", Toast.LENGTH_SHORT).show()
-            
-            // Reordenar solo las canciones PRÓXIMAS (no la que suena ni las pasadas)
+            val offline = !ServerReachability.isOnline
+            val toastMsg = if (offline) "🤖 Mezclando tus descargas..." else "🤖 IA mezclando tu sesión..."
+            Toast.makeText(this@NowPlayingActivity, toastMsg, Toast.LENGTH_SHORT).show()
+
+            // Reordenar/armar solo las canciones PRÓXIMAS (no la que suena ni las pasadas)
             val currentIdx = service.currentIndex
             val history = service.queue.take(currentIdx + 1)
-            val upcoming = service.queue.drop(currentIdx + 1)
-            
-            val reorderedUpcoming = com.example.localfly.utils.SmartReorderUtils.reorder(upcoming)
-            
+
+            val upcoming = if (offline) {
+                // Sin conexión: en vez de solo reordenar lo poco que ya había en
+                // cola, se arma una mezcla nueva con todo lo descargado.
+                val excludeIds = history.map { it.id }.toSet()
+                service.buildOfflineSmartMix(excludeIds)
+            } else {
+                service.queue.drop(currentIdx + 1)
+            }
+
+            val reorderedUpcoming = SmartReorderUtils.reorder(upcoming)
+
             service.updateFullQueue(history + reorderedUpcoming)
-            Toast.makeText(this@NowPlayingActivity, "Mezcla Smart DJ aplicada", Toast.LENGTH_SHORT).show()
+            val doneMsg = if (offline) "Mezcla Smart DJ (offline) aplicada" else "Mezcla Smart DJ aplicada"
+            Toast.makeText(this@NowPlayingActivity, doneMsg, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -923,6 +956,14 @@ class NowPlayingActivity : AppCompatActivity() {
         tvTitle.text = toTitleCase(song.title)
         tvArtist.text = toTitleCase(song.artist) ?: "Artista desconocido"
         
+        val album = song.album ?: "Álbum desconocido"
+        val year = song.year?.toString() ?: "S/A"
+        tvAlbumYear.text = "$album · $year"
+        
+        loadCommentStats(song.id)
+        
+        btnEditLyrics.visibility = if (sessionManager.isAdmin()) View.VISIBLE else View.GONE
+        
         // Ajustar diseño para Podcast vs Música
         if (isPodcast) {
             tvHeaderType.text = "PODCAST"
@@ -932,6 +973,10 @@ class NowPlayingActivity : AppCompatActivity() {
             ivPodcastHeader.visibility = View.VISIBLE
             findViewById<View>(R.id.vPodcastGradient).visibility = View.VISIBLE
             findViewById<View>(R.id.backgroundScrim).visibility = View.GONE
+            
+            // Ocultar botones no relevantes para Podcast (la letra es automática)
+            btnDislike.visibility = View.GONE
+            // btnLyrics.visibility = View.GONE // Mantener si quieres permitir ver la letra completa manual
             
             // Cargar imagen de cabecera grande
             val coverUrl = "$serverBaseUrl/cover/${song.id}"
@@ -952,6 +997,10 @@ class NowPlayingActivity : AppCompatActivity() {
             findViewById<View>(R.id.vPodcastGradient).visibility = View.GONE
             findViewById<View>(R.id.backgroundScrim).visibility = View.VISIBLE
             cardTranscript.visibility = View.GONE
+            
+            // Mostrar botones para Música
+            btnDislike.visibility = View.VISIBLE
+            btnLyrics.visibility = View.VISIBLE
             
             val artistEncoded = URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
             val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
@@ -978,6 +1027,29 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext.isEnabled = playbackService?.hasNext() == true
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
         if (queueIsVisible) updateQueueUI()
+    }
+
+    private fun loadCommentStats(songId: String) {
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.getComments(songId)
+                if (response.isSuccessful && response.body() != null) {
+                    val data = response.body()!!
+                    rbSongAvg.rating = data.averageRating.toFloat()
+                    
+                    val ratingLabel = when {
+                        data.averageRating >= 4.5 -> "Imperdible 🔥"
+                        data.averageRating >= 3.5 -> "Muy buena ✨"
+                        data.averageRating >= 2.5 -> "Recomendada 👍"
+                        data.totalCount == 0 -> "Sin valoraciones"
+                        else -> "Regular"
+                    }
+                    tvRatingText.text = "$ratingLabel · ${data.totalCount} opiniones"
+                }
+            } catch (e: Exception) {
+                tvRatingText.text = "Error al cargar opiniones"
+            }
+        }
     }
 
     private fun loadTranscriptInline(song: Song) {

@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -48,6 +49,12 @@ class GenreDetailFragment : Fragment() {
     private lateinit var tvNoSuggestions: TextView
     private lateinit var layoutSuggestions: LinearLayout
 
+    private lateinit var layoutBatchActions: View
+    private lateinit var tvSelectedCount: TextView
+    private lateinit var btnSelectBatch: MaterialButton
+    private lateinit var btnRenameGenre: MaterialButton
+    private lateinit var btnDeleteGenreDetail: MaterialButton
+
     // Copia de la biblioteca para el buscador de "Añadir canciones".
     private var librarySongs: List<Song> = emptyList()
 
@@ -61,7 +68,8 @@ class GenreDetailFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_genre_detail, container, false)
     }
-override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         sessionManager = SessionManager(requireContext())
         downloadHelper = DownloadManagerHelper.getInstance(requireContext())
@@ -77,19 +85,61 @@ override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         tvNoSuggestions = view.findViewById(R.id.tvNoAiSuggestions)
         layoutSuggestions = view.findViewById(R.id.layoutAiSuggestions)
 
+        layoutBatchActions = view.findViewById(R.id.layoutBatchActions)
+        tvSelectedCount = view.findViewById(R.id.tvSelectedCount)
+        btnSelectBatch = view.findViewById(R.id.btnSelectBatch)
+        btnRenameGenre = view.findViewById(R.id.btnRenameGenre)
+        btnDeleteGenreDetail = view.findViewById(R.id.btnDeleteGenreDetail)
+
         view.findViewById<ImageButton>(R.id.btnBackGenreDetail).setOnClickListener {
             parentFragmentManager.popBackStack()
         }
 
-        view.findViewById<MaterialButton>(R.id.btnRenameGenre).setOnClickListener {
+        btnRenameGenre.setOnClickListener {
             val genre = SongAdminStore.getGenre(genreId ?: "")
             if (genre != null) {
                 NewGenreDialog.show(requireContext(), genre) { refreshMeta() }
             }
         }
 
-        view.findViewById<MaterialButton>(R.id.btnDeleteGenreDetail).setOnClickListener {
+        btnDeleteGenreDetail.setOnClickListener {
             confirmDeleteGenre()
+        }
+
+        btnSelectBatch.setOnClickListener {
+            val enabled = !songsAdapter.isSelectionMode()
+            songsAdapter.setSelectionMode(enabled)
+            btnSelectBatch.text = if (enabled) "Cancelar" else "Seleccionar"
+            layoutBatchActions.visibility = if (enabled) View.VISIBLE else View.GONE
+            if (!enabled) updateBatchUI()
+        }
+
+        view.findViewById<MaterialButton>(R.id.btnBatchRemove).setOnClickListener {
+            val selected = songsAdapter.getSelectedSongIds()
+            if (selected.isNotEmpty()) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Quitar canciones")
+                    .setMessage("¿Quitar las ${selected.size} canciones seleccionadas de este género?")
+                    .setPositiveButton("Quitar") { _, _ ->
+                        SongAdminStore.removeSongsFromGenre(genreId ?: "", selected)
+                        songsAdapter.setSelectionMode(false)
+                        btnSelectBatch.text = "Seleccionar"
+                        layoutBatchActions.visibility = View.GONE
+                        loadGenreSongs()
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            }
+        }
+
+        view.findViewById<MaterialButton>(R.id.btnBatchMove).setOnClickListener {
+            showMoveToGenreDialog()
+        }
+
+        view.findViewById<MaterialButton>(R.id.btnCancelSelection).setOnClickListener {
+            songsAdapter.setSelectionMode(false)
+            btnSelectBatch.text = "Seleccionar"
+            layoutBatchActions.visibility = View.GONE
         }
 
         // Si el género ya no existe (borrado en otra pantalla), volvemos atrás.
@@ -104,9 +154,14 @@ override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
             serverBaseUrl = RetrofitClient.getBaseUrl(),
             downloadHelper = downloadHelper,
             onSongClick = { song, position ->
-                val allSongs = songsAdapter.currentSongs()
-                val localPaths = allSongs.map { downloadHelper.getLocalFilePath(it.id) }
-                (requireActivity() as? MainActivity)?.playbackService?.setQueueAndPlay(allSongs, position, localPaths)
+                if (songsAdapter.isSelectionMode()) {
+                    songsAdapter.toggleSelection(song.id)
+                    updateBatchUI()
+                } else {
+                    val allSongs = songsAdapter.currentSongs()
+                    val localPaths = allSongs.map { downloadHelper.getLocalFilePath(it.id) }
+                    (requireActivity() as? MainActivity)?.playbackService?.setQueueAndPlay(allSongs, position, localPaths)
+                }
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
             onDislikeClick = { _, _ -> },
@@ -144,11 +199,47 @@ override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         loadPicker()
     }
 
+    private fun updateBatchUI() {
+        val count = songsAdapter.getSelectedSongIds().size
+        tvSelectedCount.text = "$count seleccionadas"
+    }
+
+    private fun showMoveToGenreDialog() {
+        val selectedIds = songsAdapter.getSelectedSongIds()
+        if (selectedIds.isEmpty()) return
+
+        val genres = SongAdminStore.getGenres().filter { it.id != genreId }
+        if (genres.isEmpty()) {
+            Toast.makeText(requireContext(), "No hay otros géneros disponibles", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val names = genres.map { it.name }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle("Mover a género")
+            .setItems(names) { _, which ->
+                val targetGenre = genres[which]
+                // 1. Añadir a destino
+                SongAdminStore.addSongsToGenre(targetGenre.id, selectedIds.toList())
+                // 2. Quitar de origen
+                SongAdminStore.removeSongsFromGenre(genreId ?: "", selectedIds)
+                
+                songsAdapter.setSelectionMode(false)
+                btnSelectBatch.text = "Seleccionar"
+                layoutBatchActions.visibility = View.GONE
+                loadGenreSongs()
+                Toast.makeText(requireContext(), "Movidas a ${targetGenre.name}", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun inGenre(songId: String): Boolean {
         val genre = SongAdminStore.getGenre(genreId ?: "") ?: return false
         return songId in genre.songIds
     }
-private fun refreshMeta() {
+
+    private fun refreshMeta() {
         val genre = SongAdminStore.getGenre(genreId ?: "") ?: return
         tvTitle.text = genre.name
         tvMeta.text = if (genre.songIds.size == 1) "1 canción" else "${genre.songIds.size} canciones"

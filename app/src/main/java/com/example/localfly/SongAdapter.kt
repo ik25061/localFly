@@ -10,6 +10,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.CoverPlaceholder
@@ -49,13 +50,38 @@ class SongAdapter(
             .inflate(R.layout.item_song, parent, false)
         return SongViewHolder(view)
     }
+
+    private var isSelectionMode: Boolean = false
+    private val selectedSongIds: MutableSet<String> = mutableSetOf()
+
+    fun setSelectionMode(enabled: Boolean) {
+        isSelectionMode = enabled
+        if (!enabled) selectedSongIds.clear()
+        notifyDataSetChanged()
+    }
+
+    fun isSelectionMode() = isSelectionMode
+    fun getSelectedSongIds() = selectedSongIds.toSet()
+
+    fun toggleSelection(songId: String) {
+        if (selectedSongIds.contains(songId)) selectedSongIds.remove(songId)
+        else selectedSongIds.add(songId)
+        notifyDataSetChanged()
+    }
  
     override fun onBindViewHolder(holder: SongViewHolder, position: Int) {
-         val song = SongAdminStore.applyTo(songs[position])
-        holder.tvIndex.text = (position +  1).toString()
+        val song = SongAdminStore.applyTo(songs[position])
+        
+        if (isSelectionMode) {
+            holder.tvIndex.text = if (song.id in selectedSongIds) "✓" else ""
+            holder.itemView.setBackgroundColor(if (song.id in selectedSongIds) 0x331DB954.toInt() else 0)
+        } else {
+            holder.tvIndex.text = (position + 1).toString()
+            holder.itemView.setBackgroundColor(0)
+        }
  
         // Highlight current song
-        if (song.id == playingSongId) {
+        if (song.id == playingSongId && !isSelectionMode) {
             holder.tvIndex.setTextColor(android.graphics.Color.parseColor("#1DB954"))
             holder.tvTitle.setTextColor(android.graphics.Color.parseColor("#1DB954"))
         } else {
@@ -121,6 +147,10 @@ class SongAdapter(
             4,
             if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
         )
+        
+        if (SessionManager(holder.itemView.context).isAdmin()) {
+            popup.menu.add(0, MENU_EDIT_LYRICS, 5, "Editar letra")
+        }
 
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
@@ -129,6 +159,9 @@ class SongAdapter(
                 MENU_ADD_PLAYLIST -> onAddToPlaylistClick?.invoke(song)
                 MENU_PLAY_NEXT -> onPlayNextClick?.invoke(song)
                 MENU_DOWNLOAD -> onDownloadClick(song)
+                MENU_EDIT_LYRICS -> {
+                    com.example.localfly.dialogs.LyricsEditorDialog.show(holder.itemView.context, song)
+                }
             }
             true
         }
@@ -187,5 +220,6 @@ class SongAdapter(
         const val MENU_PLAY_NEXT = 3
         const val MENU_DOWNLOAD = 4
         const val MENU_ADD_PLAYLIST = 5
+        const val MENU_EDIT_LYRICS = 6
     }
 }

@@ -364,6 +364,7 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun checkServerReachabilityNow() {
         val reachable = ServerReachability.isServerReachable()
+        ServerReachability.isOnline = reachable
         if (isServerOnline == reachable) return
         isServerOnline = reachable
         if (!reachable) return

@@ -183,20 +183,27 @@ class DislikedSongsAdminFragment : Fragment() {
             .show()
     }
 
+    @OptIn(UnstableApi::class)
     private fun deleteFromDisk(song: DislikedSong) {
+        val activity = requireActivity() as? MainActivity
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.deleteSong(
                     DeleteSongRequest(id = song.songId, userId = sessionManager.getUserId())
                 )
                 if (response.isSuccessful) {
+                    // Si la canción está sonando ahora mismo, saltar a la siguiente
+                    if (activity?.playbackService?.currentSong?.id == song.songId) {
+                        activity.playbackService?.next()
+                    }
+                    
                     val helper = DownloadManagerHelper.getInstance(requireContext())
                     if (helper.isDownloaded(song.songId)) {
                         helper.removeDownload(song.songId)
                     }
                     SongAdminStore.removeDislikedSong(song.songId)
                     if (isAdded) {
-                        Toast.makeText(requireContext(), "Canción eliminada del disco", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(requireContext(), "Canción eliminada del disco y saltada", Toast.LENGTH_SHORT).show()
                         refresh()
                     }
                 } else if (isAdded) {

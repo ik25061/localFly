@@ -259,4 +259,15 @@ interface ApiService {
         @Body request: ProgressUpdateRequest
     ): Response<Unit>
 
+    // --- Comentarios ---
+
+    @GET("api/songs/{id}/comments")
+    suspend fun getComments(
+        @Path("id") songId: String
+    ): Response<CommentsResponse>
+
+    @POST("api/comments")
+    suspend fun postComment(
+        @Body request: PostCommentRequest
+    ): Response<Comment>
 }
