@@ -153,16 +153,12 @@ class SettingsFragment : Fragment() {
 
         // Font Family List
         val fontLayout = view.findViewById<LinearLayout>(R.id.layoutFontList)
-        val fonts = listOf("Default", "Serif", "Monospace")
+        val fonts = listOf("Default", "Serif", "Monospace", "Sans (Ligera)", "Sans (Condensada)", "Sans (Media)", "Sans (Thin)", "Sans (Pequeñas caps)", "Cursiva")
         fonts.forEach { fontName ->
             val fontView = layoutInflater.inflate(R.layout.item_playlist_pick, fontLayout, false) // Reusar item simple
             val tv = fontView.findViewById<TextView>(R.id.tvPlaylistPickName)
             tv.text = fontName
-            tv.typeface = when (fontName) {
-                "Serif" -> Typeface.SERIF
-                "Monospace" -> Typeface.MONOSPACE
-                else -> Typeface.DEFAULT
-            }
+            tv.typeface = com.example.localfly.utils.FontApplier.typefaceFor(fontName)
             if (fontName == sessionManager.getFontFamily()) {
                 tv.setTextColor(Color.parseColor("#1DB954"))
             }
@@ -189,6 +185,21 @@ class SettingsFragment : Fragment() {
         val btnSolid = view.findViewById<MaterialButton>(R.id.btnModeSolid)
         val btnGradient = view.findViewById<MaterialButton>(R.id.btnModeGradient)
         val btnImage = view.findViewById<MaterialButton>(R.id.btnModeImage)
+        val btnRandom = view.findViewById<MaterialButton>(R.id.btnModeRandom)
+
+        fun randomPreviewGradient(): GradientDrawable {
+            val palette = arrayOf(
+                "#1DB954" to "#121212", "#0f2027" to "#2c5364", "#ff512f" to "#dd2476",
+                "#2193b0" to "#6dd5ed", "#134e5e" to "#71b280", "#654ea3" to "#eaafc8",
+                "#355c7d" to "#c06c84", "#141E30" to "#243B55", "#3a1c71" to "#d76d77"
+            )
+            val (s, e) = palette[kotlin.random.Random.nextInt(palette.size)]
+            val alpha = (sessionManager.getBackgroundAlphaPct() * 255) / 100
+            return GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor(s), Color.parseColor(e))
+            ).apply { this.alpha = alpha }
+        }
 
         fun updateLargePreview() {
             val mode = sessionManager.getBackgroundMode()
@@ -200,6 +211,7 @@ class SettingsFragment : Fragment() {
                     GradientDrawable.Orientation.TL_BR,
                     intArrayOf(Color.parseColor(sessionManager.getBackgroundGradientStart()), Color.parseColor(sessionManager.getBackgroundGradientEnd()))
                 ).apply { this.alpha = alpha }
+                "random" -> previewLarge.background = randomPreviewGradient()
                 "image" -> {
                     val uriString = sessionManager.getBackgroundImageUri()?.trim()
                     previewLarge.background = ColorDrawable(Color.DKGRAY).apply { this.alpha = alpha }
@@ -240,6 +252,7 @@ class SettingsFragment : Fragment() {
             btnSolid.setBackgroundColor(if (mode == "solid") green else gray)
             btnGradient.setBackgroundColor(if (mode == "gradient") green else gray)
             btnImage.setBackgroundColor(if (mode == "image") green else gray)
+            btnRandom.setBackgroundColor(if (mode == "random") green else gray)
 
             when (mode) {
                 "solid" -> {
@@ -302,6 +315,21 @@ class SettingsFragment : Fragment() {
                         }
                     })
                     addFullWidth(rowColors)
+                }
+                "random" -> {
+                    addFullWidth(TextView(requireContext()).apply {
+                        text = "Cada vez que entres a la app se mostrará un degradado de fondo distinto."
+                        setTextColor(Color.parseColor("#BBFFFFFF"))
+                        textSize = 12f
+                        setPadding(0, 4, 0, 0)
+                    })
+                    addFullWidth(MaterialButton(requireContext()).apply {
+                        text = "Generar otro ahora"
+                        setOnClickListener {
+                            sessionManager.setBackgroundMode("random")
+                            applyAndRefresh()
+                        }
+                    })
                 }
                 "image" -> {
                     val d = resources.displayMetrics.density
@@ -402,6 +430,12 @@ class SettingsFragment : Fragment() {
         btnImage.setOnClickListener {
             sessionManager.setBackgroundMode("image")
             attachBackgroundActionsForMode("image")
+            (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
+            updateLargePreview()
+        }
+        btnRandom.setOnClickListener {
+            sessionManager.setBackgroundMode("random")
+            attachBackgroundActionsForMode("random")
             (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
             updateLargePreview()
         }
@@ -669,6 +703,10 @@ class SettingsFragment : Fragment() {
         swMix.isChecked = sessionManager.isPodcastMixingEnabled()
         swMix.setOnCheckedChangeListener { _, isChecked -> sessionManager.setPodcastMixingEnabled(isChecked) }
 
+        view.findViewById<MaterialButton>(R.id.btnAutoDownloadMode).setOnClickListener {
+            showAutoDownloadModeDialog()
+        }
+
         view.findViewById<MaterialButton>(R.id.btnOpenAdminPanelRedesign).setOnClickListener {
             parentFragmentManager.beginTransaction()
                 .replace(R.id.container, AdminPanelFragment())
@@ -678,6 +716,47 @@ class SettingsFragment : Fragment() {
 
         view.findViewById<MaterialButton>(R.id.btnViewLogRedesign).setOnClickListener {
             showLogDialog()
+        }
+    }
+
+    // --- Auto-descarga: modo de rellenado ---
+
+    private fun showAutoDownloadModeDialog() {
+        val dialog = BottomSheetDialog(requireContext())
+        val view = layoutInflater.inflate(R.layout.dialog_auto_download, null)
+        dialog.setContentView(view)
+
+        val isLiked = sessionManager.getAutoDownloadMode() == "liked"
+        view.findViewById<TextView>(R.id.tvAutoDownloadCurrent).text =
+            if (isLiked) "Modo actual: Mis canciones favoritas" else "Modo actual: Solo novedades (no escuchadas)"
+
+        applyAutoOptionStyle(view.findViewById<MaterialButton>(R.id.optAutoNew), !isLiked)
+        applyAutoOptionStyle(view.findViewById<MaterialButton>(R.id.optAutoLiked), isLiked)
+
+        view.findViewById<MaterialButton>(R.id.optAutoNew).setOnClickListener {
+            sessionManager.setAutoDownloadMode("new")
+            Toast.makeText(requireContext(), "Descargas automáticas: solo novedades", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+        view.findViewById<MaterialButton>(R.id.optAutoLiked).setOnClickListener {
+            sessionManager.setAutoDownloadMode("liked")
+            Toast.makeText(requireContext(), "Descargas automáticas: mis favoritas", Toast.LENGTH_SHORT).show()
+            dialog.dismiss()
+        }
+
+        dialog.show()
+    }
+
+    private fun applyAutoOptionStyle(btn: MaterialButton, selected: Boolean) {
+        if (selected) {
+            btn.setBackgroundColor(Color.parseColor("#1DB954"))
+            btn.setTextColor(Color.BLACK)
+            btn.strokeWidth = 0
+        } else {
+            btn.setBackgroundColor(Color.TRANSPARENT)
+            btn.setTextColor(Color.WHITE)
+            btn.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#33FFFFFF")))
+            btn.strokeWidth = 3
         }
     }
 

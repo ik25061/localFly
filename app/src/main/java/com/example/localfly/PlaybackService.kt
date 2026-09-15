@@ -418,9 +418,24 @@ class PlaybackService : MediaSessionService() {
     fun setQueueAndPlay(songs: List<Song>, startIndex: Int, localPaths: List<String?>? = null) {
         if (songs.isEmpty() || startIndex !in songs.indices) return
 
+        val requestedSong = songs.getOrNull(startIndex)
+
+        // MODO DESCARGAS: si la canción elegida está descargada, la cola
+        // ("a continuación") debe estar compuesta SOLO por canciones descargadas,
+        // reordenadas por artista/género. Se regenera cada vez que se pulsa play
+        // sobre una descarga; si luego se cambia a una canción normal, la cola
+        // vuelve a armarse con la lógica habitual.
+        if (requestedSong != null && downloadHelper.isDownloaded(requestedSong.id)) {
+            val mix = buildDownloadMix(requestedSong, excludeIds = setOf(requestedSong.id), limit = 80)
+            queue = listOf(requestedSong) + mix
+            queueLocalPaths = queue.map { downloadHelper.getLocalFilePath(it.id) }
+            currentIndex = 0
+            playCurrentIndex()
+            return
+        }
+
         if (!ServerReachability.isOnline) {
             // Offline: la cola solo puede contener lo que ya está en el teléfono.
-            val requestedSong = songs.getOrNull(startIndex)
             val indexed = songs.withIndex().filter { (_, s) -> downloadHelper.isDownloaded(s.id) }
             if (indexed.isEmpty()) {
                 LocalLogger.log(this, "setQueueAndPlay: sin conexión y nada de esta lista está descargado")
@@ -453,7 +468,11 @@ class PlaybackService : MediaSessionService() {
      *  Cubre el caso de "empecé a reproducir con conexión y la perdí a mitad
      *  de la cola" — [setQueueAndPlay] ya cubre el caso de arrancar sin conexión. */
     private fun pruneQueueToDownloadedIfOffline() {
-        if (ServerReachability.isOnline || queue.isEmpty()) return
+        // Se poda también cuando la canción actual es una descarga (modo
+        // descargas), aunque haya conexión: en esa sesión el "siguiente" debe
+        // ser solo de lo descargado.
+        val downloadMode = currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
+        if ((ServerReachability.isOnline && !downloadMode) || queue.isEmpty()) return
         val history = queue.take(currentIndex + 1)
         val upcoming = queue.drop(currentIndex + 1)
         val prunedUpcoming = upcoming.filter { downloadHelper.isDownloaded(it.id) }
@@ -469,19 +488,45 @@ class PlaybackService : MediaSessionService() {
      *  [excludeIds] (normalmente lo que ya sonó en esta sesión). La usa el
      *  botón "DJ Smart" cuando no hay conexión. */
     fun buildOfflineSmartMix(excludeIds: Set<String>, limit: Int = 40): List<Song> {
-        return downloadHelper.getDownloadedSongs()
+        return buildDownloadMix(currentSong, excludeIds, limit)
+    }
+
+    private fun toSong(d: DownloadedSong): Song = Song(
+        id = d.id, title = d.title, artist = d.artist,
+        album = null, year = null, duration = d.duration,
+        bpm = d.bpm, key = d.key, liked = d.liked,
+        hasCover = d.hasCover, hasLyrics = d.hasLyrics,
+        isEpisode = d.isEpisode, lastPositionMs = 0L, genre = d.genre
+    )
+
+    /** True si la canción actual es una descarga (modo descargas). */
+    fun isDownloadedMode(): Boolean =
+        currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
+
+    /** Lista SOLO de canciones descargadas ordenadas por afinidad con la
+     *  canción semilla: primero el mismo artista, luego las que coinciden en
+     *  género y por último el resto (con algo de aleatoriedad). */
+    fun buildDownloadMix(seed: Song?, excludeIds: Set<String>, limit: Int = 40): List<Song> {
+        val seedGenres = seed?.genre.orEmpty().filter { it.isNotBlank() }
+        val seedArtist = seed?.artist
+        val downloads = downloadHelper.getDownloadedSongs()
             .filter { it.id !in excludeIds }
-            .shuffled()
-            .take(limit)
-            .map { d ->
-                Song(
-                    id = d.id, title = d.title, artist = d.artist,
-                    album = null, year = null, duration = d.duration,
-                    bpm = d.bpm, key = d.key, liked = d.liked,
-                    hasCover = d.hasCover, hasLyrics = d.hasLyrics,
-                    isEpisode = d.isEpisode, lastPositionMs = 0L
-                )
+        if (downloads.isEmpty()) return emptyList()
+
+        val scored = downloads.map { d ->
+            val dg = d.genre.orEmpty().filter { it.isNotBlank() }
+            var score = 0.0
+            if (seedArtist != null && d.artist?.equals(seedArtist, ignoreCase = true) == true) score += 100.0
+            if (seedGenres.isNotEmpty() && dg.isNotEmpty()) {
+                score += dg.count { g -> seedGenres.any { seed -> seed.equals(g, ignoreCase = true) } } * 50.0
             }
+            score += Math.random() * 20.0
+            d to score
+        }
+        return scored
+            .sortedByDescending { it.second }
+            .take(limit)
+            .map { toSong(it.first) }
     }
 
     fun playNext(song: Song) {
@@ -571,7 +616,13 @@ class PlaybackService : MediaSessionService() {
 
         serviceScope.launch {
             try {
-                if (ServerReachability.isServerReachable()) {
+                if (isDownloadedMode()) {
+                    // Modo descargas: rellenar SIEMPRE solo con descargas (por
+                    // artista/género), haya o no conexión.
+                    val existingIds = queue.map { it.id }.toSet()
+                    val mix = buildDownloadMix(currentSong, existingIds, limit = 15)
+                    if (mix.isNotEmpty()) addListToQueue(mix)
+                } else if (ServerReachability.isServerReachable()) {
                     // MODO ONLINE: Usar IA para obtener recomendaciones
                     val aiManager = AIRecommendationManager(
                         sessionManager,
@@ -595,15 +646,7 @@ class PlaybackService : MediaSessionService() {
                             .filter { it.id !in existingIds }
                             .shuffled()
                             .take(15)
-                            .map { d ->
-                                Song(
-                                    id = d.id, title = d.title, artist = d.artist,
-                                    album = null, year = null, duration = d.duration,
-                                    bpm = d.bpm, key = d.key, liked = d.liked,
-                                    hasCover = d.hasCover, hasLyrics = d.hasLyrics,
-                                    isEpisode = d.isEpisode, lastPositionMs = 0L
-                                )
-                            }
+                            .map { d -> toSong(d) }
                         if (toAdd.isNotEmpty()) {
                             addListToQueue(toAdd)
                         }
@@ -684,7 +727,11 @@ class PlaybackService : MediaSessionService() {
         val song = queue.getOrNull(currentIndex) ?: return
         val localPath = queueLocalPaths.getOrNull(currentIndex)
         currentSong = song
-        
+
+        // Registrar la canción como "escuchada" (útil para el modo de
+        // auto-descarga "solo novedades" / ciclo cuando ya las escuchó todas).
+        sessionManager.recordPlayedSong(song.id)
+
         // Aplicar metadatos locales (ediciones del admin) antes de construir el MediaItem
         val displayedSong = SongAdminStore.applyTo(song)
         
@@ -736,6 +783,13 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun togglePlayPause() { player?.let { if (it.isPlaying) it.pause() else it.play() } }
+
+    /** Reanuda la reproduccion local (usado al cerrar una sesion de Chromecast). */
+    fun play() { player?.play() }
+
+    /** Pausa la reproduccion local (usado al iniciar una sesion de Chromecast). */
+    fun pause() { player?.pause() }
+
     fun toggleShuffle() { player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled; onStateChanged?.invoke() } }
     fun toggleRepeat() { player?.let { it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onStateChanged?.invoke() } }
 

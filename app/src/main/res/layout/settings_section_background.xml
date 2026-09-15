@@ -46,6 +46,16 @@
                 android:layout_marginStart="8dp"
                 android:text="Imagen"
                 app:cornerRadius="12dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeRandom"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Random"
+                app:cornerRadius="12dp" />
         </LinearLayout>
 
         <!-- Preview Card -->

@@ -82,4 +82,8 @@ dependencies {
     // Waveform SeekBar y Amplituda para visualización
     implementation("com.github.massoudss:waveformSeekBar:5.0.2")
     implementation("com.github.lincollincol:amplituda:2.2.2")
+
+    // Chromecast: media router (botón) + framework de cast
+    implementation("androidx.mediarouter:mediarouter:1.7.0")
+    implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
 }

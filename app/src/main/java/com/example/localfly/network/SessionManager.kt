@@ -118,6 +118,38 @@ class SessionManager(context: Context) {
 
     fun isPodcastMixingEnabled(): Boolean = prefs.getBoolean("podcast_mixing_enabled", true)
 
+    // --- Auto-descarga: modo de rellenado ---
+    // "liked" = bajar canciones que ya le gustan para escucharlas sin conexión.
+    // "new"   = bajar solo canciones aún no escuchadas (priorizando gustos) y,
+    //           si ya escuchó todas, reiniciar el ciclo con todo el catálogo al azar.
+    fun getAutoDownloadMode(): String = prefs.getString("auto_download_mode", "new") ?: "new"
+    fun setAutoDownloadMode(mode: String) = prefs.edit().putString("auto_download_mode", mode).apply()
+
+    // --- Historial de canciones escuchadas (para el modo "solo novedades") ---
+    fun recordPlayedSong(songId: String) {
+        if (songId.isBlank()) return
+        val played = getPlayedSongIds().toMutableSet()
+        if (played.contains(songId)) return
+        played.add(songId)
+        savePlayedSongIds(played)
+    }
+
+    fun getPlayedSongIds(): Set<String> {
+        val json = prefs.getString("played_song_ids", null) ?: return emptySet()
+        return try {
+            val type = object : com.google.gson.reflect.TypeToken<Set<String>>() {}.type
+            com.google.gson.Gson().fromJson(json, type) ?: emptySet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    fun clearPlayedSongs() = savePlayedSongIds(emptySet())
+
+    private fun savePlayedSongIds(played: Set<String>) {
+        prefs.edit().putString("played_song_ids", com.google.gson.Gson().toJson(played)).apply()
+    }
+
     // --- Soporte Offline para Like/Dislike ---
 
     fun addPendingLike(songId: String, liked: Boolean) {

@@ -77,7 +77,7 @@ class DownloadsFragment : Fragment() {
                     id = downloaded.id, title = downloaded.title, artist = downloaded.artist,
                     album = null, year = null, duration = downloaded.duration, bpm = downloaded.bpm,
                     key = downloaded.key, liked = downloaded.liked, hasCover = downloaded.hasCover,
-                    hasLyrics = downloaded.hasLyrics
+                    hasLyrics = downloaded.hasLyrics, genre = downloaded.genre
                 )
                 AddToPlaylistDialog.show(
                     requireContext(), viewLifecycleOwner.lifecycleScope, song, sessionManager
@@ -157,7 +157,8 @@ class DownloadsFragment : Fragment() {
             key = downloaded.key,
             liked = downloaded.liked,
             hasCover = downloaded.hasCover,
-            hasLyrics = downloaded.hasLyrics
+            hasLyrics = downloaded.hasLyrics,
+            genre = downloaded.genre
         )
         val activity = requireActivity() as? MainActivity
         val localPath = downloadHelper.getLocalFilePath(song.id)

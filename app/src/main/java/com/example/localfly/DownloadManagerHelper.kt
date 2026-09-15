@@ -38,7 +38,8 @@ data class DownloadedSong(
     val liked: Boolean = false,
     val subtitleUrl: String? = null,
     val isEpisode: Boolean = false,
-    val fileSize: Long = 0
+    val fileSize: Long = 0,
+    val genre: List<String> = emptyList()
 )
 
 /**
@@ -159,7 +160,8 @@ class DownloadManagerHelper private constructor(context: Context) {
                         hasCover = song.hasCover,
                         hasLyrics = hasLyricsNow,
                         liked = song.liked,
-                        fileSize = file!!.length()
+                        fileSize = file!!.length(),
+                        genre = song.genre ?: emptyList()
                     )
                 )
                 val newList = current.toList()
@@ -313,6 +315,12 @@ class DownloadManagerHelper private constructor(context: Context) {
     /**
      * Algoritmo de auto-descarga inteligente: analiza gustos (vía IA) y mantiene
      * el dispositivo lleno con hasta 500 canciones para uso offline.
+     *
+     * Respeta el modo configurado por el usuario ([SessionManager.getAutoDownloadMode]):
+     *  - "liked": rellena con las canciones que ya le gustan (gustos musicales).
+     *  - "new"  : rellena solo con canciones aún no escuchadas, priorizando gustos;
+     *             si ya escuchó todas, reinicia el ciclo tomando todo el catálogo de
+     *             forma aleatoria.
      */
     suspend fun autoDownloadSmart(sessionManager: com.example.localfly.network.SessionManager) {
         val currentCount = getDownloadedSongs().size
@@ -322,20 +330,60 @@ class DownloadManagerHelper private constructor(context: Context) {
         }
 
         val limit = 500 - currentCount
-        android.util.Log.d("DownloadManager", "Auto-descarga: iniciando búsqueda de $limit temas nuevos...")
-        
+        val mode = sessionManager.getAutoDownloadMode()
+        val baseUrl = com.example.localfly.network.RetrofitClient.getBaseUrl()
+        val userId = sessionManager.getUserId() ?: return
+        val already = getDownloadedSongs().map { it.id }.toSet()
+
+        android.util.Log.d("DownloadManager", "Auto-descarga: modo '$mode', buscando $limit temas nuevos...")
+
+        // Modo favoritos: rellenar con las canciones que ya le gustan.
+        if (mode == "liked") {
+            val resp = com.example.localfly.network.RetrofitClient.api.getLikedSongs(userId, limit = 500)
+            if (!resp.isSuccessful) {
+                android.util.Log.d("DownloadManager", "Auto-descarga (liked): sin respuesta del servidor.")
+                return
+            }
+            val favorites = (resp.body()?.songs ?: emptyList())
+                .filter { !it.isEpisode && it.id !in already }
+                .shuffled()
+                .take(limit)
+            android.util.Log.d("DownloadManager", "Auto-descarga (liked): ${favorites.size} favoritas para descargar.")
+            if (favorites.isNotEmpty()) downloadAll(favorites, baseUrl)
+            return
+        }
+
+        // Modo novedades: solo canciones aún no escuchadas, priorizando gustos (IA).
         val weightsStore = AIWeightsStore(appContext)
         val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, weightsStore)
-        
-        // Obtener recomendaciones (la IA ya usa los likes y artistas favoritos)
-        val recommendations = aiManager.getRecommendations(limit = limit)
-        android.util.Log.d("DownloadManager", "Auto-descarga: IA devolvió ${recommendations.size} recomendaciones.")
-        
-        val toDownload = recommendations.filter { !isDownloaded(it.id) }
+        // Se pide margen amplio para poder filtrar tras excluir descargadas y ya escuchadas.
+        val recommendations = aiManager.getRecommendations(limit = (limit * 4).coerceAtMost(400))
+        android.util.Log.d("DownloadManager", "Auto-descarga (new): IA devolvió ${recommendations.size} recomendaciones.")
+
+        val dislikedIds = com.example.localfly.network.SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
+        val playedIds = sessionManager.getPlayedSongIds()
+
+        val candidates = recommendations.filter {
+            !it.isEpisode && it.id !in already && it.id !in dislikedIds
+        }
+
+        val unheard = candidates.filter { it.id !in playedIds }
+        val toDownload = if (unheard.isNotEmpty()) {
+            // Primero las no escuchadas, en orden de gusto.
+            unheard.take(limit)
+        } else if (candidates.isNotEmpty()) {
+            // Ya escuchó todas las posibles: reiniciar el ciclo usando todo el
+            // catálogo, servido de forma aleatoria.
+            android.util.Log.d("DownloadManager", "Auto-descarga (new): ya escuchaste todo, reiniciando ciclo aleatorio.")
+            sessionManager.clearPlayedSongs()
+            candidates.shuffled().take(limit)
+        } else {
+            emptyList()
+        }
 
         if (toDownload.isNotEmpty()) {
-            android.util.Log.d("DownloadManager", "Auto-descarga: descargando ${toDownload.size} canciones recomendadas.")
-            downloadAll(toDownload, com.example.localfly.network.RetrofitClient.getBaseUrl())
+            android.util.Log.d("DownloadManager", "Auto-descarga: descargando ${toDownload.size} canciones.")
+            downloadAll(toDownload, baseUrl)
         } else {
             android.util.Log.d("DownloadManager", "Auto-descarga: no se encontraron temas nuevos para descargar.")
         }

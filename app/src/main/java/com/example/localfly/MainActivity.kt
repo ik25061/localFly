@@ -140,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermissionIfNeeded()
 
         applyBackgroundAppearance()
+        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
 
         if (savedInstanceState == null) {
             replaceFragment(HomeFragment())
@@ -260,7 +261,14 @@ class MainActivity : AppCompatActivity() {
             .replace(R.id.container, fragment)
         if (addToBackStack) transaction.addToBackStack(null)
         transaction.commit()
+        supportFragmentManager.executePendingTransactions()
+        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
         return true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
     }
 
     // ===== MINI REPRODUCTOR (punto 6) =====
@@ -414,6 +422,18 @@ class MainActivity : AppCompatActivity() {
                 }
                 applyFinalBackground(root, base)
             }
+            "random" -> {
+                // "Entrada random": cada vez que se entra / se aplica el fondo
+                // se elige al azar un degradado de una paleta curada para que
+                // siempre se vea bien con la interfaz.
+                val (rs, re) = randomGradientHex()
+                val start = parseColorSafely(rs, "#1DB954")
+                val end = parseColorSafely(re, "#121212")
+                val base = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
+                    this.alpha = alpha
+                }
+                applyFinalBackground(root, base)
+            }
             "image" -> {
                 backgroundJob = lifecycleScope.launch {
                     delay(80)
@@ -430,6 +450,25 @@ class MainActivity : AppCompatActivity() {
                 applyFinalBackground(root, ColorDrawable(fallbackSolid).apply { this.alpha = 255 })
             }
         }
+    }
+
+    /** Paleta curada de degradados para el modo "entrada random". */
+    private val randomGradientPalette: Array<Pair<String, String>> = arrayOf(
+        "#1DB954" to "#121212", // verde -> negro (estilo app)
+        "#0f2027" to "#2c5364", // medianoche
+        "#ff512f" to "#dd2476", // atardecer
+        "#2193b0" to "#6dd5ed", // océano
+        "#134e5e" to "#71b280", // bosque
+        "#654ea3" to "#eaafc8", // uva
+        "#232526" to "#414345", // grafito
+        "#355c7d" to "#c06c84", // crepúsculo
+        "#141E30" to "#243B55", // azul profundo
+        "#3a1c71" to "#d76d77" // neón púrpura
+    )
+
+    /** Elige al azar un par de colores de la paleta curada. */
+    private fun randomGradientHex(): Pair<String, String> {
+        return randomGradientPalette[kotlin.random.Random.nextInt(randomGradientPalette.size)]
     }
 
     @Suppress("DEPRECATION")

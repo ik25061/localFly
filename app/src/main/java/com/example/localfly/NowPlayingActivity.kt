@@ -51,6 +51,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLEncoder
 import java.util.Locale
+import androidx.mediarouter.app.MediaRouteButton
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NowPlayingActivity : AppCompatActivity() {
@@ -124,6 +125,11 @@ class NowPlayingActivity : AppCompatActivity() {
     private var sbLyricsMiniProgress: SeekBar? = null
 
     private lateinit var downloadHelper: DownloadManagerHelper
+
+    // Control de Chromecast
+    private lateinit var castController: CastController
+    private lateinit var btnCast: MediaRouteButton
+    private var wasPlayingBeforeCast = false
     private lateinit var sessionManager: SessionManager
     private lateinit var amplituda: linc.com.amplituda.Amplituda
 
@@ -154,6 +160,12 @@ class NowPlayingActivity : AppCompatActivity() {
             if (queueIsVisible) updateQueueUI()
             setupQueue() // Asegurar canciones al entrar
             refreshUi()
+            // Si ya estamos transmitiendo a Chromecast, no duplicar el audio local
+            if (::castController.isInitialized && castController.isCasting &&
+                playbackService?.player?.isPlaying == true) {
+                wasPlayingBeforeCast = true
+                playbackService?.pause()
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -169,6 +181,8 @@ class NowPlayingActivity : AppCompatActivity() {
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_now_playing)
+
+        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
 
         downloadHelper = DownloadManagerHelper.getInstance(this)
         amplituda = linc.com.amplituda.Amplituda(this)
@@ -218,7 +232,40 @@ class NowPlayingActivity : AppCompatActivity() {
 
         findViewById<ImageButton>(R.id.btnClose).setOnClickListener { finish() }
 
-        btnPlayPause.setOnClickListener { playbackService?.togglePlayPause() }
+        // Inicializar Chromecast y el boton de transmitir
+        btnCast = findViewById(R.id.btnCast)
+        castController = CastController(this)
+        castController.songProvider = { buildCastSongData() }
+        castController.onCastingChanged = { casting ->
+            btnCast.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (casting) android.graphics.Color.parseColor("#1DB954")
+                else android.graphics.Color.parseColor("#22000000")
+            )
+        }
+        castController.onCastStarted = {
+            wasPlayingBeforeCast = playbackService?.player?.isPlaying == true
+            playbackService?.pause()
+            castController.castCurrentSong(wasPlayingBeforeCast)
+            Toast.makeText(this, "Transmitiendo a Chromecast", Toast.LENGTH_SHORT).show()
+        }
+        castController.onCastResumed = {
+            wasPlayingBeforeCast = playbackService?.player?.isPlaying == true
+            playbackService?.pause()
+            Toast.makeText(this, "Conectado a Chromecast", Toast.LENGTH_SHORT).show()
+        }
+        castController.onCastEnded = {
+            if (wasPlayingBeforeCast) playbackService?.play()
+            wasPlayingBeforeCast = false
+            Toast.makeText(this, "Transmision finalizada", Toast.LENGTH_SHORT).show()
+        }
+        castController.setUpMediaRouteButton(btnCast)
+        castController.refreshSessionState()
+
+        btnPlayPause.setOnClickListener {
+            val wasPlaying = playbackService?.player?.isPlaying == true
+            playbackService?.togglePlayPause()
+            if (::castController.isInitialized) castController.syncPlayPause(!wasPlaying)
+        }
         btnLike.setOnClickListener { playbackService?.toggleLike() }
         btnDislike.setOnClickListener {
             playbackService?.dislikeCurrentSong()
@@ -277,6 +324,7 @@ class NowPlayingActivity : AppCompatActivity() {
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     userIsSeeking = false
                     playbackService?.seekTo(waveformSeekBar.progress.toLong())
+                    if (::castController.isInitialized) castController.seekTo(waveformSeekBar.progress.toLong())
                 }
             }
             view.performClick()
@@ -388,20 +436,28 @@ class NowPlayingActivity : AppCompatActivity() {
             val pendingCount = service.queue.size - (service.currentIndex + 1)
             
             if (pendingCount < 10) {
-                try {
-                    val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
-                    // Si no hay ninguna canción sonando, seedSong será null, la IA usará gustos generales
-                    val recommendations = aiManager.getRecommendations(
-                        limit = 10,
-                        seedSong = service.currentSong
-                    )
+                // En modo descargas (la canción actual es una descarga) rellenar
+                // solo con descargas por género; nunca con IA del catálogo entero.
+                if (service.isDownloadedMode()) {
                     val existingIds = service.queue.map { it.id }.toSet()
-                    val filteredRecs = recommendations.filter { it.id !in existingIds }
-                    if (filteredRecs.isNotEmpty()) {
-                        service.addListToQueue(filteredRecs)
+                    val mix = service.buildDownloadMix(service.currentSong, existingIds, limit = 10)
+                    if (mix.isNotEmpty()) service.addListToQueue(mix)
+                } else {
+                    try {
+                        val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
+                        // Si no hay ninguna canción sonando, seedSong será null, la IA usará gustos generales
+                        val recommendations = aiManager.getRecommendations(
+                            limit = 10,
+                            seedSong = service.currentSong
+                        )
+                        val existingIds = service.queue.map { it.id }.toSet()
+                        val filteredRecs = recommendations.filter { it.id !in existingIds }
+                        if (filteredRecs.isNotEmpty()) {
+                            service.addListToQueue(filteredRecs)
+                        }
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@NowPlayingActivity, "Error auto-generando cola", e)
                     }
-                } catch (e: Exception) {
-                    LocalLogger.log(this@NowPlayingActivity, "Error auto-generando cola", e)
                 }
             }
 
@@ -945,6 +1001,34 @@ class NowPlayingActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (::castController.isInitialized) castController.release()
+        super.onDestroy()
+    }
+
+    /** Construye los datos de la cancion actual para transmitirla a Chromecast. */
+    private fun buildCastSongData(): CastController.CastSong? {
+        val service = playbackService ?: return null
+        val raw = service.currentSong ?: return null
+        val song = SongAdminStore.applyTo(raw)
+        val base = RetrofitClient.getBaseUrl().trimEnd('/')
+        val path = if (song.isEpisode) "podcast-audio" else "audio"
+        val startMs = (playbackService?.player?.currentPosition ?: 0L).coerceAtLeast(0L)
+        val durationMs = playbackService?.getDurationMs()
+            ?: ((song.duration ?: 0.0) * 1000.0).toLong()
+        return CastController.CastSong(
+            id = song.id,
+            title = song.title ?: "",
+            artist = song.artist ?: "",
+            album = song.album,
+            artUrl = "$base/cover/${song.id}",
+            streamUrl = "$base/$path/${song.id}",
+            startMs = startMs,
+            durationMs = durationMs.coerceAtLeast(0L),
+            contentType = "audio/mpeg"
+        )
+    }
+
     private fun refreshUi() {
         if (isFinishing || isDestroyed) return
         val rawSong = playbackService?.currentSong ?: run { finish(); return }
@@ -1027,9 +1111,15 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext.isEnabled = playbackService?.hasNext() == true
         btnNext.alpha = if (playbackService?.hasNext() == true) 1f else 0.4f
         if (queueIsVisible) updateQueueUI()
+
+        // Mantener al dia el Chromecast si hay una sesion activa
+        if (::castController.isInitialized) castController.autoCast(playbackService?.player?.isPlaying == true)
     }
 
     private fun loadCommentStats(songId: String) {
+        // Mientras cargan las valoraciones no mostramos ningún texto provisional
+        // (ni "cargando..." ni "error"): se deja el área vacía hasta tener datos.
+        tvRatingText.text = ""
         lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.getComments(songId)
@@ -1047,7 +1137,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     tvRatingText.text = "$ratingLabel · ${data.totalCount} opiniones"
                 }
             } catch (e: Exception) {
-                tvRatingText.text = "Error al cargar opiniones"
+                // Silencioso: no mostramos "error al cargar opiniones".
             }
         }
     }
