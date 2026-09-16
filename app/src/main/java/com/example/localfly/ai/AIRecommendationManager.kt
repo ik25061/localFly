@@ -28,13 +28,14 @@ class AIRecommendationManager(
      */
     suspend fun getRecommendations(
         limit: Int = 10,
-        seedSong: Song? = null
+        seedSong: Song? = null,
+        mood: String? = null
     ): List<Song> = withContext(Dispatchers.IO) {
         val userId = sessionManager.getUserId() ?: return@withContext emptyList()
         val favArtistIds = sessionManager.getFavoriteArtists()
         val mixingEnabled = sessionManager.isPodcastMixingEnabled()
 
-        // Determinar qué tipos de contenido incluir según el contexto y el ajuste de mezcla
+        // ... resto de la lógica inicial ...
         val includeMusic: Boolean
         val includePodcasts: Boolean
 
@@ -42,7 +43,6 @@ class AIRecommendationManager(
             includeMusic = true
             includePodcasts = true
         } else {
-            // Contexto separado
             if (seedSong != null) {
                 includeMusic = !seedSong.isEpisode
                 includePodcasts = seedSong.isEpisode
@@ -52,11 +52,11 @@ class AIRecommendationManager(
             }
         }
 
-        // 1. Canciones que le gustan (para extraer patrones profundos)
+        // 1. Canciones que le gustan
         val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
         val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
 
-        // 2. Obtener candidatos de música y/o podcasts
+        // 2. Obtener candidatos
         val musicSongs = if (includeMusic) {
             val libResp = RetrofitClient.api.getLibrary(userId, limit = 5000)
             if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
@@ -83,7 +83,14 @@ class AIRecommendationManager(
             } catch (e: Exception) { emptyList() }
         } else emptyList()
 
-        val allSongs = musicSongs + podcastEpisodes
+        var allSongs = musicSongs + podcastEpisodes
+
+        // PUNTO DE VINCULACIÓN: Filtrar por estado de ánimo si se solicita
+        if (!mood.isNullOrBlank()) {
+            allSongs = allSongs.filter { s -> 
+                s.moods?.any { it.name.equals(mood, ignoreCase = true) } == true
+            }
+        }
 
         if (allSongs.isEmpty()) return@withContext emptyList()
 

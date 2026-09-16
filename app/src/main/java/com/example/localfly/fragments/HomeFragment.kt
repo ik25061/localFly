@@ -20,6 +20,8 @@ import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.adapters.HorizontalCardAdapter
 import com.example.localfly.adapters.LikedSongsAdapter
+import com.example.localfly.ai.AIRecommendationManager
+import com.example.localfly.ai.AIWeightsStore
 import com.example.localfly.databinding.FragmentHomeBinding
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.*
@@ -98,6 +100,10 @@ class HomeFragment : Fragment() {
                 .addToBackStack(null)
                 .commit()
         }
+        
+        RadioManager.onRadioStateChanged = { _, _ ->
+            refreshRadioBanner()
+        }
         refreshRadioBanner()
 
         // Listeners "Ver todo"
@@ -140,9 +146,14 @@ class HomeFragment : Fragment() {
             card?.strokeColor = if (selected) Color.parseColor("#7EF6AB") else Color.parseColor("#32FFFFFF")
             nameText.setTextColor(if (selected) Color.WHITE else Color.parseColor("#F3F3F3"))
             moodView.setOnClickListener {
-                selectedMoodIndex = index
+                if (selectedMoodIndex == index) {
+                    // Deseleccionar si ya estaba seleccionado
+                    selectedMoodIndex = -1
+                } else {
+                    selectedMoodIndex = index
+                }
                 setupMoods()
-                Toast.makeText(requireContext(), "Filtrando por $name...", Toast.LENGTH_SHORT).show()
+                loadData() // Recargar para aplicar filtro de humor
             }
             binding.layoutHomeMoods.addView(moodView)
         }
@@ -485,11 +496,17 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 7. Recomendaciones con IA
+            // 7. Recomendaciones con IA (Vinculación de Moods)
             try {
-                val aiManager = com.example.localfly.ai.AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(requireContext()))
-                val recommendations = aiManager.getRecommendations()
-                if (isAdded) recommendationsAdapter.updateSongs(recommendations)
+                val currentMood = if (selectedMoodIndex >= 0) moods[selectedMoodIndex].first else null
+                val aiManager = AIRecommendationManager(sessionManager,
+                    AIWeightsStore(requireContext())
+                )
+                val recommendations = aiManager.getRecommendations(mood = currentMood)
+                if (isAdded) {
+                    recommendationsAdapter.updateSongs(recommendations)
+                    binding.sectionRecommendations.root.visibility = if (recommendations.isNotEmpty()) View.VISIBLE else View.GONE
+                }
             } catch (e: Exception) { }
 
             // 8. Tu Biblioteca (previsualización de los primeros 10)

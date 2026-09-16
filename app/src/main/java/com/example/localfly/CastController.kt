@@ -41,6 +41,9 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     /** Provee la cancion actual (null si no hay nada que emitir). */
     var songProvider: (() -> CastSong?)? = null
 
+    /** Provee si el reproductor local esta sonando. */
+    var playingProvider: (() -> Boolean)? = null
+
     /** Notifica si hay una sesion de cast activa (para resaltar el boton). */
     var onCastingChanged: ((Boolean) -> Unit)? = null
 
@@ -114,10 +117,11 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
      * Se llama en cada refresh de la UI: si la cancion cambio mientras hay una
      * sesion activa, la emite al Chromecast.
      */
-    fun autoCast(localPlaying: Boolean) {
+    fun autoCast() {
         val song = songProvider?.invoke() ?: return
         val remote = remoteClient() ?: return
         if (lastSentUrl == song.streamUrl && hasSentMedia(remote)) return
+        val localPlaying = playingProvider?.invoke() ?: false
         sendSong(remote, song, localPlaying)
     }
 

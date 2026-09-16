@@ -15,6 +15,7 @@ import android.widget.RatingBar
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.lifecycle.lifecycleScope
@@ -241,6 +242,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnCast = findViewById(R.id.btnCast)
         castController = CastController(this)
         castController.songProvider = { buildCastSongData() }
+        castController.playingProvider = { playbackService?.player?.isPlaying == true }
         castController.onCastingChanged = { casting ->
             btnCast.backgroundTintList = android.content.res.ColorStateList.valueOf(
                 if (casting) android.graphics.Color.parseColor("#1DB954")
@@ -1026,43 +1028,41 @@ class NowPlayingActivity : AppCompatActivity() {
             return
         }
 
-        val options = when {
-            RadioManager.isHost -> arrayOf(
-                "🔴 Detener mi radio",
-                "Ver radios activas…"
-            )
-            RadioManager.isListener -> arrayOf(
-                "✋ Dejar de escuchar esta radio",
-                "Ver radios activas…"
-            )
-            else -> arrayOf(
-                "📡 Emitir mi música (crear radio)",
-                "🎧 Ver radios activas…"
-            )
+        val options = mutableListOf<String>()
+        if (RadioManager.isHost) {
+            options.add("🔴 Detener mi radio")
+        } else if (RadioManager.isListener) {
+            options.add("✋ Dejar de escuchar esta radio")
+        } else {
+            options.add("📡 Emitir mi música (Live)")
         }
+        
+        options.add("🪄 Iniciar Radio de la canción (IA)")
+        options.add("🎧 Ver radios activas…")
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Radio en vivo")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> when {
-                        RadioManager.isHost -> {
-                            service.stopRadioBroadcast()
-                            Toast.makeText(this, "Tu radio se detuvo", Toast.LENGTH_SHORT).show()
-                        }
-                        RadioManager.isListener -> {
-                            service.leaveRadio()
-                            Toast.makeText(this, "Dejaste de escuchar la radio", Toast.LENGTH_SHORT).show()
-                        }
-                        else -> {
-                            if (service.startRadioBroadcast()) {
-                                Toast.makeText(this, "Estás emitiendo: otros pueden unirse desde Inicio → Radio", Toast.LENGTH_LONG).show()
-                            } else {
-                                Toast.makeText(this, "Reproduce una canción primero", Toast.LENGTH_SHORT).show()
-                            }
+        AlertDialog.Builder(this)
+            .setTitle("Radio LocalFly")
+            .setItems(options.toTypedArray()) { _, which ->
+                when (options[which]) {
+                    "🔴 Detener mi radio" -> {
+                        service.stopRadioBroadcast()
+                        Toast.makeText(this, "Tu radio se detuvo", Toast.LENGTH_SHORT).show()
+                    }
+                    "✋ Dejar de escuchar esta radio" -> {
+                        service.leaveRadio()
+                        Toast.makeText(this, "Dejaste de escuchar la radio", Toast.LENGTH_SHORT).show()
+                    }
+                    "📡 Emitir mi música (Live)" -> {
+                        if (service.startRadioBroadcast()) {
+                            Toast.makeText(this, "Estás emitiendo: otros pueden unirse desde Inicio → Radio", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(this, "Reproduce una canción primero", Toast.LENGTH_SHORT).show()
                         }
                     }
-                    1 -> fetchAndShowRadioStations()
+                    "🪄 Iniciar Radio de la canción (IA)" -> {
+                        service.startSongRadio()
+                    }
+                    "🎧 Ver radios activas…" -> fetchAndShowRadioStations()
                 }
             }
             .setNegativeButton("Cancelar", null)
@@ -1225,7 +1225,7 @@ class NowPlayingActivity : AppCompatActivity() {
         updateRadioButtonState()
 
         // Mantener al dia el Chromecast si hay una sesion activa
-        if (::castController.isInitialized) castController.autoCast(playbackService?.player?.isPlaying == true)
+        if (::castController.isInitialized) castController.autoCast()
     }
 
     private fun loadCommentStats(songId: String) {
