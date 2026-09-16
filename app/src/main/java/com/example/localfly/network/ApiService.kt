@@ -299,11 +299,19 @@ interface ApiService {
 
     @GET("api/songs/{id}/comments")
     suspend fun getComments(
-        @Path("id") songId: String
+        @Path("id") songId: String,
+        @Query("userId") userId: String? = null
     ): Response<CommentsResponse>
 
     @POST("api/comments")
     suspend fun postComment(
         @Body request: PostCommentRequest
     ): Response<Comment>
+
+    /** "Me gusta" en un comentario o respuesta (toggle). */
+    @POST("api/comments/{id}/like")
+    suspend fun toggleCommentLike(
+        @Path("id") commentId: String,
+        @Body request: CommentLikeRequest
+    ): Response<CommentLikeResponse>
 }

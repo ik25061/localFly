@@ -16,7 +16,8 @@ data class RadioPublishRequest(
     val title: String,
     val artist: String?,
     val positionMs: Long,
-    val isPlaying: Boolean
+    val isPlaying: Boolean,
+    val isVoiceActive: Boolean = false
 )
 
 /** Una radio activa que aparece en la lista para poder unirse. */
@@ -26,7 +27,8 @@ data class RadioStation(
     val songId: String,
     val title: String,
     val artist: String?,
-    val listeners: Int = 0
+    val listeners: Int = 0,
+    val isVoiceActive: Boolean = false
 )
 
 data class RadioStationsResponse(
@@ -41,6 +43,7 @@ data class RadioStatusResponse(
     val artist: String?,
     val positionMs: Long = 0L,
     val isPlaying: Boolean = false,
+    val isVoiceActive: Boolean = false,
     val listeners: Int = 0,
     /** epoch (ms) del servidor en que se tomó la posición, para compensar el retardo. */
     val updatedAt: Long = 0L

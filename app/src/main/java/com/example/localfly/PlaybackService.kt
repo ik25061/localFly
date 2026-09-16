@@ -424,6 +424,20 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
 
+                // 5. Comentarios/Valoraciones offline
+                val pendingComments = sessionManager.getPendingComments()
+                if (pendingComments.isNotEmpty()) {
+                    pendingComments.forEach { (songId, request) ->
+                        try {
+                            val response = RetrofitClient.api.postComment(request)
+                            if (response.isSuccessful) {
+                                sessionManager.removePendingComment(songId)
+                                anySuccess = true
+                            }
+                        } catch (e: Exception) {}
+                    }
+                }
+
                 if (anySuccess) withContext(Dispatchers.Main) { onStateChanged?.invoke() }
                 delay(15000) 
             }
@@ -692,13 +706,20 @@ class PlaybackService : MediaSessionService() {
                 } else {
                     // MODO OFFLINE: Usar canciones descargadas
                     val downloads = downloadHelper.getDownloadedSongs()
-                    if (downloads.size > 1) {
+                    if (downloads.isNotEmpty()) {
                         val existingIds = queue.map { it.id }.toSet()
-                        val toAdd = downloads
-                            .filter { it.id !in existingIds }
-                            .shuffled()
-                            .take(15)
-                            .map { d -> toSong(d) }
+                        val candidates = downloads.filter { it.id !in existingIds }
+                        
+                        val toAdd = if (candidates.isNotEmpty()) {
+                            candidates.shuffled().take(15).map { d -> toSong(d) }
+                        } else if (downloads.size > 1) {
+                            // Si todas ya están en la cola, permitir repetir algunas
+                            // (pero no la que suena ahora)
+                            downloads.filter { it.id != currentSong?.id }.shuffled().take(10).map { d -> toSong(d) }
+                        } else {
+                            emptyList()
+                        }
+                        
                         if (toAdd.isNotEmpty()) {
                             addListToQueue(toAdd)
                         }
@@ -910,7 +931,8 @@ class PlaybackService : MediaSessionService() {
                 title = song.title,
                 artist = song.artist,
                 positionMs = player?.currentPosition ?: 0L,
-                isPlaying = player?.isPlaying == true
+                isPlaying = player?.isPlaying == true,
+                isVoiceActive = RadioManager.isVoiceActive
             )
         }
 
@@ -919,9 +941,9 @@ class PlaybackService : MediaSessionService() {
             loadRadioSong(songId, startMs, play)
         }
 
-        // OYENTE: misma canción → corregir desfase y respetar play/pausa
-        RadioManager.onListenerSync = { expectedPos, play ->
-            syncWithRadioHost(expectedPos, play)
+        // OYENTE: misma canción → corregir desfase, respetar play/pausa y atenuar volumen si el DJ habla
+        RadioManager.onListenerSync = { expectedPos, play, voiceActive ->
+            syncWithRadioHost(expectedPos, play, voiceActive)
         }
     }
 
@@ -970,13 +992,16 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** Corrige la deriva respecto al host y sincroniza play/pausa. */
-    private fun syncWithRadioHost(expectedPos: Long, play: Boolean) {
+    /** Corrige la deriva respecto al host, sincroniza play/pausa y atenúa volumen si el DJ habla. */
+    private fun syncWithRadioHost(expectedPos: Long, play: Boolean, voiceActive: Boolean) {
         val p = player ?: return
         if (play) {
             if (!p.isPlaying && p.playbackState == Player.STATE_READY) p.play()
             val drift = kotlin.math.abs(p.currentPosition - expectedPos)
             if (drift > RADIO_DRIFT_TOLERANCE_MS) p.seekTo(expectedPos.coerceAtLeast(0L))
+            
+            // Atenuación de volumen si el DJ está hablando
+            p.volume = if (voiceActive) 0.3f else 1.0f
         } else {
             if (p.isPlaying) p.pause()
         }

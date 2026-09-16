@@ -46,6 +46,7 @@ import androidx.media3.common.util.UnstableApi
 import com.bumptech.glide.Glide
 import com.example.localfly.fragments.*
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.MetadataSyncManager
 import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.RescanManager
 import com.example.localfly.network.RetrofitClient
@@ -53,6 +54,7 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.CoverPlaceholder
+import com.example.localfly.utils.FontApplier
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import kotlinx.coroutines.*
 import kotlin.math.max
@@ -140,7 +142,7 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermissionIfNeeded()
 
         applyBackgroundAppearance()
-        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
+        FontApplier.apply(window.decorView, sessionManager.getFontFamily())
 
         if (savedInstanceState == null) {
             replaceFragment(HomeFragment())
@@ -262,13 +264,13 @@ class MainActivity : AppCompatActivity() {
         if (addToBackStack) transaction.addToBackStack(null)
         transaction.commit()
         supportFragmentManager.executePendingTransactions()
-        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
+        FontApplier.apply(window.decorView, sessionManager.getFontFamily())
         return true
     }
 
     override fun onResume() {
         super.onResume()
-        com.example.localfly.utils.FontApplier.apply(window.decorView, sessionManager.getFontFamily())
+        FontApplier.apply(window.decorView, sessionManager.getFontFamily())
     }
 
     // ===== MINI REPRODUCTOR (punto 6) =====
@@ -370,6 +372,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun rerollRandomGradient() {
+        randomGradientForThisSession = null
+        applyBackgroundAppearance()
+    }
+
     private suspend fun checkServerReachabilityNow() {
         val reachable = ServerReachability.isServerReachable()
         ServerReachability.isOnline = reachable
@@ -377,7 +384,12 @@ class MainActivity : AppCompatActivity() {
         isServerOnline = reachable
         if (!reachable) return
 
-        // El servidor volvió: sincronizar playlists pendientes...
+        // El servidor volvió: sincronizar metadatos pendientes...
+        lifecycleScope.launch {
+            MetadataSyncManager.syncPendingEdits(sessionManager)
+        }
+
+        // ...sincronizar playlists pendientes...
         lifecycleScope.launch {
             PlaylistSyncManager.sync(sessionManager)
             (supportFragmentManager.findFragmentById(R.id.container) as? PlaylistsFragment)?.reloadAfterSync()
@@ -471,13 +483,6 @@ class MainActivity : AppCompatActivity() {
         val picked = parseColorSafely(s, "#1DB954") to parseColorSafely(e, "#121212")
         randomGradientForThisSession = picked
         return picked
-    }
-
-    /** Fuerza un degradado nuevo sin esperar a la próxima apertura de la app
-     *  (lo usa el botón "Probar otro" en Ajustes). */
-    fun rerollRandomGradient() {
-        randomGradientForThisSession = null
-        applyBackgroundAppearance()
     }
 
     @Suppress("DEPRECATION")

@@ -1,5 +1,7 @@
 package com.example.localfly.fragments
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,8 +10,10 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.OptIn
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.localfly.R
@@ -25,6 +29,7 @@ import kotlinx.coroutines.launch
  * la radio de otro usuario (oyente). La sincronización real la hace
  * [com.example.localfly.network.RadioManager] junto a PlaybackService.
  */
+@UnstableApi
 class RadioFragment : Fragment() {
 
     private lateinit var sessionManager: SessionManager
@@ -184,6 +189,16 @@ class RadioFragment : Fragment() {
                 st.artist?.let { append(" · $it") }
                 if (st.listeners > 0) append("  (${st.listeners} 👥)")
             }
+            
+            // Indicador de voz activa (DJ hablando)
+            if (st.isVoiceActive) {
+                holder.ivIcon.setImageResource(R.drawable.ic_mic)
+                holder.ivIcon.imageTintList = ColorStateList.valueOf(Color.parseColor("#FF5252"))
+            } else {
+                holder.ivIcon.setImageResource(R.drawable.ic_radio)
+                holder.ivIcon.imageTintList = ColorStateList.valueOf(Color.WHITE)
+            }
+
             val joined = isJoined(st)
             holder.btnListen.text = if (joined) "Escuchando" else "Escuchar"
             holder.btnListen.backgroundTintList = android.content.res.ColorStateList.valueOf(

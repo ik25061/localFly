@@ -11,6 +11,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 /** Lista creada mientras el teléfono estaba sin conexión. [localId] empieza
  *  siempre por "local_" para poder distinguirla de un id real del servidor
@@ -124,6 +126,27 @@ class SessionManager(context: Context) {
     //           si ya escuchó todas, reiniciar el ciclo con todo el catálogo al azar.
     fun getAutoDownloadMode(): String = prefs.getString("auto_download_mode", "new") ?: "new"
     fun setAutoDownloadMode(mode: String) = prefs.edit().putString("auto_download_mode", mode).apply()
+
+    /** Registra un comentario pendiente de subir al servidor. */
+    fun addPendingComment(songId: String, text: String, rating: Int) {
+        val map = getPendingComments().toMutableMap()
+        map[songId] = PostCommentRequest(getUserId(), songId, text, rating)
+        prefs.edit().putString("pending_comments", Gson().toJson(map)).apply()
+    }
+
+    fun getPendingComments(): Map<String, PostCommentRequest> {
+        val json = prefs.getString("pending_comments", null) ?: return emptyMap()
+        return try {
+            val type = object : TypeToken<Map<String, PostCommentRequest>>() {}.type
+            Gson().fromJson(json, type) ?: emptyMap()
+        } catch (e: Exception) { emptyMap() }
+    }
+
+    fun removePendingComment(songId: String) {
+        val map = getPendingComments().toMutableMap()
+        map.remove(songId)
+        prefs.edit().putString("pending_comments", Gson().toJson(map)).apply()
+    }
 
     // --- Historial de canciones escuchadas (para el modo "solo novedades") ---
     fun recordPlayedSong(songId: String) {

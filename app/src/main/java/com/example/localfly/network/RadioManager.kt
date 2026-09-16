@@ -39,6 +39,11 @@ object RadioManager {
     var isListener: Boolean = false
         private set
 
+    /** true si el host al que escuchamos tiene el micrófono activo. */
+    @Volatile
+    var isVoiceActive: Boolean = false
+        private set
+
     /** Host al que estamos escuchando (null si no somos oyentes). */
     @Volatile
     var currentHostId: String? = null
@@ -52,8 +57,8 @@ object RadioManager {
     /** OYENTE: carga una canción concreta (del host) en el reproductor. */
     var onListenerSongChange: ((songId: String, title: String?, artist: String?, startMs: Long, play: Boolean) -> Unit)? = null
 
-    /** OYENTE: sincronizar posición (seek) y play/pausa con el host. */
-    var onListenerSync: ((positionMs: Long, play: Boolean) -> Unit)? = null
+    /** OYENTE: sincronizar posición (seek), play/pausa y volumen (voz activa). */
+    var onListenerSync: ((positionMs: Long, play: Boolean, voiceActive: Boolean) -> Unit)? = null
 
     /** Notifica cambios de modo (para actualizar la UI). */
     var onRadioStateChanged: ((hosting: Boolean, listening: Boolean) -> Unit)? = null
@@ -134,6 +139,8 @@ object RadioManager {
                     val ageMs = (System.currentTimeMillis() - status.updatedAt).coerceAtLeast(0L)
                     val expectedPos = status.positionMs + if (status.isPlaying) ageMs else 0L
 
+                    isVoiceActive = status.isVoiceActive
+
                     if (status.songId != lastSongId) {
                         lastSongId = status.songId
                         onListenerSongChange?.invoke(
@@ -141,8 +148,8 @@ object RadioManager {
                             expectedPos, status.isPlaying
                         )
                     } else {
-                        // Misma canción: corregir desfase y seguir play/pausa
-                        onListenerSync?.invoke(expectedPos, status.isPlaying)
+                        // Misma canción: corregir desfase, seguir play/pausa y volumen
+                        onListenerSync?.invoke(expectedPos, status.isPlaying, isVoiceActive)
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "getRadioStatus falló: ${e.message}")
@@ -167,6 +174,13 @@ object RadioManager {
             }
         }
         onRadioStateChanged?.invoke(false, false)
+    }
+
+    /** HOST: alternar el estado del micrófono. */
+    fun setVoiceActive(active: Boolean) {
+        if (!isHost) return
+        isVoiceActive = active
+        onRadioStateChanged?.invoke(true, false)
     }
 
     private fun stopListeningInternal() {

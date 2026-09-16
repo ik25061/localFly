@@ -43,6 +43,7 @@
         android:orientation="vertical">
 
         <TextView
+            android:id="@+id/tvRatingLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Tu puntuación:"
@@ -51,13 +52,46 @@
 
         <RatingBar
             android:id="@+id/rbUserRating"
-            style="@android:style/Widget.DeviceDefault.RatingBar.Small"
+            style="@android:style/Widget.DeviceDefault.RatingBar"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:isIndicator="false"
             android:numStars="5"
             android:rating="0"
+            android:stepSize="1"
             android:theme="@style/RatingBarGreen" />
+
+        <LinearLayout
+            android:id="@+id/llReplyingTo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_comment_input"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/tvReplyingTo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Respondiendo a..."
+                android:textColor="#1DB954"
+                android:textSize="12sp" />
+
+            <ImageButton
+                android:id="@+id/btnCancelReply"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Cancelar respuesta"
+                android:src="@android:drawable/ic_menu_close_clear_cancel"
+                app:tint="#888888" />
+        </LinearLayout>
 
         <RelativeLayout
             android:layout_width="match_parent"

@@ -4,6 +4,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -83,9 +85,11 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnEditLyrics: ImageButton
     private lateinit var btnComments: ImageButton
     private lateinit var btnEditMetadata: ImageButton
+    private lateinit var btnEqualizer: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvHeaderType: TextView
+    private lateinit var tvVoiceIndicator: TextView
     private lateinit var ivPodcastHeader: ImageView
     private lateinit var cardTranscript: CardView
     private lateinit var rvTranscriptInline: RecyclerView
@@ -136,6 +140,7 @@ class NowPlayingActivity : AppCompatActivity() {
 
     // Radio en vivo (emisión / escucha compartida)
     private lateinit var btnRadio: ImageButton
+    private lateinit var btnMic: ImageButton
     private lateinit var sessionManager: SessionManager
     private lateinit var amplituda: linc.com.amplituda.Amplituda
 
@@ -219,6 +224,7 @@ class NowPlayingActivity : AppCompatActivity() {
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         
         tvHeaderType = findViewById(R.id.tvHeaderType)
+        tvVoiceIndicator = findViewById(R.id.tvVoiceIndicator)
         ivPodcastHeader = findViewById(R.id.ivPodcastHeader)
         cardTranscript = findViewById(R.id.cardTranscript)
         rvTranscriptInline = findViewById(R.id.rvTranscriptInline)
@@ -270,7 +276,21 @@ class NowPlayingActivity : AppCompatActivity() {
 
         // ===== Radio en vivo =====
         btnRadio = findViewById(R.id.btnRadio)
+        btnMic = findViewById(R.id.btnMic)
         btnRadio.setOnClickListener { showRadioDialog() }
+        
+        btnMic.setOnClickListener {
+            val newState = !RadioManager.isVoiceActive
+            RadioManager.setVoiceActive(newState)
+            updateRadioButtonState()
+            val msg = if (newState) "Micrófono activado (DJ Mode)" else "Micrófono silenciado"
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
+
+        // Botón superior (icono rotar/ecualizador del reordenado): se referencia
+        // aquí para que la propiedad lateinit quede inicializada; todavía no
+        // tiene ninguna acción asociada.
+        btnEqualizer = findViewById(R.id.btnEqualizer)
 
         btnPlayPause.setOnClickListener {
             val wasPlaying = playbackService?.player?.isPlaying == true
@@ -1106,13 +1126,30 @@ class NowPlayingActivity : AppCompatActivity() {
     /** Resalta el botón de radio cuando estamos emitiendo o escuchando. */
     private fun updateRadioButtonState() {
         if (!::btnRadio.isInitialized) return
-        btnRadio.backgroundTintList = android.content.res.ColorStateList.valueOf(
+        
+        val hosting = RadioManager.isHost
+        val listening = RadioManager.isListener
+        
+        btnRadio.backgroundTintList = ColorStateList.valueOf(
             when {
-                RadioManager.isHost -> android.graphics.Color.parseColor("#1DB954")
-                RadioManager.isListener -> android.graphics.Color.parseColor("#FFA500")
-                else -> android.graphics.Color.parseColor("#22000000")
+                hosting -> Color.parseColor("#1DB954")
+                listening -> Color.parseColor("#FFA500")
+                else -> Color.parseColor("#22000000")
             }
         )
+        
+        // El botón de micrófono solo es visible para el Host
+        btnMic.visibility = if (hosting) View.VISIBLE else View.GONE
+        if (hosting) {
+            btnMic.backgroundTintList = ColorStateList.valueOf(
+                if (RadioManager.isVoiceActive) Color.parseColor("#FF5252")
+                else Color.parseColor("#22000000")
+            )
+            btnMic.imageTintList = ColorStateList.valueOf(
+                if (RadioManager.isVoiceActive) Color.BLACK
+                else Color.WHITE
+            )
+        }
     }
 
     /** Construye los datos de la cancion actual para transmitirla a Chromecast. */
@@ -1223,6 +1260,9 @@ class NowPlayingActivity : AppCompatActivity() {
 
         // Estado del botón de radio (emitiendo / escuchando)
         updateRadioButtonState()
+        
+        // Indicador de voz activa
+        tvVoiceIndicator.visibility = if (RadioManager.isVoiceActive) View.VISIBLE else View.GONE
 
         // Mantener al dia el Chromecast si hay una sesion activa
         if (::castController.isInitialized) castController.autoCast()
@@ -1234,7 +1274,7 @@ class NowPlayingActivity : AppCompatActivity() {
         tvRatingText.text = ""
         lifecycleScope.launch {
             try {
-                val response = RetrofitClient.api.getComments(songId)
+                val response = RetrofitClient.api.getComments(songId, null)
                 if (response.isSuccessful && response.body() != null) {
                     val data = response.body()!!
                     rbSongAvg.rating = data.averageRating.toFloat()
@@ -1246,7 +1286,7 @@ class NowPlayingActivity : AppCompatActivity() {
                         data.totalCount == 0 -> "Sin valoraciones"
                         else -> "Regular"
                     }
-                    tvRatingText.text = "$ratingLabel · ${data.totalCount} opiniones"
+                    tvRatingText.text = "$ratingLabel · ${data.totalCount} votos"
                 }
             } catch (e: Exception) {
                 // Silencioso: no mostramos "error al cargar opiniones".

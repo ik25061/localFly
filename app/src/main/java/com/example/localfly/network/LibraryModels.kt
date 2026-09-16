@@ -238,7 +238,11 @@ data class Comment(
     val username: String,
     val text: String,
     val rating: Int, // 1-5 estrellas
-    val createdAt: String
+    val createdAt: String,
+    val parentId: String? = null,
+    val likesCount: Int = 0,
+    val likedByMe: Boolean = false,
+    val replies: List<Comment> = emptyList()
 )
 
 data class CommentsResponse(
@@ -251,7 +255,17 @@ data class PostCommentRequest(
     val userId: String?,
     val songId: String,
     val text: String,
-    val rating: Int
+    val rating: Int,
+    val parentId: String? = null
+)
+
+data class CommentLikeRequest(
+    val userId: String?
+)
+
+data class CommentLikeResponse(
+    val liked: Boolean,
+    val likesCount: Int
 )
 
 data class IpConfigResponse(
