@@ -163,7 +163,9 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
+                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
                     handleAutoAdvance()
                 }
                 // Cada vez que cambiamos de canción, verificar si la cola se está agotando
@@ -245,16 +247,6 @@ class PlaybackService : MediaSessionService() {
                 controller: MediaSession.ControllerInfo,
                 playerCommand: Int
             ): Int {
-                when (playerCommand) {
-                    Player.COMMAND_SEEK_TO_NEXT, Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM -> {
-                        dislikeCurrentSong()
-                        return SessionResult.RESULT_SUCCESS
-                    }
-                    Player.COMMAND_SEEK_TO_PREVIOUS, Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> {
-                        toggleLike()
-                        return SessionResult.RESULT_SUCCESS
-                    }
-                }
                 return super.onPlayerCommandRequest(session, controller, playerCommand)
             }
         }
@@ -463,22 +455,31 @@ class PlaybackService : MediaSessionService() {
         setQueueAndPlay(listOf(song), 0, listOf(localFilePath))
     }
 
-    /** Quita de lo que queda por sonar (nunca de lo ya reproducido) cualquier
-     *  canción que no esté descargada, cuando detectamos que estamos offline.
-     *  Cubre el caso de "empecé a reproducir con conexión y la perdí a mitad
-     *  de la cola" — [setQueueAndPlay] ya cubre el caso de arrancar sin conexión. */
     private fun pruneQueueToDownloadedIfOffline() {
         // Se poda también cuando la canción actual es una descarga (modo
         // descargas), aunque haya conexión: en esa sesión el "siguiente" debe
         // ser solo de lo descargado.
         val downloadMode = currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
         if ((ServerReachability.isOnline && !downloadMode) || queue.isEmpty()) return
-        val history = queue.take(currentIndex + 1)
-        val upcoming = queue.drop(currentIndex + 1)
-        val prunedUpcoming = upcoming.filter { downloadHelper.isDownloaded(it.id) }
-        if (prunedUpcoming.size == upcoming.size) return
 
-        val newQueue = history + prunedUpcoming
+        // IMPORTANTE: la canción en currentIndex + 1 puede ya estar cargada como
+        // "siguiente item" dentro del ExoPlayer (ver playCurrentIndex/
+        // handleAutoAdvance, que la añaden con player.addMediaItem para
+        // reproducción sin cortes). Si la quitamos aquí de `queue` pero el
+        // player ya la tiene en su lista interna, cuando el player transicione
+        // a ella automáticamente, currentIndex++ pasará a apuntar a OTRA
+        // canción distinta de la que realmente suena: eso es lo que provocaba
+        // que la notificación (que lee metadata directamente del player)
+        // mostrara el título correcto mientras el minireproductor y la pantalla
+        // completa (que leen `currentSong`) mostraban otro. Por eso protegemos
+        // ese slot y solo podamos desde dos canciones por delante en adelante.
+        val protectedUpcomingIndex = currentIndex + 1
+        val history = queue.take(protectedUpcomingIndex + 1)
+        val prunablePortion = queue.drop(protectedUpcomingIndex + 1)
+        val prunedPortion = prunablePortion.filter { downloadHelper.isDownloaded(it.id) }
+        if (prunedPortion.size == prunablePortion.size) return
+
+        val newQueue = history + prunedPortion
         queue = newQueue
         queueLocalPaths = newQueue.map { downloadHelper.getLocalFilePath(it.id) }
         onStateChanged?.invoke()
@@ -811,34 +812,42 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun toggleLike() {
-        val song = currentSong ?: return
-        val newLiked = !song.liked
-        syncLikeStateForSong(song.id, newLiked)
-        com.example.localfly.ai.AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
-        downloadHelper.updateLiked(song.id, newLiked)
-        updateMediaSessionCustomLayout()
-        onStateChanged?.invoke()
-        serviceScope.launch {
-            try {
-                val response = RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
-                if (!response.isSuccessful) sessionManager.addPendingLike(song.id, newLiked)
-            } catch (e: Exception) { sessionManager.addPendingLike(song.id, newLiked) }
+        try {
+            val song = currentSong ?: return
+            val newLiked = !song.liked
+            syncLikeStateForSong(song.id, newLiked)
+            AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
+            downloadHelper.updateLiked(song.id, newLiked)
+            updateMediaSessionCustomLayout()
+            onStateChanged?.invoke()
+            serviceScope.launch {
+                try {
+                    val response = RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
+                    if (!response.isSuccessful) sessionManager.addPendingLike(song.id, newLiked)
+                } catch (e: Exception) { sessionManager.addPendingLike(song.id, newLiked) }
+            }
+        } catch (e: Exception) {
+            LocalLogger.log(this, "toggleLike: fallo inesperado (${e.message})")
         }
     }
 
     fun dislikeCurrentSong() {
-        val songToHide = currentSong ?: return
-        com.example.localfly.ai.AIWeightsStore(this).reinforce(songToHide.id, -1f)
-        // Registrar localmente para que el admin pueda revisarla y, si quiere,
-        // borrarla por completo del disco.
-        com.example.localfly.network.SongAdminStore.recordDislikedSong(songToHide)
-        serviceScope.launch {
-            try {
-                val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))
-                if (!response.isSuccessful) sessionManager.addPendingDislike(songToHide.id)
-            } catch (e: Exception) { sessionManager.addPendingDislike(songToHide.id) }
+        try {
+            val songToHide = currentSong ?: return
+            AIWeightsStore(this).reinforce(songToHide.id, -1f)
+            // Registrar localmente para que el admin pueda revisarla y, si quiere,
+            // borrarla por completo del disco.
+            SongAdminStore.recordDislikedSong(songToHide)
+            serviceScope.launch {
+                try {
+                    val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))
+                    if (!response.isSuccessful) sessionManager.addPendingDislike(songToHide.id)
+                } catch (e: Exception) { sessionManager.addPendingDislike(songToHide.id) }
+            }
+            next()
+        } catch (e: Exception) {
+            LocalLogger.log(this, "dislikeCurrentSong: fallo inesperado (${e.message})")
         }
-        next()
     }
 
     fun flushPendingLyricsUploads() {
