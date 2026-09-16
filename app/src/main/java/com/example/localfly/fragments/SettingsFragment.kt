@@ -211,7 +211,7 @@ class SettingsFragment : Fragment() {
                     GradientDrawable.Orientation.TL_BR,
                     intArrayOf(Color.parseColor(sessionManager.getBackgroundGradientStart()), Color.parseColor(sessionManager.getBackgroundGradientEnd()))
                 ).apply { this.alpha = alpha }
-                "random" -> previewLarge.background = randomPreviewGradient()
+                "random_gradient" -> previewLarge.background = randomPreviewGradient()
                 "image" -> {
                     val uriString = sessionManager.getBackgroundImageUri()?.trim()
                     previewLarge.background = ColorDrawable(Color.DKGRAY).apply { this.alpha = alpha }
@@ -252,7 +252,7 @@ class SettingsFragment : Fragment() {
             btnSolid.setBackgroundColor(if (mode == "solid") green else gray)
             btnGradient.setBackgroundColor(if (mode == "gradient") green else gray)
             btnImage.setBackgroundColor(if (mode == "image") green else gray)
-            btnRandom.setBackgroundColor(if (mode == "random") green else gray)
+            btnRandom.setBackgroundColor(if (mode == "random_gradient") green else gray)
 
             when (mode) {
                 "solid" -> {
@@ -411,6 +411,22 @@ class SettingsFragment : Fragment() {
                     })
                     addFullWidth(rowImageActions)
                 }
+                "random_gradient" -> {
+                    val info = TextView(requireContext()).apply {
+                        text = "Cada vez que abras la app se elegirá un degradado distinto, dentro de una paleta pensada para que combine bien con el resto de la interfaz."
+                        setTextColor(Color.parseColor("#AAAAAA"))
+                        textSize = 13f
+                    }
+                    addFullWidth(info)
+
+                    addFullWidth(MaterialButton(requireContext()).apply {
+                        text = "Probar otro ahora"
+                        setOnClickListener {
+                            (requireActivity() as? MainActivity)?.rerollRandomGradient()
+                            updateLargePreview()
+                        }
+                    })
+                }
             }
             subContentFrame.addView(container)
         }
@@ -434,8 +450,8 @@ class SettingsFragment : Fragment() {
             updateLargePreview()
         }
         btnRandom.setOnClickListener {
-            sessionManager.setBackgroundMode("random")
-            attachBackgroundActionsForMode("random")
+            sessionManager.setBackgroundMode("random_gradient")
+            attachBackgroundActionsForMode("random_gradient")
             (requireActivity() as? MainActivity)?.applyBackgroundAppearance()
             updateLargePreview()
         }

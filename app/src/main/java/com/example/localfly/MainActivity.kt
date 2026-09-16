@@ -410,6 +410,13 @@ class MainActivity : AppCompatActivity() {
         val alpha = (alphaPct * 255) / 100
 
         when (mode) {
+            "random_gradient" -> {
+                val (start, end) = getOrPickRandomGradientForThisSession()
+                val base = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
+                    this.alpha = alpha
+                }
+                applyFinalBackground(root, base)
+            }
             "solid" -> {
                 val base = ColorDrawable(fallbackSolid).apply { this.alpha = alpha }
                 applyFinalBackground(root, base)
@@ -417,18 +424,6 @@ class MainActivity : AppCompatActivity() {
             "gradient" -> {
                 val start = parseColorSafely(sessionManager.getBackgroundGradientStart(), "#1DB954")
                 val end = parseColorSafely(sessionManager.getBackgroundGradientEnd(), "#121212")
-                val base = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
-                    this.alpha = alpha
-                }
-                applyFinalBackground(root, base)
-            }
-            "random" -> {
-                // "Entrada random": cada vez que se entra / se aplica el fondo
-                // se elige al azar un degradado de una paleta curada para que
-                // siempre se vea bien con la interfaz.
-                val (rs, re) = randomGradientHex()
-                val start = parseColorSafely(rs, "#1DB954")
-                val end = parseColorSafely(re, "#121212")
                 val base = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(start, end)).apply {
                     this.alpha = alpha
                 }
@@ -452,23 +447,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Paleta curada de degradados para el modo "entrada random". */
-    private val randomGradientPalette: Array<Pair<String, String>> = arrayOf(
-        "#1DB954" to "#121212", // verde -> negro (estilo app)
-        "#0f2027" to "#2c5364", // medianoche
-        "#ff512f" to "#dd2476", // atardecer
-        "#2193b0" to "#6dd5ed", // océano
-        "#134e5e" to "#71b280", // bosque
-        "#654ea3" to "#eaafc8", // uva
-        "#232526" to "#414345", // grafito
-        "#355c7d" to "#c06c84", // crepúsculo
-        "#141E30" to "#243B55", // azul profundo
-        "#3a1c71" to "#d76d77" // neón púrpura
+    // Un degradado aleatorio por apertura de la app — se guarda en memoria
+    // (no en SessionManager) para que sea el mismo mientras la app sigue
+    // abierta, y distinto la próxima vez que se lance.
+    private var randomGradientForThisSession: Pair<Int, Int>? = null
+
+    private val randomGradientPresets = listOf(
+        "#4A148C" to "#F06292",
+        "#0D47A1" to "#26C6DA",
+        "#FF6F00" to "#EC407A",
+        "#1B5E20" to "#29B6F6",
+        "#6A1B9A" to "#283593",
+        "#AD1457" to "#6A1B9A",
+        "#004D40" to "#00838F",
+        "#BF360C" to "#4A148C",
+        "#1A237E" to "#00ACC1",
+        "#880E4F" to "#3949AB"
     )
 
-    /** Elige al azar un par de colores de la paleta curada. */
-    private fun randomGradientHex(): Pair<String, String> {
-        return randomGradientPalette[kotlin.random.Random.nextInt(randomGradientPalette.size)]
+    private fun getOrPickRandomGradientForThisSession(): Pair<Int, Int> {
+        randomGradientForThisSession?.let { return it }
+        val (s, e) = randomGradientPresets.random()
+        val picked = parseColorSafely(s, "#1DB954") to parseColorSafely(e, "#121212")
+        randomGradientForThisSession = picked
+        return picked
+    }
+
+    /** Fuerza un degradado nuevo sin esperar a la próxima apertura de la app
+     *  (lo usa el botón "Probar otro" en Ajustes). */
+    fun rerollRandomGradient() {
+        randomGradientForThisSession = null
+        applyBackgroundAppearance()
     }
 
     @Suppress("DEPRECATION")

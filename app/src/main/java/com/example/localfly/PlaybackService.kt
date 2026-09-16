@@ -27,8 +27,11 @@ import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.ApiService
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
+import com.example.localfly.network.MetadataSyncManager
 import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.ProgressUpdateRequest
+import com.example.localfly.network.RadioManager
+import com.example.localfly.network.RadioPublishRequest
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
@@ -60,6 +63,9 @@ class PlaybackService : MediaSessionService() {
 
         const val COMMAND_LIKE = "com.example.localfly.COMMAND_LIKE"
         const val COMMAND_DISLIKE = "com.example.localfly.COMMAND_DISLIKE"
+
+        /** Desfase máximo tolerado por el oyente de una radio antes de corregir. */
+        const val RADIO_DRIFT_TOLERANCE_MS = 4000L
     }
 
     inner class LocalBinder : Binder() {
@@ -174,6 +180,8 @@ class PlaybackService : MediaSessionService() {
         })
 
         setupMediaSession()
+
+        setupRadio()
 
         setMediaNotificationProvider(
             DefaultMediaNotificationProvider.Builder(this).build()
@@ -336,6 +344,9 @@ class PlaybackService : MediaSessionService() {
                 val pendingPlaylistCreations = sessionManager.getPendingPlaylistCreations()
                 val pendingPlaylistAdds = sessionManager.getPendingPlaylistSongAdds()
 
+                if (pendingPlaylistCreations.isEmpty() && pendingPlaylistAdds.isEmpty()) {
+                    try { MetadataSyncManager.syncPendingEdits(sessionManager) } catch (_: Exception) {}
+                }
                 if (pendingLikes.isEmpty() && pendingDislikes.isEmpty() &&
                     pendingPlaylistCreations.isEmpty() && pendingPlaylistAdds.isEmpty()) {
                     delay(30000)
@@ -794,6 +805,99 @@ class PlaybackService : MediaSessionService() {
     fun toggleShuffle() { player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled; onStateChanged?.invoke() } }
     fun toggleRepeat() { player?.let { it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onStateChanged?.invoke() } }
 
+    // ===== MODO RADIO (emisión en vivo a otros usuarios) =====
+
+    /**
+     * Conecta [RadioManager] con este service:
+     *  - HOST: publica qué suena (canción, posición, play/pausa) cada ~5 s.
+     *  - OYENTE: carga la canción del host cuando cambia y corrige el desfase.
+     */
+    private fun setupRadio() {
+        RadioManager.init(this)
+
+        // HOST: estado que se publica al servidor
+        RadioManager.hostStateProvider = {
+            val song = currentSong
+            if (song == null) null
+            else RadioPublishRequest(
+                hostId = sessionManager.getUserId(),
+                hostName = sessionManager.getUsername(),
+                songId = song.id,
+                title = song.title,
+                artist = song.artist,
+                positionMs = player?.currentPosition ?: 0L,
+                isPlaying = player?.isPlaying == true
+            )
+        }
+
+        // OYENTE: el host cambió de canción → cargarla aquí y situarnos
+        RadioManager.onListenerSongChange = { songId, _title, _artist, startMs, play ->
+            loadRadioSong(songId, startMs, play)
+        }
+
+        // OYENTE: misma canción → corregir desfase y respetar play/pausa
+        RadioManager.onListenerSync = { expectedPos, play ->
+            syncWithRadioHost(expectedPos, play)
+        }
+    }
+
+    /** true si este dispositivo está emitiendo su propia radio. */
+    fun isRadioHosting(): Boolean = RadioManager.isHost
+
+    /** true si este dispositivo está escuchando la radio de otro usuario. */
+    fun isRadioListening(): Boolean = RadioManager.isListener
+
+    /** HOST: empezar a emitir. Devuelve false si no hay canción en reproducción. */
+    fun startRadioBroadcast(): Boolean {
+        if (currentSong == null) return false
+        RadioManager.startHosting()
+        return true
+    }
+
+    /** HOST: dejar de emitir. */
+    fun stopRadioBroadcast() {
+        RadioManager.stopHosting()
+    }
+
+    /** OYENTE: dejar de escuchar (la música local sigue en pausa donde estaba). */
+    fun leaveRadio() {
+        RadioManager.stopListening()
+    }
+
+    /** Carga en el reproductor la canción que suena en la radio del host. */
+    private fun loadRadioSong(songId: String, startMs: Long, play: Boolean) {
+        serviceScope.launch {
+            try {
+                val response = RetrofitClient.api.getSongsByIds(songId, sessionManager.getUserId())
+                val song = response.body()?.songs?.firstOrNull() ?: return@launch
+                withContext(Dispatchers.Main) {
+                    // La cola del oyente ES la canción que suena en la radio:
+                    // cada cambio del host reemplaza la cola completa.
+                    queue = listOf(song)
+                    queueLocalPaths = listOf(null)
+                    currentIndex = 0
+                    playCurrentIndex()
+                    if (startMs > 0) player?.seekTo(startMs)
+                    if (!play) player?.pause()
+                }
+            } catch (e: Exception) {
+                LocalLogger.log(this@PlaybackService, "Radio: no se pudo cargar la canción del host (${e.message})")
+            }
+        }
+    }
+
+    /** Corrige la deriva respecto al host y sincroniza play/pausa. */
+    private fun syncWithRadioHost(expectedPos: Long, play: Boolean) {
+        val p = player ?: return
+        if (play) {
+            if (!p.isPlaying && p.playbackState == Player.STATE_READY) p.play()
+            val drift = kotlin.math.abs(p.currentPosition - expectedPos)
+            if (drift > RADIO_DRIFT_TOLERANCE_MS) p.seekTo(expectedPos.coerceAtLeast(0L))
+        } else {
+            if (p.isPlaying) p.pause()
+        }
+    }
+
     private fun updateSongState(songId: String, updater: (Song) -> Song) {
         val queueIndex = queue.indexOfFirst { it.id == songId }
         if (queueIndex >= 0) {
@@ -866,6 +970,9 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         fadeTickerHandler.removeCallbacks(fadeTickerRunnable)
         fadeJob?.cancel()
+        // Cerrar cualquier modo radio activo para no dejar la sesión colgada
+        if (RadioManager.isHost) RadioManager.stopHosting()
+        if (RadioManager.isListener) RadioManager.stopListening()
         serviceScope.cancel()
         player?.release()
         player = null

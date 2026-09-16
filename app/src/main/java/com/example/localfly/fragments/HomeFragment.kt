@@ -91,6 +91,15 @@ class HomeFragment : Fragment() {
             Toast.makeText(requireContext(), "No hay notificaciones nuevas", Toast.LENGTH_SHORT).show()
         }
 
+        // Radio en vivo: banner → pantalla de radio + subtítulo con el estado
+        binding.cardRadioBanner.setOnClickListener {
+            parentFragmentManager.beginTransaction()
+                .replace(R.id.container, RadioFragment())
+                .addToBackStack(null)
+                .commit()
+        }
+        refreshRadioBanner()
+
         // Listeners "Ver todo"
         binding.tvSeeAllLiked.setOnClickListener {
             parentFragmentManager.beginTransaction()
@@ -145,6 +154,26 @@ class HomeFragment : Fragment() {
             .replace(R.id.container, fragment)
             .addToBackStack(null)
             .commit()
+    }
+
+    /** Subtítulo del banner de Radio: emisión propia, escucha activa o nº de radios abiertas. */
+    private fun refreshRadioBanner() {
+        lifecycleScope.launch {
+            val subtitle = when {
+                RadioManager.isHost -> "🔴 Estás emitiendo tu radio ahora mismo"
+                RadioManager.isListener -> "🎧 Escuchando la radio de otro usuario"
+                else -> {
+                    try {
+                        val stations = RetrofitClient.api.getRadioStations().body()?.stations.orEmpty()
+                        if (stations.isEmpty()) "Emite lo que escuchas o únete a otra radio"
+                        else "${stations.size} radio${if (stations.size == 1) "" else "s"} activa${if (stations.size == 1) "" else "s"} — únete"
+                    } catch (_: Exception) {
+                        "Emite lo que escuchas o únete a otra radio"
+                    }
+                }
+            }
+            if (_binding != null) binding.tvRadioBannerSubtitle.text = subtitle
+        }
     }
 
     private fun setupGreeting() {

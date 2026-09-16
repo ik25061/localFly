@@ -77,7 +77,6 @@
         android:elevation="4dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent">
-
         <ImageButton
             android:id="@+id/btnRadio"
             android:layout_width="38dp"
@@ -85,7 +84,7 @@
             android:layout_marginEnd="8dp"
             android:background="@drawable/bg_circle_white"
             android:backgroundTint="#22000000"
-            android:contentDescription="@string/radio_live"
+android:contentDescription="@string/radio_live"
             android:padding="7dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_radio"

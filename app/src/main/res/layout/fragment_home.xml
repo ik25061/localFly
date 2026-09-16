@@ -93,6 +93,74 @@
                 android:orientation="horizontal" />
         </HorizontalScrollView>
 
+        <!-- Radio en vivo: banner de acceso a la pantalla de radio -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardRadioBanner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            app:cardBackgroundColor="#1B1B1F"
+            app:cardCornerRadius="14dp"
+            app:rippleColor="#33FFFFFF"
+            app:strokeColor="#331DB954"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="12dp">
+
+                <ImageView
+                    android:layout_width="44dp"
+                    android:layout_height="44dp"
+                    android:background="@drawable/bg_circle_green"
+                    android:contentDescription="Radio"
+                    android:padding="10dp"
+                    android:src="@drawable/ic_radio"
+                    app:tint="#FFFFFF" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginHorizontal="12dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Radio en vivo"
+                        android:textColor="#FFFFFF"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvRadioBannerSubtitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="Emite lo que escuchas o únete a otra radio"
+                        android:textColor="#AAAAAA"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Abrir"
+                    android:textColor="#1DB954"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- [PROMOCIÓN] Canciones que te gustan (VERTICAL, EN EL TOP) -->
         <LinearLayout
             android:layout_width="match_parent"
