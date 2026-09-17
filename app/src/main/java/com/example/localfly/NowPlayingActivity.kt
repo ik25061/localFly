@@ -238,6 +238,11 @@ class NowPlayingActivity : AppCompatActivity() {
         queueOverlay.visibility = android.view.View.GONE
         btnCloseQueueOverlay.setOnClickListener { toggleQueue() }
 
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnKaraoke).setOnClickListener {
+            if (castController.isCasting) {
+                Toast.makeText(this, "Desconecta Chromecast para reproducir el instrumental en el teléfono", Toast.LENGTH_LONG).show()
+            } else playbackService?.toggleKaraoke()
+        }
         btnSmartReorder.setOnClickListener {
             applySmartReorder()
         }
@@ -468,7 +473,7 @@ class NowPlayingActivity : AppCompatActivity() {
             val pendingCount = service.queue.size - (service.currentIndex + 1)
 
             if (pendingCount < 10) {
-                if (!ServerReachability.isOnline) {
+                if (!ServerReachability.isOnline || service.isDownloadedMode()) {
                     val existingIds = service.queue.map { it.id }.toSet()
                     val offlineFill = service.buildOfflineSmartMix(existingIds, limit = 10 - pendingCount)
                     if (offlineFill.isNotEmpty()) {
@@ -592,7 +597,7 @@ class NowPlayingActivity : AppCompatActivity() {
         if (service.queue.isEmpty()) return
 
         lifecycleScope.launch {
-            val offline = !ServerReachability.isOnline
+            val offline = !ServerReachability.isOnline || service.isDownloadedMode()
             val toastMsg = if (offline) "🤖 Mezclando tus descargas..." else "🤖 IA mezclando tu sesión..."
             Toast.makeText(this@NowPlayingActivity, toastMsg, Toast.LENGTH_SHORT).show()
 
@@ -609,7 +614,9 @@ class NowPlayingActivity : AppCompatActivity() {
                 service.queue.drop(currentIdx + 1)
             }
 
-            val reorderedUpcoming = SmartReorderUtils.reorder(upcoming)
+            val reorderedUpcoming = com.example.localfly.utils.GenreQueueOrder.reorder(
+                upcoming.map { SongAdminStore.applyTo(it) }, service.currentSong?.let { SongAdminStore.applyTo(it) }
+            )
 
             service.updateFullQueue(history + reorderedUpcoming)
             val doneMsg = if (offline) "Mezcla Smart DJ (offline) aplicada" else "Mezcla Smart DJ aplicada"
@@ -1177,6 +1184,16 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         if (isFinishing || isDestroyed) return
+        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnKaraoke).apply {
+            val service = playbackService
+            isEnabled = service != null && service.currentSong?.isEpisode == false
+            text = when {
+                service?.karaokeLoading == true -> "Cancelar descarga instrumental"
+                service?.isKaraoke == true -> "Karaoke activo · Volver a voz"
+                else -> "Karaoke"
+            }
+            contentDescription = text
+        }
         val rawSong = playbackService?.currentSong ?: run { finish(); return }
         val song = SongAdminStore.applyTo(rawSong)
         

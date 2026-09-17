@@ -82,6 +82,80 @@ class PlaybackService : MediaSessionService() {
     var player: ExoPlayer? = null
         private set
 
+    private var karaokeOriginal: MediaItem? = null
+    private var karaokeJob: kotlinx.coroutines.Job? = null
+    private var karaokeGeneration = 0L
+    var karaokeLoading = false
+        private set
+    val isKaraoke: Boolean get() = karaokeOriginal?.mediaId == currentSong?.id && karaokeOriginal != null
+
+    /** Cambia solo la fuente actual; conserva cola, posición, pausa y metadatos. */
+    fun toggleKaraoke() {
+        val p = player ?: return
+        val song = currentSong ?: return
+        if (karaokeLoading) {
+            clearKaraokeState()
+            onStateChanged?.invoke()
+            return
+        }
+        if (isKaraoke) {
+            val original = karaokeOriginal ?: return
+            karaokeOriginal = null
+            replaceCurrentSource(original)
+            onStateChanged?.invoke()
+            return
+        }
+        if (song.isEpisode || RadioManager.isHost || RadioManager.isListener) {
+            Toast.makeText(this, "Karaoke solo está disponible para música local, fuera de Radio", Toast.LENGTH_LONG).show()
+            return
+        }
+        val original = p.currentMediaItem ?: return
+        val generation = ++karaokeGeneration
+        karaokeLoading = true
+        onStateChanged?.invoke()
+        karaokeJob = serviceScope.launch {
+            try {
+                val file = com.example.localfly.karaoke.KaraokeRepository(this@PlaybackService)
+                    .instrumental(RetrofitClient.getBaseUrl(), song.id)
+                if (generation != karaokeGeneration || currentSong?.id != song.id) return@launch
+                karaokeOriginal = original
+                replaceCurrentSource(original.buildUpon().setUri(Uri.fromFile(file)).build())
+                LocalLogger.log(this@PlaybackService, "Karaoke activado: ${song.id}")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation != karaokeGeneration) return@launch
+                LocalLogger.log(this@PlaybackService, "Karaoke no disponible: ${song.id}: ${e.message}")
+                Toast.makeText(this@PlaybackService, e.message ?: "No se pudo cargar el instrumental", Toast.LENGTH_LONG).show()
+            } finally {
+                if (generation == karaokeGeneration) {
+                    karaokeLoading = false
+                    onStateChanged?.invoke()
+                }
+            }
+        }
+    }
+
+    private fun replaceCurrentSource(item: MediaItem) {
+        val p = player ?: return
+        val index = p.currentMediaItemIndex
+        if (index !in 0 until p.mediaItemCount) return
+        val position = p.currentPosition.coerceAtLeast(0)
+        val playing = p.playWhenReady
+        val items = (0 until p.mediaItemCount).map { if (it == index) item else p.getMediaItemAt(it) }
+        p.setMediaItems(items, index, position)
+        p.prepare()
+        p.playWhenReady = playing
+    }
+
+    private fun clearKaraokeState() {
+        karaokeGeneration++
+        karaokeJob?.cancel()
+        karaokeJob = null
+        karaokeLoading = false
+        karaokeOriginal = null
+    }
+
     private var crossfadeEnabled = false
     private var fadeOutStartedForCurrentSong = false
     private var fadeJob: kotlinx.coroutines.Job? = null
@@ -132,6 +206,9 @@ class PlaybackService : MediaSessionService() {
 
     var onStateChanged: (() -> Unit)? = null
 
+    /** Canciones ya reproducidas en esta sesión (para no repetirlas al rellenar cola). */
+    private val playedInSessionIds = LinkedHashSet<String>()
+
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
 
@@ -151,6 +228,15 @@ class PlaybackService : MediaSessionService() {
         player = ExoPlayer.Builder(this).build()
         player?.skipSilenceEnabled = crossfadeEnabled
         player?.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val original = karaokeOriginal ?: return
+                clearKaraokeState()
+                LocalLogger.log(this@PlaybackService, "Error de instrumental; recuperando original", error)
+                replaceCurrentSource(original)
+                Toast.makeText(this@PlaybackService, "No se pudo reproducir el instrumental; volviendo al original", Toast.LENGTH_LONG).show()
+                onStateChanged?.invoke()
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onStateChanged?.invoke()
                 if (isPlaying) {
@@ -171,9 +257,12 @@ class PlaybackService : MediaSessionService() {
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val previousSong = currentSong
+                val previousIndex = currentIndex
                 // Sincronización mediante mediaId: identificar la canción actual 
                 // por su ID único contenido en el MediaItem.
                 val mediaId = mediaItem?.mediaId
+                if (mediaId != previousSong?.id) clearKaraokeState()
                 if (mediaId != null) {
                     val newIndex = queue.indexOfFirst { it.id == mediaId }
                     if (newIndex != -1) {
@@ -185,9 +274,13 @@ class PlaybackService : MediaSessionService() {
                     syncIndexById()
                 }
 
-                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || 
-                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED ||
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                    currentSong?.let {
+                        playedInSessionIds.add(it.id)
+                        sessionManager.recordPlayedSong(it.id)
+                    }
+                    if (previousSong?.id != currentSong?.id) checkAutoDelete(previousSong, previousIndex)
                     handleAutoAdvanceFromTransition()
                 }
                 // Cada vez que cambiamos de canción, verificar si la cola se está agotando
@@ -382,14 +475,20 @@ class PlaybackService : MediaSessionService() {
                 var anySuccess = false
                 
                 // 1. Likes
+                LocalLogger.log(this@PlaybackService, "syncOfflineActions: sincronizando ${pendingLikes.size} likes y ${pendingDislikes.size} dislikes pendientes...")
                 pendingLikes.forEach { (songId, liked) ->
                     try {
                         val response = RetrofitClient.api.likeSong(songId, LikeRequest(sessionManager.getUserId(), liked))
                         if (response.isSuccessful) {
-                            sessionManager.removePendingLike(songId)
+                            if (sessionManager.getPendingLikes()[songId] == liked) sessionManager.removePendingLike(songId)
                             anySuccess = true
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: like sincronizado ($songId, liked=$liked)")
+                        } else {
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: like FALLÓ ($songId) → HTTP ${response.code()}")
                         }
-                    } catch (e: Exception) {}
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@PlaybackService, "syncOfflineActions: like FALLÓ ($songId) → ${e.message}")
+                    }
                 }
                 
                 // 2. Dislikes
@@ -399,8 +498,13 @@ class PlaybackService : MediaSessionService() {
                         if (response.isSuccessful) {
                             sessionManager.removePendingDislike(songId)
                             anySuccess = true
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: dislike sincronizado ($songId)")
+                        } else {
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: dislike FALLÓ ($songId) → HTTP ${response.code()}")
                         }
-                    } catch (e: Exception) {}
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@PlaybackService, "syncOfflineActions: dislike FALLÓ ($songId) → ${e.message}")
+                    }
                 }
                 
                 // 3. Playlists y ediciones
@@ -451,16 +555,42 @@ class PlaybackService : MediaSessionService() {
 
         serviceScope.launch {
             delay(300)
+            // No borrar si el usuario regresó a esta canción durante la espera.
+            if (currentSong?.id == song.id) return@launch
             try {
-                withContext(Dispatchers.IO) { downloadHelper.removeDownload(song.id) }
-            } catch (e: Exception) {}
-            val mutablePaths = queueLocalPaths.toMutableList()
-            if (index in mutablePaths.indices) {
-                mutablePaths[index] = null
-                queueLocalPaths = mutablePaths
+                downloadHelper.removeDownload(song.id)
+                LocalLogger.log(this@PlaybackService, "Auto-eliminar: descarga retirada (${song.id})")
+            } catch (e: Exception) {
+                LocalLogger.log(this@PlaybackService, "Auto-eliminar: fallo (${song.id}): ${e.message}")
+                return@launch
             }
+            queueLocalPaths = queue.mapIndexed { i, item ->
+                if (item.id == song.id) null else queueLocalPaths.getOrNull(i)
+            }
+            // Además de borrar el archivo, sacar la canción de la cola para que
+            // no vuelva a sonar (bug: con el toggle activo se repetían canciones
+            // que ya habían sonado).
+            removeSongFromQueueIfPlayed(song.id)
             withContext(Dispatchers.Main) { onStateChanged?.invoke() }
         }
+    }
+
+    /** Quita de la cola una canción ya reproducida (auto-eliminar activo),
+     *  sin tocar la canción actual ni la siguiente precargada. */
+    private fun removeSongFromQueueIfPlayed(songId: String) {
+        val currentId = queue.getOrNull(currentIndex)?.id
+        val nextId = queue.getOrNull(currentIndex + 1)?.id
+        if (songId == currentId || songId == nextId) return
+
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        val i = mutableQueue.indexOfFirst { it.id == songId }
+        if (i == -1) return
+        mutableQueue.removeAt(i)
+        mutablePaths.removeAt(i)
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        if (i < currentIndex) currentIndex--
     }
 
     override fun onBind(intent: Intent?): IBinder? {
@@ -479,6 +609,7 @@ class PlaybackService : MediaSessionService() {
     fun setQueueAndPlay(songs: List<Song>, startIndex: Int, localPaths: List<String?>? = null) {
         if (songs.isEmpty() || startIndex !in songs.indices) return
 
+        playedInSessionIds.clear()
         val requestedSong = songs.getOrNull(startIndex)
 
         // MODO DESCARGAS: si la canción elegida está descargada, la cola
@@ -556,9 +687,16 @@ class PlaybackService : MediaSessionService() {
 
     /** Mezcla aleatoria de todo lo descargado en el teléfono, excluyendo
      *  [excludeIds] (normalmente lo que ya sonó en esta sesión). La usa el
-     *  botón "DJ Smart" cuando no hay conexión. */
-    fun buildOfflineSmartMix(excludeIds: Set<String>, limit: Int = 40): List<Song> {
-        return buildDownloadMix(currentSong, excludeIds, limit)
+     *  botón "DJ Smart" cuando no hay conexión. Por defecto excluye también
+     *  lo ya reproducido en esta sesión; el DJ Smart explícito pasa
+     *  [excludePlayed]=false para permitir re-sonar canciones antiguas. */
+    fun buildOfflineSmartMix(
+        excludeIds: Set<String>,
+        limit: Int = 40,
+        excludePlayed: Boolean = true
+    ): List<Song> {
+        val effective = if (excludePlayed) excludeIds + playedInSessionIds else excludeIds
+        return buildDownloadMix(currentSong, effective, limit)
     }
 
     private fun toSong(d: DownloadedSong): Song = Song(
@@ -573,30 +711,21 @@ class PlaybackService : MediaSessionService() {
     fun isDownloadedMode(): Boolean =
         currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
 
-    /** Lista SOLO de canciones descargadas ordenadas por afinidad con la
-     *  canción semilla: primero el mismo artista, luego las que coinciden en
-     *  género y por último el resto (con algo de aleatoriedad). */
+    /** Lista SOLO de canciones descargadas, ORDENADA POR GÉNERO (estilo
+     *  musical) y con afinidad respecto a la canción semilla:
+     *   - Se agrupan en bloques por género: todas las canciones del mismo
+     *     estilo suenan seguidas (el usuario pidió orden por género, no por
+     *     artista).
+     *   - Los bloques del género de la semilla van primero; el resto después.
+     *   - Dentro de cada bloque se baraja ligeramente.
+     *   - El artista deja de ser el criterio principal (pasa a desempate). */
     fun buildDownloadMix(seed: Song?, excludeIds: Set<String>, limit: Int = 40): List<Song> {
-        val seedGenres = seed?.genre.orEmpty().filter { it.isNotBlank() }
-        val seedArtist = seed?.artist
-        val downloads = downloadHelper.getDownloadedSongs()
-            .filter { it.id !in excludeIds }
-        if (downloads.isEmpty()) return emptyList()
-
-        val scored = downloads.map { d ->
-            val dg = d.genre.orEmpty().filter { it.isNotBlank() }
-            var score = 0.0
-            if (seedArtist != null && d.artist?.equals(seedArtist, ignoreCase = true) == true) score += 100.0
-            if (seedGenres.isNotEmpty() && dg.isNotEmpty()) {
-                score += dg.count { g -> seedGenres.any { seed -> seed.equals(g, ignoreCase = true) } } * 50.0
-            }
-            score += Math.random() * 20.0
-            d to score
-        }
-        return scored
-            .sortedByDescending { it.second }
-            .take(limit)
-            .map { toSong(it.first) }
+        val dislikedIds = SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
+        val songs = downloadHelper.getDownloadedSongs()
+            .filter { it.id !in excludeIds && it.id !in playedInSessionIds && it.id !in dislikedIds }
+            .shuffled().map { SongAdminStore.applyTo(toSong(it)) }
+        return com.example.localfly.utils.GenreQueueOrder.reorder(songs, seed?.let { SongAdminStore.applyTo(it) })
+            .take(limit.coerceAtLeast(0))
     }
 
     fun playNext(song: Song) {
@@ -627,7 +756,7 @@ class PlaybackService : MediaSessionService() {
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
         mutableQueue.addAll(songs)
-        mutablePaths.addAll(List(songs.size) { null })
+        mutablePaths.addAll(songs.map { downloadHelper.getLocalFilePath(it.id) })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         onStateChanged?.invoke()
@@ -668,6 +797,13 @@ class PlaybackService : MediaSessionService() {
         queue = newSongs
         queueLocalPaths = newSongs.map { downloadHelper.getLocalFilePath(it.id) }
         syncIndexById()
+        // Reemplazar SOLO lo precargado, sin reiniciar la canción ni perder posición.
+        val p = player
+        if (p != null && p.currentMediaItem != null) {
+            val from = p.currentMediaItemIndex + 1
+            if (from < p.mediaItemCount) p.removeMediaItems(from, p.mediaItemCount)
+            preloadNextItem()
+        }
         onStateChanged?.invoke()
     }
 
@@ -684,8 +820,10 @@ class PlaybackService : MediaSessionService() {
             try {
                 if (isDownloadedMode()) {
                     // Modo descargas: rellenar SIEMPRE solo con descargas (por
-                    // artista/género), haya o no conexión.
-                    val existingIds = queue.map { it.id }.toSet()
+                    // género), haya o no conexión. Excluir además lo ya
+                    // reproducido en esta sesión (bug: repetían canciones que
+                    // ya habían sonado con el auto-eliminar activo).
+                    val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
                     val mix = buildDownloadMix(currentSong, existingIds, limit = 15)
                     if (mix.isNotEmpty()) addListToQueue(mix)
                 } else if (ServerReachability.isServerReachable()) {
@@ -704,24 +842,23 @@ class PlaybackService : MediaSessionService() {
                         addListToQueue(newSongs)
                     }
                 } else {
-                    // MODO OFFLINE: Usar canciones descargadas
+                    // MODO OFFLINE: Usar canciones descargadas, excluyendo lo
+                    // ya sonado en la sesión y las marcadas como "No me gusta".
                     val downloads = downloadHelper.getDownloadedSongs()
+                        .filter { d -> SongAdminStore.getDislikedSongs().none { it.songId == d.id } }
                     if (downloads.isNotEmpty()) {
-                        val existingIds = queue.map { it.id }.toSet()
+                        val existingIds = (queue.map { it.id }.toSet() + playedInSessionIds)
                         val candidates = downloads.filter { it.id !in existingIds }
                         
-                        val toAdd = if (candidates.isNotEmpty()) {
-                            candidates.shuffled().take(15).map { d -> toSong(d) }
-                        } else if (downloads.size > 1) {
-                            // Si todas ya están en la cola, permitir repetir algunas
-                            // (pero no la que suena ahora)
-                            downloads.filter { it.id != currentSong?.id }.shuffled().take(10).map { d -> toSong(d) }
-                        } else {
-                            emptyList()
-                        }
+                        // SOLO canciones nuevas para la cola: NO volver a añadir
+                        // las que ya están (crear duplicados rompía la
+                        // sincronía índice/player y causaba repeticiones).
+                        val toAdd = candidates.shuffled().take(15).map { d -> toSong(d) }
                         
                         if (toAdd.isNotEmpty()) {
                             addListToQueue(toAdd)
+                        } else {
+                            LocalLogger.log(this@PlaybackService, "Refill offline: no quedan descargas nuevas (todo ya sonado o en cola).")
                         }
                     }
                 }
@@ -737,7 +874,12 @@ class PlaybackService : MediaSessionService() {
      */
     private fun syncIndexById() {
         val current = currentSong ?: return
-        val newIndex = queue.indexOfFirst { it.id == current.id }
+        // Con duplicados en la cola, preferir la ocurrencia en o después de la
+        // posición actual para que la sincronización SIEMPRE avance (no
+        // regresar a una posición anterior y reproducir canciones ya sonadas).
+        val newIndex = queue.withIndex()
+            .firstOrNull { it.index >= currentIndex && it.value.id == current.id }?.index
+            ?: queue.indexOfFirst { it.id == current.id }
         if (newIndex != -1 && newIndex != currentIndex) {
             currentIndex = newIndex
             LocalLogger.log(this, "Queue sync: currentIndex actualizado a $newIndex por ID ${current.id}")
@@ -754,6 +896,12 @@ class PlaybackService : MediaSessionService() {
             player?.volume = 1f
         }
         
+        preloadNextItem()
+        onStateChanged?.invoke()
+        updateMediaSessionCustomLayout()
+    }
+
+    private fun preloadNextItem() {
         // Cargar el siguiente item en el buffer del player si existe
         if (hasNext()) {
             val nextSong = queue[currentIndex + 1]
@@ -769,12 +917,10 @@ class PlaybackService : MediaSessionService() {
                 .build()
             
             // Solo añadir si no es duplicado del que ya viene
-            if ((player?.mediaItemCount ?: 0) <= 1) {
+            if (player?.hasNextMediaItem() == false) {
                 player?.addMediaItem(nextMediaItem)
             }
         }
-        onStateChanged?.invoke()
-        updateMediaSessionCustomLayout()
     }
 
 
@@ -783,7 +929,25 @@ class PlaybackService : MediaSessionService() {
         val songToHandle = currentSong
         val indexToHandle = currentIndex
         if (currentIndex + 1 < queue.size) {
-            currentIndex++
+            val finishedId = songToHandle?.id
+            var nextIdx = currentIndex + 1
+            // Evitar repetición inmediata: si el siguiente índice apunta a la
+            // MISMA canción que acaba de terminar (duplicado en la cola),
+            // saltarla para que no "se vuelva a reproducir al finalizar".
+            while (nextIdx < queue.size && finishedId != null && queue[nextIdx].id == finishedId) {
+                nextIdx++
+                LocalLogger.log(this, "next: saltando duplicado inmediato de $finishedId")
+            }
+            if (nextIdx >= queue.size) {
+                player?.stop()
+                player?.clearMediaItems()
+                checkAutoDelete(songToHandle, indexToHandle)
+                currentSong = null
+                currentIndex = -1
+                onStateChanged?.invoke()
+                return
+            }
+            currentIndex = nextIdx
             playCurrentIndex()
             checkAutoDelete(songToHandle, indexToHandle)
         } else {
@@ -810,6 +974,7 @@ class PlaybackService : MediaSessionService() {
     fun seekTo(positionMs: Long) { player?.seekTo(positionMs) }
 
     private fun playCurrentIndex() {
+        clearKaraokeState()
         val song = queue.getOrNull(currentIndex) ?: return
         val localPath = queueLocalPaths.getOrNull(currentIndex)
         currentSong = song
@@ -817,6 +982,8 @@ class PlaybackService : MediaSessionService() {
         // Registrar la canción como "escuchada" (útil para el modo de
         // auto-descarga "solo novedades" / ciclo cuando ya las escuchó todas).
         sessionManager.recordPlayedSong(song.id)
+        playedInSessionIds.add(song.id)
+        LocalLogger.log(this, "playCurrentIndex: reproduciendo '${song.title}' (id=${song.id}, index=$currentIndex de ${queue.size})")
 
         // Aplicar metadatos locales (ediciones del admin) antes de construir el MediaItem
         val displayedSong = SongAdminStore.applyTo(song)
@@ -1028,6 +1195,8 @@ class PlaybackService : MediaSessionService() {
         try {
             val song = currentSong ?: return
             val newLiked = !song.liked
+            sessionManager.addPendingLike(song.id, newLiked)
+            LocalLogger.log(this, "toggleLike: '${song.title}' (${song.id}) → liked=$newLiked; guardado pendiente")
             syncLikeStateForSong(song.id, newLiked)
             AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
             downloadHelper.updateLiked(song.id, newLiked)
@@ -1036,8 +1205,15 @@ class PlaybackService : MediaSessionService() {
             serviceScope.launch {
                 try {
                     val response = RetrofitClient.api.likeSong(song.id, LikeRequest(sessionManager.getUserId(), newLiked))
-                    if (!response.isSuccessful) sessionManager.addPendingLike(song.id, newLiked)
-                } catch (e: Exception) { sessionManager.addPendingLike(song.id, newLiked) }
+                    if (!response.isSuccessful) {
+                        LocalLogger.log(this@PlaybackService, "toggleLike: servidor rechazó (HTTP ${response.code()}), continúa pendiente")
+                    } else {
+                        if (sessionManager.getPendingLikes()[song.id] == newLiked) sessionManager.removePendingLike(song.id)
+                        LocalLogger.log(this@PlaybackService, "toggleLike: enviado al servidor correctamente")
+                    }
+                } catch (e: Exception) {
+                    LocalLogger.log(this@PlaybackService, "toggleLike: sin conexión, continúa pendiente (${e.message})")
+                }
             }
         } catch (e: Exception) {
             LocalLogger.log(this, "toggleLike: fallo inesperado (${e.message})")
@@ -1051,11 +1227,20 @@ class PlaybackService : MediaSessionService() {
             // Registrar localmente para que el admin pueda revisarla y, si quiere,
             // borrarla por completo del disco.
             SongAdminStore.recordDislikedSong(songToHide)
+            sessionManager.addPendingDislike(songToHide.id)
+            LocalLogger.log(this, "dislike: ${songToHide.id}; guardado pendiente")
             serviceScope.launch {
                 try {
                     val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))
-                    if (!response.isSuccessful) sessionManager.addPendingDislike(songToHide.id)
-                } catch (e: Exception) { sessionManager.addPendingDislike(songToHide.id) }
+                    if (response.isSuccessful) {
+                        sessionManager.removePendingDislike(songToHide.id)
+                        LocalLogger.log(this@PlaybackService, "dislike: sincronizado (${songToHide.id})")
+                    } else {
+                        LocalLogger.log(this@PlaybackService, "dislike: HTTP ${response.code()}, continúa pendiente (${songToHide.id})")
+                    }
+                } catch (e: Exception) {
+                    LocalLogger.log(this@PlaybackService, "dislike: sin conexión, continúa pendiente (${songToHide.id}): ${e.message}")
+                }
             }
             next()
         } catch (e: Exception) {

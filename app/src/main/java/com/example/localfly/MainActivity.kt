@@ -386,6 +386,12 @@ class MainActivity : AppCompatActivity() {
 
         // El servidor volvió: sincronizar metadatos pendientes...
         lifecycleScope.launch {
+            val pendingLikes = sessionManager.getPendingLikes()
+            val pendingDislikes = sessionManager.getPendingDislikes()
+            com.example.localfly.utils.LocalLogger.log(
+                this@MainActivity,
+                "Servidor reconectado: ${pendingLikes.size} likes y ${pendingDislikes.size} dislikes pendientes de sincronizar"
+            )
             MetadataSyncManager.syncPendingEdits(sessionManager)
         }
 

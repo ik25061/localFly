@@ -206,6 +206,17 @@
             app:tint="#FFFFFF" />
     </LinearLayout>
 
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnKaraoke"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:text="Karaoke"
+        android:textSize="12sp"
+        android:contentDescription="Activar o desactivar instrumental karaoke"
+        app:layout_constraintTop_toBottomOf="@id/llSecondaryActionsRow"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <TextView
         android:id="@+id/tvVoiceIndicator"
         android:layout_width="wrap_content"
@@ -225,7 +236,7 @@
         app:drawableTint="#FFFFFF"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/llSecondaryActionsRow" />
+        app:layout_constraintTop_toBottomOf="@id/btnKaraoke" />
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivCircularImage"

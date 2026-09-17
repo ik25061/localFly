@@ -1,0 +1,7 @@
+Calculating task graph as no cached configuration is available for tasks: clean compileDebugKotlin
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:clean
+> Task :app:processDebugNavigationResources
+> Task :app:generateDebugResources
+> Task :app:dataBindingMergeDependencyArtifactsDebug
