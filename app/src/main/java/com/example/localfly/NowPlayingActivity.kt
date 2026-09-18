@@ -238,7 +238,7 @@ class NowPlayingActivity : AppCompatActivity() {
         queueOverlay.visibility = android.view.View.GONE
         btnCloseQueueOverlay.setOnClickListener { toggleQueue() }
 
-        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnKaraoke).setOnClickListener {
+        findViewById<ImageButton>(R.id.btnKaraoke).setOnClickListener {
             if (castController.isCasting) {
                 Toast.makeText(this, "Desconecta Chromecast para reproducir el instrumental en el teléfono", Toast.LENGTH_LONG).show()
             } else playbackService?.toggleKaraoke()
@@ -1184,15 +1184,29 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun refreshUi() {
         if (isFinishing || isDestroyed) return
-        findViewById<com.google.android.material.button.MaterialButton>(R.id.btnKaraoke).apply {
+        findViewById<ImageButton>(R.id.btnKaraoke).apply {
             val service = playbackService
             isEnabled = service != null && service.currentSong?.isEpisode == false
-            text = when {
-                service?.karaokeLoading == true -> "Cancelar descarga instrumental"
-                service?.isKaraoke == true -> "Karaoke activo · Volver a voz"
-                else -> "Karaoke"
+            when {
+                service?.karaokeLoading == true -> {
+                    alpha = 0.45f
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
+                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#000000"))
+                    contentDescription = "Cancelar descarga instrumental"
+                }
+                service?.isKaraoke == true -> {
+                    alpha = 1f
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FFFFFF"))
+                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
+                    contentDescription = "Karaoke activo · Volver a voz"
+                }
+                else -> {
+                    alpha = 1f
+                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
+                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#000000"))
+                    contentDescription = "Karaoke"
+                }
             }
-            contentDescription = text
         }
         val rawSong = playbackService?.currentSong ?: run { finish(); return }
         val song = SongAdminStore.applyTo(rawSong)

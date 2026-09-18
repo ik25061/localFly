@@ -32,6 +32,19 @@
             app:shapeAppearanceOverlay="@style/RoundedCorners4"
             android:contentDescription="@string/cover_placeholder" />
 
+        <!-- Indicador de instrumental/karaoke disponible (arriba a la derecha) -->
+        <ImageView
+            android:id="@+id/ivKaraokeIndicator"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="2dp"
+            android:src="@drawable/ic_mic"
+            android:visibility="gone"
+            android:padding="2dp"
+            android:background="@drawable/bg_lyrics_indicator"
+            app:tint="#FFFFFF" />
+
         <ImageView
             android:id="@+id/ivLyricsIndicator"
             android:layout_width="16dp"

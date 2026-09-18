@@ -35,6 +35,7 @@ data class DownloadedSong(
     val key: String? = null,
     val hasCover: Boolean = false,
     val hasLyrics: Boolean = false,
+    val hasKaraoke: Boolean = false,
     val liked: Boolean = false,
     val subtitleUrl: String? = null,
     val isEpisode: Boolean = false,
@@ -159,6 +160,7 @@ class DownloadManagerHelper private constructor(context: Context) {
                         key = song.key,
                         hasCover = song.hasCover,
                         hasLyrics = hasLyricsNow,
+                        hasKaraoke = song.hasKaraoke,
                         liked = song.liked,
                         fileSize = file!!.length(),
                         genre = song.genre ?: emptyList()

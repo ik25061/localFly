@@ -16,6 +16,8 @@ data class Song(
     val hasCover: Boolean,
     @SerializedName("hasLyrics")
     val hasLyrics: Boolean = false,
+    @SerializedName("hasKaraoke")
+    val hasKaraoke: Boolean = false,
     @SerializedName("is_episode")
     val isEpisode: Boolean = false,
     @SerializedName("last_position_ms")

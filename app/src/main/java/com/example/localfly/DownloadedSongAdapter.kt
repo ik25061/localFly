@@ -27,6 +27,7 @@ class DownloadedSongAdapter(
         val btnDelete: ImageButton = view.findViewById(R.id.btnDelete)
         val btnAddToPlaylist: ImageButton = view.findViewById(R.id.btnAddToPlaylist)
         val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
+        val ivKaraokeIndicator: ImageView = view.findViewById(R.id.ivKaraokeIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
@@ -45,6 +46,9 @@ class DownloadedSongAdapter(
 
         // Lyrics Indicator
         holder.ivLyricsIndicator.visibility = if (item.hasLyrics || !item.subtitleUrl.isNullOrEmpty()) View.VISIBLE else View.GONE
+
+        // Indicador de instrumental (karaoke) disponible
+        holder.ivKaraokeIndicator.visibility = if (item.hasKaraoke) View.VISIBLE else View.GONE
 
         // Carga de portada con fallback inteligente
         val artistEncoded = java.net.URLEncoder.encode(item.artist ?: "", "UTF-8").replace("+", "%20")

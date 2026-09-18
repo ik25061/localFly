@@ -41,6 +41,7 @@ class SongAdapter(
         val btnDislike: ImageButton = view.findViewById(R.id.btnDislike)
         val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
         val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
+        val ivKaraokeIndicator: ImageView = view.findViewById(R.id.ivKaraokeIndicator)
         val tvDuration: TextView = view.findViewById(R.id.tvDuration)
     }
 
@@ -95,6 +96,9 @@ class SongAdapter(
  
         // Lyrics Indicator (reused for Podcasts with subtitles)
         holder.ivLyricsIndicator.visibility = if (song.hasLyrics || !song.subtitleUrl.isNullOrEmpty()) View.VISIBLE else View.GONE
+
+        // Indicador de instrumental (karaoke) disponible
+        holder.ivKaraokeIndicator.visibility = if (song.hasKaraoke) View.VISIBLE else View.GONE
  
         // Acciones visibles
         holder.btnLike.setImageResource(
