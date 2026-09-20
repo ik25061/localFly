@@ -72,6 +72,19 @@
                 android:src="@drawable/ic_comment"
                 app:tint="#FFFFFF" />
 
+            <!-- Karaoke: alterna entre la version original y el instrumental -->
+            <ImageButton
+                android:id="@+id/btnKaraoke"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Karaoke"
+                android:padding="6dp"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_karaoke_mic"
+                app:tint="#FFFFFF" />
+
             <!-- Equalizer/Settings icon from proposal -->
             <ImageButton
                 android:id="@+id/btnEqualizer"
@@ -92,20 +105,8 @@
                 android:background="?attr/selectableItemBackgroundBorderless" />
         </LinearLayout>
 
-        <!-- Etiqueta "REPRODUCIENDO"/"PODCAST" gestionada por NowPlayingActivity
-             (se restableció tras perderse en el reordenado de iconos). -->
-        <TextView
-            android:id="@+id/tvHeaderType"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_centerInParent="true"
-            android:alpha="0.92"
-            android:elevation="4dp"
-            android:letterSpacing="0.18"
-            android:text="REPRODUCIENDO"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+        <!-- Etiqueta superior: quitada a peticion del usuario (ya no se muestra
+             la palabra "REPRODUCIENDO" en el reproductor a pantalla completa). -->
     </RelativeLayout>
 
     <!-- Secondary Row of Actions (6 green circular buttons from proposal) -->
@@ -206,22 +207,6 @@
             app:tint="#FFFFFF" />
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/btnKaraoke"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginTop="4dp"
-        android:background="@drawable/bg_circle_white"
-        android:backgroundTint="#1DB954"
-        android:contentDescription="Karaoke"
-        android:padding="8dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_karaoke_mic"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/llSecondaryActionsRow"
-        app:tint="#000000" />
-
     <TextView
         android:id="@+id/tvVoiceIndicator"
         android:layout_width="wrap_content"
@@ -241,7 +226,7 @@
         app:drawableTint="#FFFFFF"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/btnKaraoke" />
+        app:layout_constraintTop_toBottomOf="@id/llSecondaryActionsRow" />
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivCircularImage"

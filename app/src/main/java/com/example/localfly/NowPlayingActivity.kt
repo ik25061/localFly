@@ -88,7 +88,6 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnEqualizer: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
-    private lateinit var tvHeaderType: TextView
     private lateinit var tvVoiceIndicator: TextView
     private lateinit var ivPodcastHeader: ImageView
     private lateinit var cardTranscript: CardView
@@ -223,7 +222,6 @@ class NowPlayingActivity : AppCompatActivity() {
         btnShowQueueTop = findViewById(R.id.btnShowQueueTop)
         rvUpcoming = findViewById(R.id.rvUpcomingSongs)
         
-        tvHeaderType = findViewById(R.id.tvHeaderType)
         tvVoiceIndicator = findViewById(R.id.tvVoiceIndicator)
         ivPodcastHeader = findViewById(R.id.ivPodcastHeader)
         cardTranscript = findViewById(R.id.cardTranscript)
@@ -1227,7 +1225,6 @@ class NowPlayingActivity : AppCompatActivity() {
         
         // Ajustar diseño para Podcast vs Música
         if (isPodcast) {
-            tvHeaderType.text = "PODCAST"
             tvTitle.textSize = 18f // Tamaño reducido para nombres largos
             ivCircularImage.visibility = View.GONE
             ivBlurredBackground.visibility = View.GONE
@@ -1250,7 +1247,6 @@ class NowPlayingActivity : AppCompatActivity() {
             // Cargar letras/transcripción automáticamente
             loadTranscriptInline(song)
         } else {
-            tvHeaderType.text = "REPRODUCIENDO"
             tvTitle.textSize = 22f
             ivCircularImage.visibility = View.VISIBLE
             ivBlurredBackground.visibility = View.VISIBLE
