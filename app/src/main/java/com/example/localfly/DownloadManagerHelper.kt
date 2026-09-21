@@ -40,7 +40,10 @@ data class DownloadedSong(
     val subtitleUrl: String? = null,
     val isEpisode: Boolean = false,
     val fileSize: Long = 0,
-    val genre: List<String> = emptyList()
+    val genre: List<String> = emptyList(),
+    // Se guardan para poder precargar el editor de metadatos sin conexión.
+    val album: String? = null,
+    val year: Int? = null
 )
 
 /**
@@ -163,7 +166,9 @@ class DownloadManagerHelper private constructor(context: Context) {
                         hasKaraoke = song.hasKaraoke,
                         liked = song.liked,
                         fileSize = file!!.length(),
-                        genre = song.genre ?: emptyList()
+                        genre = song.genre ?: emptyList(),
+                        album = song.album,
+                        year = song.year
                     )
                 )
                 val newList = current.toList()

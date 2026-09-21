@@ -62,149 +62,159 @@
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
+            <!-- Acciones principales, arriba: eliminar, editar metadatos y
+                 editar la letra de la canción. -->
             <ImageButton
-                android:id="@+id/btnComments"
+                android:id="@+id/btnDeleteSong"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="6dp"
+                android:background="@drawable/bg_circle_white"
+                android:backgroundTint="#FF4444"
+                android:contentDescription="Eliminar canción"
+                android:padding="8dp"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_comment"
+                android:src="@drawable/ic_delete"
                 app:tint="#FFFFFF" />
 
-            <!-- Karaoke: alterna entre la version original y el instrumental -->
             <ImageButton
-                android:id="@+id/btnKaraoke"
+                android:id="@+id/btnFullEditMetadata"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Karaoke"
-                android:padding="6dp"
+                android:background="@drawable/bg_circle_white"
+                android:backgroundTint="#1DB954"
+                android:contentDescription="Editar metadatos"
+                android:padding="8dp"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_karaoke_mic"
-                app:tint="#FFFFFF" />
+                android:src="@drawable/ic_metadata"
+                app:tint="#000000" />
 
-            <!-- Equalizer/Settings icon from proposal -->
+            <!-- Editar la letra (lápiz): distinto del icono que muestra la letra. -->
             <ImageButton
-                android:id="@+id/btnEqualizer"
+                android:id="@+id/btnEditLyrics"
                 android:layout_width="36dp"
                 android:layout_height="36dp"
                 android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:padding="6dp"
+                android:background="@drawable/bg_circle_white"
+                android:backgroundTint="#1DB954"
+                android:contentDescription="Editar letra"
+                android:padding="8dp"
                 android:scaleType="centerInside"
-                android:src="@drawable/ic_rotate"
-                app:tint="#FFFFFF" />
+                android:src="@drawable/ic_lyrics_edit"
+                app:tint="#000000" />
 
-            <androidx.mediarouter.app.MediaRouteButton
-                android:id="@+id/btnCast"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless" />
+            <!-- Icono de "rotate" eliminado: no tenía ninguna acción asociada. -->
         </LinearLayout>
 
         <!-- Etiqueta superior: quitada a peticion del usuario (ya no se muestra
              la palabra "REPRODUCIENDO" en el reproductor a pantalla completa). -->
     </RelativeLayout>
 
-    <!-- Secondary Row of Actions (6 green circular buttons from proposal) -->
+    <!-- Fila de acciones secundarias: vive justo encima de la línea de tiempo
+         (debajo de las estrellas). Incluye los iconos que antes estaban arriba
+         (comentarios, karaoke y cast) junto a radio, micrófono, añadir a lista
+         y ver letra. -->
     <LinearLayout
         android:id="@+id/llSecondaryActionsRow"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp"
         android:gravity="center"
         android:orientation="horizontal"
-        app:layout_constraintTop_toBottomOf="@id/rlTopBar">
+        app:layout_constraintBottom_toTopOf="@id/waveformSeekBar">
+
+        <!-- Añadir a lista -->
+        <ImageButton
+            android:id="@+id/btnAddToPlaylist"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1DB954"
+            android:contentDescription="Añadir a lista"
+            android:padding="9dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_collections"
+            app:tint="#000000" />
+
+        <ImageButton
+            android:id="@+id/btnComments"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
+            android:background="@drawable/bg_circle_white"
+            android:backgroundTint="#1DB954"
+            android:contentDescription="Comentarios"
+            android:padding="9dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_comment"
+            app:tint="#000000" />
 
         <ImageButton
             android:id="@+id/btnRadio"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
             android:background="@drawable/bg_circle_white"
             android:backgroundTint="#1DB954"
-            android:padding="10dp"
+            android:contentDescription="Radio en vivo"
+            android:padding="9dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_radio"
             app:tint="#000000" />
 
         <ImageButton
             android:id="@+id/btnMic"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
             android:background="@drawable/bg_circle_white"
             android:backgroundTint="#1DB954"
-            android:padding="10dp"
+            android:contentDescription="Micrófono"
+            android:padding="9dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_mic"
             android:visibility="gone"
             app:tint="#000000" />
 
-        <ImageButton
-            android:id="@+id/btnAddToPlaylist"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1DB954"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_collections"
-            app:tint="#000000" />
-
-        <ImageButton
-            android:id="@+id/btnFullEditMetadata"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
-            android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1DB954"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_metadata"
-            app:tint="#000000" />
-
+        <!-- Ver la letra (documento) al centro y un poco más grande: es la
+             acción principal de la fila. Editar la letra está arriba, con un lápiz. -->
         <ImageButton
             android:id="@+id/btnLyrics"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginHorizontal="4dp"
             android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#1DB954"
+            android:backgroundTint="#FFFFFF"
+            android:contentDescription="Ver letra"
             android:padding="10dp"
             android:scaleType="centerInside"
             android:src="@drawable/ic_lyrics_sheet"
             app:tint="#000000" />
 
-        <!-- Solo visible para administradores (NowPlayingActivity lo activa). -->
+        <!-- Karaoke: alterna entre la version original y el instrumental -->
         <ImageButton
-            android:id="@+id/btnEditLyrics"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
+            android:id="@+id/btnKaraoke"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
             android:background="@drawable/bg_circle_white"
             android:backgroundTint="#1DB954"
-            android:padding="10dp"
+            android:contentDescription="Karaoke"
+            android:padding="9dp"
             android:scaleType="centerInside"
-            android:src="@drawable/ic_lyrics_sheet"
-            android:visibility="gone"
+            android:src="@drawable/ic_karaoke_mic"
             app:tint="#000000" />
 
-        <ImageButton
-            android:id="@+id/btnDeleteSong"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginHorizontal="6dp"
+        <androidx.mediarouter.app.MediaRouteButton
+            android:id="@+id/btnCast"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginHorizontal="4dp"
             android:background="@drawable/bg_circle_white"
-            android:backgroundTint="#FF4444"
-            android:padding="10dp"
-            android:scaleType="centerInside"
-            android:src="@drawable/ic_delete"
-            app:tint="#FFFFFF" />
+            android:backgroundTint="#1DB954"
+            android:contentDescription="Transmitir"
+            android:padding="2dp" />
     </LinearLayout>
 
     <TextView
@@ -226,7 +236,7 @@
         app:drawableTint="#FFFFFF"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/llSecondaryActionsRow" />
+        app:layout_constraintTop_toBottomOf="@id/rlTopBar" />
 
     <com.google.android.material.imageview.ShapeableImageView
         android:id="@+id/ivCircularImage"
@@ -372,7 +382,7 @@
         app:cardBackgroundColor="#1AFFFFFF"
         app:cardCornerRadius="24dp"
         app:cardElevation="0dp"
-        app:layout_constraintBottom_toTopOf="@id/waveformSeekBar"
+        app:layout_constraintBottom_toTopOf="@id/llSecondaryActionsRow"
         app:layout_constraintTop_toBottomOf="@id/layoutRatingStats">
 
         <androidx.recyclerview.widget.RecyclerView

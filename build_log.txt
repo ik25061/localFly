@@ -1,7 +1,38 @@
-Calculating task graph as no cached configuration is available for tasks: clean compileDebugKotlin
+Reusing configuration cache.
 > Task :app:preBuild UP-TO-DATE
 > Task :app:preDebugBuild UP-TO-DATE
-> Task :app:clean
-> Task :app:processDebugNavigationResources
-> Task :app:generateDebugResources
-> Task :app:dataBindingMergeDependencyArtifactsDebug
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:mergeDebugResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:dataBindingMergeDependencyArtifactsDebug UP-TO-DATE
+> Task :app:dataBindingGenBaseClassesDebug UP-TO-DATE
+
+> Task :app:compileDebugKotlin
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/MainActivity.kt:123:16 'var statusBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/MainActivity.kt:124:16 'var navigationBarColor: Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/MainActivity.kt:126:20 'var isStatusBarContrastEnforced: Boolean' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/PlaybackService.kt:496:54 'constructor(p0: MediaSession): MediaSession.ConnectionResult.AcceptedResultBuilder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/PlaybackService.kt:520:30 'fun onPlayerCommandRequest(p0: MediaSession, p1: MediaSession.ControllerInfo, p2: Int): Int' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/PlaybackService.kt:544:14 'fun setIconResId(p0: Int): CommandButton.Builder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/PlaybackService.kt:550:14 'fun setIconResId(p0: Int): CommandButton.Builder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/dialogs/NewGenreDialog.kt:33:25 Condition is always 'true'.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/dialogs/NewGenreDialog.kt:49:45 Condition is always 'true'.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/fragments/CollectionListFragment.kt:54:23 'fun getSerializable(p0: String?): Serializable?' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:12:8 'class EncryptedSharedPreferences : Any, SharedPreferences' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:13:8 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:46:29 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:46:39 'constructor(p0: @NonNull() Context): MasterKey.Builder' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:47:31 'class MasterKey : Any' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:47:41 'enum class KeyScheme : Enum<MasterKey.KeyScheme!>' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:50:13 'class EncryptedSharedPreferences : Any, SharedPreferences' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:54:17 'class EncryptedSharedPreferences : Any, SharedPreferences' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:54:44 'enum class PrefKeyEncryptionScheme : Enum<EncryptedSharedPreferences.PrefKeyEncryptionScheme!>' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:55:17 'class EncryptedSharedPreferences : Any, SharedPreferences' is deprecated. Deprecated in Java.
+w: file:///C:/Users/rafael/AndroidStudioProjects/localfly/app/src/main/java/com/example/localfly/network/SessionManager.kt:55:44 'enum class PrefValueEncryptionScheme : Enum<EncryptedSharedPreferences.PrefValueEncryptionScheme!>' is deprecated. Deprecated in Java.
+
+BUILD SUCCESSFUL in 23s
+9 actionable tasks: 1 executed, 8 up-to-date
+Configuration cache entry reused.

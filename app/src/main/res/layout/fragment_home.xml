@@ -225,6 +225,9 @@
         <!-- Continuar Podcast -->
         <include layout="@layout/include_continue_podcast" android:id="@+id/layoutContinuePodcast" android:visibility="gone" />
 
+        <!-- Karaoke: canciones que ya tienen el audio sin voz -->
+        <include layout="@layout/section_home_standard" android:id="@+id/sectionKaraoke" android:visibility="gone" />
+
         <include layout="@layout/section_home_standard" android:id="@+id/sectionPlaylists" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionPodcasts" />
         <include layout="@layout/section_home_standard" android:id="@+id/sectionAlbums" />

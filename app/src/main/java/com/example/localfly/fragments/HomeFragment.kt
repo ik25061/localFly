@@ -54,6 +54,7 @@ class HomeFragment : Fragment() {
     private lateinit var yearAdapter: HorizontalCardAdapter
     private lateinit var recommendationsAdapter: LikedSongsAdapter
     private lateinit var librarySectionAdapter: LikedSongsAdapter
+    private lateinit var karaokeAdapter: HorizontalCardAdapter
 
     private val moods = listOf(
         "Energético" to "⚡",
@@ -125,6 +126,11 @@ class HomeFragment : Fragment() {
         // Recomendaciones: no hay pantalla dedicada para "ver todo", se oculta el enlace.
         binding.sectionRecommendations.tvSectionTitle.text = "Recomendaciones para ti"
         binding.sectionRecommendations.tvSectionSeeAll.visibility = View.GONE
+
+        // Karaoke: canciones que ya tienen el audio sin voz (la sección se
+        // oculta sola mientras no haya ninguna).
+        binding.sectionKaraoke.tvSectionTitle.text = "Karaoke (audio sin voz)"
+        binding.sectionKaraoke.tvSectionSeeAll.visibility = View.GONE
     }
 
     private fun setupSection(include: View, title: String, onSeeAll: () -> Unit) {
@@ -344,6 +350,14 @@ class HomeFragment : Fragment() {
         binding.sectionYears.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         binding.sectionYears.rvSectionContent.adapter = yearAdapter
 
+        // Karaoke (horizontal): canciones con instrumental sin voz
+        karaokeAdapter = HorizontalCardAdapter(
+            emptyList(),
+            onItemClick = { item -> if (item is Song) playKaraoke(item) }
+        )
+        binding.sectionKaraoke.rvSectionContent.layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        binding.sectionKaraoke.rvSectionContent.adapter = karaokeAdapter
+
         // Recomendaciones para ti (lista vertical, como en el diseño original)
         recommendationsAdapter = LikedSongsAdapter(
             mutableListOf(),
@@ -526,8 +540,61 @@ class HomeFragment : Fragment() {
                 }
             } catch (e: Exception) { }
 
-            // 9. Resumen mensual (se maneja vía DownloadManagerHelper.downloadProgress)
+            // 9. Karaoke: canciones que ya tienen el audio sin voz.
+            loadKaraokeSection(userId)
+
+            // 10. Resumen mensual (se maneja vía DownloadManagerHelper.downloadProgress)
         }
+    }
+
+    /**
+     * Sección Karaoke de Inicio.
+     *
+     * Muestra las canciones que ya tienen instrumental sin voz: primero las
+     * descargadas en el teléfono (funcionan sin servidor) y después las que el
+     * servidor marca con hasKaraoke. Al pulsar una, se reproduce directamente
+     * en modo karaoke. Si no hay ninguna, la sección queda oculta.
+     */
+    private fun loadKaraokeSection(userId: String) {
+        fun downloadedToSong(d: com.example.localfly.DownloadedSong): Song = Song(
+            id = d.id, title = d.title, artist = d.artist, album = d.album, year = d.year,
+            duration = d.duration, bpm = d.bpm, key = d.key, liked = d.liked,
+            hasCover = d.hasCover, hasLyrics = d.hasLyrics, hasKaraoke = true,
+            isEpisode = d.isEpisode, genre = d.genre
+        )
+
+        val local = downloadHelper.getDownloadedSongs()
+            .filter { it.hasKaraoke && !it.isEpisode }
+            .map { downloadedToSong(it) }
+        if (local.isNotEmpty() && isAdded) {
+            karaokeAdapter.updateItems(local.take(20))
+            binding.root.findViewById<View>(R.id.sectionKaraoke)?.visibility = View.VISIBLE
+        }
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val resp = RetrofitClient.api.getLibrary(userId = userId, limit = 300)
+                if (resp.isSuccessful) {
+                    val remote = resp.body()?.songs.orEmpty().filter { it.hasKaraoke && !it.isEpisode }
+                    val merged = (local + remote).distinctBy { it.id }
+                    if (isAdded && merged.isNotEmpty()) {
+                        karaokeAdapter.updateItems(merged.take(20))
+                        binding.root.findViewById<View>(R.id.sectionKaraoke)?.visibility = View.VISIBLE
+                    }
+                }
+            } catch (e: Exception) { }
+        }
+    }
+
+    /** Reproduce una canción de la sección Karaoke con el instrumental sin voz. */
+    private fun playKaraoke(song: Song) {
+        val service = (requireActivity() as? MainActivity)?.playbackService
+        if (service == null) {
+            Toast.makeText(requireContext(), "La reproducción aún no está lista", Toast.LENGTH_SHORT).show()
+            return
+        }
+        service.playSongForKaraoke(song)
+        Toast.makeText(requireContext(), "Karaoke: audio sin voz", Toast.LENGTH_SHORT).show()
     }
     // Funciones de interacción (delegar a la actividad o al servicio)
     private fun toggleLike(song: Song) {

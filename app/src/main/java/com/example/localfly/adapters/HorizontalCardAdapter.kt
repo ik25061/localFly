@@ -15,6 +15,7 @@ import com.example.localfly.network.Artist
 import com.example.localfly.network.Genre
 import com.example.localfly.network.Playlist
 import com.example.localfly.network.Podcast
+import com.example.localfly.network.Song
 import com.example.localfly.network.Year
 import com.example.localfly.utils.CoverPlaceholder
 import java.net.URLEncoder
@@ -154,6 +155,18 @@ class HorizontalCardAdapter(
                 } else {
                     holder.ivCover.setImageDrawable(CoverPlaceholder.drawable(seed))
                 }
+            }
+            is Song -> {
+                // Sección Karaoke: canción con instrumental sin voz disponible.
+                holder.tvTitle.text = item.title
+                holder.tvSubtitle.text = "${item.artist ?: "Artista desconocido"} · 🎤 Karaoke"
+                val seed = item.id
+                Glide.with(context)
+                    .load("$serverBaseUrl/cover/${item.id}")
+                    .placeholder(CoverPlaceholder.drawable(seed))
+                    .error(CoverPlaceholder.drawable(seed))
+                    .centerCrop()
+                    .into(holder.ivCover)
             }
         }
  

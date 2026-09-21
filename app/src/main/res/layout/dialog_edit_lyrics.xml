@@ -16,6 +16,15 @@
         android:textStyle="bold"
         android:layout_marginBottom="16dp"/>
 
+    <TextView
+        android:id="@+id/tvLyricsEditorStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="10dp"
+        android:text="Se guarda en este teléfono y se sincroniza con el servidor."
+        android:textColor="#9E9E9E"
+        android:textSize="11sp" />
+
     <EditText
         android:id="@+id/etManualLyrics"
         android:layout_width="match_parent"

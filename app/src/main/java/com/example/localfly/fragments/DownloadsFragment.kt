@@ -21,6 +21,7 @@ import com.example.localfly.MainActivity
 import com.example.localfly.R
 import com.example.localfly.dialogs.AddToPlaylistDialog
 import com.example.localfly.network.RetrofitClient
+import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.google.android.material.materialswitch.MaterialSwitch
@@ -90,6 +91,9 @@ class DownloadsFragment : Fragment() {
         btnBack.setOnClickListener {
             requireActivity().onBackPressedDispatcher.onBackPressed()
         }
+        // Sin servidor, Descargas es la pantalla raíz (las demás pestañas están
+        // ocultas), por lo que la flecha de "atrás" no tiene destino: se oculta.
+        btnBack.visibility = if (ServerReachability.isOnline) View.VISIBLE else View.GONE
         
         swAutoDelete.isChecked = sessionManager.isAutoDeleteEnabled()
         swAutoDelete.setOnCheckedChangeListener { _, isChecked ->
@@ -150,8 +154,8 @@ class DownloadsFragment : Fragment() {
             id = downloaded.id,
             title = downloaded.title,
             artist = downloaded.artist,
-            album = null,
-            year = null,
+            album = downloaded.album,
+            year = downloaded.year,
             duration = downloaded.duration,
             bpm = downloaded.bpm,
             key = downloaded.key,

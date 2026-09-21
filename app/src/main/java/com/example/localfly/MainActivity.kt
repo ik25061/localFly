@@ -149,11 +149,19 @@ class MainActivity : AppCompatActivity() {
             handleIntent(intent)
         }
 
+        // Sin servidor solo tiene sentido la pestaña de Descargas: se aplica con
+        // el último estado conocido y se corrige en cuanto responda el ping.
+        applyConnectivityNavigation(ServerReachability.isOnline)
+
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val current = supportFragmentManager.findFragmentById(R.id.container)
-                if (current !is HomeFragment) {
-                    bottomNav.selectedItemId = R.id.nav_home
+                // Sin servidor la raíz de la app es Descargas (el resto de
+                // pestañas están ocultas), así que "atrás" no debe llevar a Inicio.
+                val online = ServerReachability.isOnline
+                val atRoot = if (online) current is HomeFragment else current is DownloadsFragment
+                if (!atRoot) {
+                    bottomNav.selectedItemId = if (online) R.id.nav_home else R.id.nav_downloads
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
@@ -222,6 +230,42 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+    }
+
+    /**
+     * Oculta las pestañas que dependen del servidor (Inicio, Buscador, Listas y
+     * Asistente) mientras el servidor no responda: sin conexión solo tiene
+     * sentido "Descargas". Al volver la conexión se restauran todas y no se
+     * fuerza ningún cambio de pantalla (el usuario sigue donde estaba).
+     */
+    private fun applyConnectivityNavigation(online: Boolean) {
+        if (!::bottomNav.isInitialized) return
+
+        listOf(R.id.nav_home, R.id.nav_search, R.id.nav_playlists, R.id.nav_ai).forEach { id ->
+            bottomNav.menu.findItem(id)?.isVisible = online
+        }
+        bottomNav.menu.findItem(R.id.nav_downloads)?.isVisible = true
+
+        if (online) return
+
+        // Offline: asegurarse de que lo que se ve es Descargas (la pantalla
+        // actual podría ser Inicio u otra sección que ya no está accesible).
+        val current = supportFragmentManager.findFragmentById(R.id.container)
+        if (current !is DownloadsFragment) {
+            bottomNav.selectedItemId = R.id.nav_downloads
+            // Refuerzo: si por lo que sea la selección no cambió el fragmento
+            // (el ítem está oculto), se muestra Descargas directamente.
+            if (supportFragmentManager.findFragmentById(R.id.container) !is DownloadsFragment) {
+                replaceFragment(DownloadsFragment())
+            }
+        }
+    }
+
+    /** Punto único de actualización del estado "servidor alcanzable". */
+    private fun setServerOnline(online: Boolean) {
+        ServerReachability.isOnline = online
+        isServerOnline = online
+        applyConnectivityNavigation(online)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -358,7 +402,7 @@ class MainActivity : AppCompatActivity() {
                 lifecycleScope.launch { checkServerReachabilityNow() }
             }
             override fun onLost(network: Network) {
-                isServerOnline = false
+                setServerOnline(false)
             }
         }
         connectivityManager.registerNetworkCallback(request, networkCallback!!)
@@ -379,10 +423,11 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun checkServerReachabilityNow() {
         val reachable = ServerReachability.isServerReachable()
-        ServerReachability.isOnline = reachable
-        if (isServerOnline == reachable) return
-        isServerOnline = reachable
-        if (!reachable) return
+        val changed = isServerOnline != reachable
+        // Actualiza ServerReachability, el flag local y la barra de navegación
+        // (sin servidor solo se muestra Descargas).
+        setServerOnline(reachable)
+        if (!changed || !reachable) return
 
         // El servidor volvió: sincronizar metadatos pendientes...
         lifecycleScope.launch {

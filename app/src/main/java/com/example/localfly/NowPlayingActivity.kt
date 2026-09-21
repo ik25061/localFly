@@ -85,7 +85,6 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnEditLyrics: ImageButton
     private lateinit var btnComments: ImageButton
     private lateinit var btnEditMetadata: ImageButton
-    private lateinit var btnEqualizer: ImageButton
     private lateinit var btnShowQueueTop: ImageButton
     private lateinit var rvUpcoming: androidx.recyclerview.widget.RecyclerView
     private lateinit var tvVoiceIndicator: TextView
@@ -290,11 +289,6 @@ class NowPlayingActivity : AppCompatActivity() {
             Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
 
-        // Botón superior (icono rotar/ecualizador del reordenado): se referencia
-        // aquí para que la propiedad lateinit quede inicializada; todavía no
-        // tiene ninguna acción asociada.
-        btnEqualizer = findViewById(R.id.btnEqualizer)
-
         btnPlayPause.setOnClickListener {
             val wasPlaying = playbackService?.player?.isPlaying == true
             playbackService?.togglePlayPause()
@@ -310,7 +304,16 @@ class NowPlayingActivity : AppCompatActivity() {
         btnLyrics.setOnClickListener { showLyrics() }
         btnEditLyrics.setOnClickListener {
             val song = playbackService?.currentSong ?: return@setOnClickListener
-            LyricsEditorDialog.show(this, song)
+            LyricsEditorDialog.show(this, song) {
+                // La letra mostrada en pantalla debe reflejar la versión del
+                // usuario (local ya; en el servidor en cuanto haya conexión).
+                if (lyricsDialog != null) {
+                    lyricsDialog?.dismiss()
+                    lyricsDialog = null
+                    resetLyricsMiniPlayerViews()
+                    showLyrics()
+                }
+            }
         }
         btnComments.setOnClickListener {
             val song = playbackService?.currentSong ?: return@setOnClickListener
@@ -838,7 +841,13 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private suspend fun fetchLyrics(song: Song): List<LyricLine>? = withContext(Dispatchers.IO) {
-        // 0. Archivo local (canción descargada). Puede ser LRC real
+        // 0. Letra escrita/editada por el usuario en este teléfono: tiene
+        //    prioridad sobre cualquier otra fuente porque es SU versión (se
+        //    subirá al servidor en cuanto haya conexión).
+        userLyricsToLines(song.id, sessionManager.getPendingLyricsUploads())
+            ?.let { return@withContext it }
+
+        // 0b. Archivo local (canción descargada). Puede ser LRC real
         //    (con timestamps) o texto plano guardado previamente.
         val localLrc = File(filesDir, "downloads/${song.id}.lrc")
         if (localLrc.exists()) {
@@ -963,6 +972,29 @@ class NowPlayingActivity : AppCompatActivity() {
                 lifecycleScope.launch { PlaylistSyncManager.sync(sessionManager) }
             }
         } catch (e: Exception) { }
+    }
+
+    /**
+     * Convierte en líneas la letra guardada localmente por el editor (copia en
+     * filesDir/lyrics/<id>.lrc y/o versión pendiente de subir al servidor).
+     * Devuelve null si el usuario no ha editado nada para esa canción.
+     */
+    private fun userLyricsToLines(songId: String, pending: Map<String, String>): List<LyricLine>? {
+        val contents = mutableListOf<String>()
+        pending[songId]?.takeIf { it.isNotBlank() }?.let { contents.add(it) }
+        try {
+            val file = File(filesDir, "lyrics/$songId.lrc")
+            if (file.exists()) file.readText().takeIf { it.isNotBlank() }?.let { contents.add(it) }
+        } catch (_: Exception) { }
+
+        for (content in contents) {
+            if (isHtml(content)) continue
+            val parsed = parseLrcToList(content)
+            if (parsed.isNotEmpty()) return parsed
+            val plain = plainTextToLines(content)
+            if (plain.isNotEmpty()) return plain
+        }
+        return null
     }
 
     private fun parseLrcToList(lrc: String): List<LyricLine> {
@@ -1221,7 +1253,9 @@ class NowPlayingActivity : AppCompatActivity() {
         
         loadCommentStats(song.id)
         
-        btnEditLyrics.visibility = if (sessionManager.isAdmin()) View.VISIBLE else View.GONE
+        // El editor de letra está disponible para cualquier usuario: su versión
+        // se guarda en el teléfono y se sube al servidor al recuperar conexión.
+        btnEditLyrics.visibility = if (isPodcast) View.GONE else View.VISIBLE
         
         // Ajustar diseño para Podcast vs Música
         if (isPodcast) {

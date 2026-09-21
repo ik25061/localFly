@@ -1,8 +1,17 @@
 package com.example.localfly.dialogs
 
-// Cuadro de edición de metadatos del Administrador: nombre mostrado, álbum,
-// géneros, año y estado de ánimo. Se guarda en SongAdminStore y se conserva
-// aunque la biblioteca se reescanee.
+// Cuadro de edición de metadatos de la canción: título, artista, álbum, año,
+// géneros y estado de ánimo.
+//
+// Funciona igual con o sin conexión:
+//  - Precarga los datos que ya conoce el teléfono (edición previa guardada o
+//    los metadatos de la canción, que las descargas conservan offline).
+//  - Guarda en SongAdminStore (local e inmediato) y lo envía al servidor con
+//    MetadataSyncManager; si no hay servidor, queda en cola y se sincroniza al
+//    recuperar la conexión.
+//  - Los géneros se eligen en un desplegable con autocompletado (escribir
+//    "roc" muestra "Rock clásico", "Rock en español"…), se admiten varios y los
+//    que ya tiene la canción aparecen como chips que se pueden quitar.
 
 import android.content.Context
 import android.content.res.ColorStateList
@@ -11,10 +20,13 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.widget.ArrayAdapter
 import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import com.example.localfly.R
 import com.example.localfly.network.*
 import com.google.android.material.bottomsheet.BottomSheetDialog
@@ -29,6 +41,18 @@ object EditSongMetadataDialog {
         "Feliz", "Triste", "Energética", "Calmada",
         "Romántica", "Melancólica", "Agresiva", "Relajada",
         "Épica", "Oscura", "Brillante", "Misteriosa"
+    )
+
+    /** Sugerencias base de géneros: el desplegable siempre tiene opciones,
+     *  incluso sin servidor. */
+    private val PREDEFINED_GENRES = listOf(
+        "Rock clásico", "Rock en español", "Heavy Rock", "Rock alternativo",
+        "Pop", "Pop en español", "Balada", "Indie", "Metal", "Punk",
+        "Cumbia", "Salsa", "Bachata", "Merengue", "Vallenato", "Bolero",
+        "Mariachi", "Norteño", "Banda", "Corrido", "Reggaetón", "Trap",
+        "Electrónica", "House", "Jazz", "Blues", "Soul", "Funk", "Reggae",
+        "Clásica", "Instrumental", "Country", "Hip Hop", "Rap", "Tango",
+        "Flamenco", "Infantil", "Navideña", "Cristiana", "Regional mexicano"
     )
 
     fun show(
@@ -60,66 +84,112 @@ object EditSongMetadataDialog {
         val etArtist = view.findViewById<EditText>(R.id.etEditArtist)
         val etAlbum = view.findViewById<EditText>(R.id.etEditAlbum)
         val etYear = view.findViewById<EditText>(R.id.etEditYear)
-        val etSearchGenres = view.findViewById<EditText>(R.id.etSearchGenres)
+        val etSearchGenres = view.findViewById<AppCompatAutoCompleteTextView>(R.id.etSearchGenres)
         val chipGroupGenres = view.findViewById<ChipGroup>(R.id.chipGroupEditGenres)
         val chipGroupMoods = view.findViewById<ChipGroup>(R.id.chipGroupEditMoods)
 
-        etTitle.setText(existing?.title ?: displayedSong.title ?: "")
-        etArtist.setText(existing?.originalArtist ?: displayedSong.artist ?: "")
-        etAlbum.setText(existing?.album ?: displayedSong.album ?: "")
-        
-        // El año a veces viene null si no se ha configurado, pero el user dice que no aparece
-        // aun habiéndolo seleccionado de una lista de 1997.
+        etTitle.setText(existing?.title ?: displayedSong.title ?: serverSong.title ?: "")
+        etArtist.setText(existing?.originalArtist ?: displayedSong.artist ?: serverSong.artist ?: "")
+        etAlbum.setText(existing?.album ?: displayedSong.album ?: serverSong.album ?: "")
+
         val yearToShow = existing?.year ?: displayedSong.year ?: serverSong.year
         etYear.setText(yearToShow?.toString() ?: "")
 
-        val selectedGenreNames = (existing?.genres ?: displayedSong.genre ?: serverSong.genre ?: emptyList()).toMutableSet()
+        // Géneros de la canción (se conservan hasta que el usuario los quite)
+        val selectedGenreNames = LinkedHashSet<String>()
+        (existing?.genres
+            ?: displayedSong.genre
+            ?: serverSong.genre
+            ?: emptyList()).forEach { g ->
+            g.trim().takeIf { it.isNotEmpty() }?.let { selectedGenreNames.add(it) }
+        }
         val selectedMoodNames = (existing?.moods ?: displayedSong.moods?.map { it.name } ?: serverSong.moods?.map { it.name } ?: emptyList()).toMutableSet()
         existing?.mood?.let { selectedMoodNames.add(it) }
 
         var allServerGenres = emptyList<Genre>()
 
-        fun populateGenres(filter: String = "") {
+        // ===== GÉNEROS: chips de los que ya tiene + desplegable con autocompletado =====
+
+        /** Sugerencias del desplegable: servidor + locales + base, sin repetir. */
+        fun updateGenreSuggestions(filter: String = "") {
+            val localGenres = SongAdminStore.getGenres().map { it.name }
+            val base = (allServerGenres.map { it.name } + localGenres + PREDEFINED_GENRES + selectedGenreNames)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinctBy { it.lowercase() }
+            val filtered = if (filter.isBlank()) base
+            else base.filter { it.contains(filter.trim(), ignoreCase = true) }
+            etSearchGenres.setAdapter(
+                ArrayAdapter(context, android.R.layout.simple_dropdown_item_1line, filtered)
+            )
+            if (filter.isNotBlank() && filtered.isNotEmpty() && etSearchGenres.isFocused) {
+                etSearchGenres.showDropDown()
+            }
+        }
+
+        fun addGenreChip(name: String) {
+            val chip = Chip(context)
+            chip.text = name
+            chip.isCheckable = false
+            chip.isCloseIconVisible = true
+            chip.setCloseIconTint(ColorStateList.valueOf(Color.WHITE))
+            chip.chipBackgroundColor = ColorStateList.valueOf(Color.parseColor("#1DB954"))
+            chip.setTextColor(Color.BLACK)
+            chip.setOnCloseIconClickListener {
+                selectedGenreNames.remove(name)
+                chipGroupGenres.removeView(chip)
+                updateGenreSuggestions(etSearchGenres.text.toString())
+            }
+            chipGroupGenres.addView(chip)
+        }
+
+        fun refreshGenreChips() {
             chipGroupGenres.removeAllViews()
-            
-            // Unir géneros del servidor con los seleccionados localmente que podrían no estar en el top del servidor
-            val baseList = if (filter.isBlank()) {
-                (selectedGenreNames.map { Genre(id = it, name = it, coverId = null, songCount = 0) } + allServerGenres).distinctBy { it.name }
-            } else {
-                allServerGenres.filter { it.name.contains(filter, ignoreCase = true) }
-            }
-
-            baseList.forEach { genre ->
-                val chip = Chip(context)
-                chip.text = genre.name
-                chip.isCheckable = true
-                chip.isChecked = genre.name in selectedGenreNames
-                updateChipStyle(chip, chip.isChecked)
-                chip.setOnCheckedChangeListener { _, isChecked ->
-                    if (isChecked) selectedGenreNames.add(genre.name) else selectedGenreNames.remove(genre.name)
-                    updateChipStyle(chip, isChecked)
-                }
-                chipGroupGenres.addView(chip)
-            }
+            selectedGenreNames.forEach { addGenreChip(it) }
         }
 
-        // Cargar géneros del servidor
-        CoroutineScope(Dispatchers.Main).launch {
-            try {
-                val resp = RetrofitClient.api.getGenres(userId = sessionManager.getUserId(), limit = 1000)
-                if (resp.isSuccessful) {
-                    allServerGenres = resp.body()?.items ?: emptyList()
-                    populateGenres()
-                }
-            } catch (_: Exception) {}
+        /** Añade el género escrito/elegido (o lo deja fuera si ya estaba). */
+        fun commitGenre(raw: String) {
+            val name = raw.trim()
+            if (name.isEmpty()) return
+            if (selectedGenreNames.none { it.equals(name, ignoreCase = true) }) {
+                selectedGenreNames.add(name)
+                refreshGenreChips()
+            }
+            etSearchGenres.setText("")
+            updateGenreSuggestions()
         }
 
+        refreshGenreChips()
+        updateGenreSuggestions()
+
+        etSearchGenres.setOnItemClickListener { _, _, position, _ ->
+            val picked = etSearchGenres.adapter?.getItem(position) as? String
+            if (picked != null) commitGenre(picked)
+        }
+        etSearchGenres.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_NEXT) {
+                commitGenre(etSearchGenres.text.toString())
+                true
+            } else false
+        }
         etSearchGenres.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { populateGenres(s.toString()) }
+            override fun afterTextChanged(s: Editable?) { updateGenreSuggestions(s?.toString() ?: "") }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
         })
 
+        // Géneros del servidor (si responde; sin conexión quedan los locales y
+        // las sugerencias base, así el desplegable sigue funcionando).
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val resp = RetrofitClient.api.getGenres(userId = sessionManager.getUserId(), limit = 1000)
+                if (resp.isSuccessful) allServerGenres = resp.body()?.items ?: emptyList()
+            } catch (_: Exception) { }
+            updateGenreSuggestions(etSearchGenres.text.toString())
+        }
+
+        // ===== ESTADO DE ÁNIMO =====
         fun addMoodChip(name: String) {
             val chip = Chip(context)
             chip.text = name
@@ -134,7 +204,7 @@ object EditSongMetadataDialog {
         }
 
         PREDEFINED_MOODS.forEach { addMoodChip(it) }
-        
+
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val resp = RetrofitClient.api.getMoods()
@@ -156,6 +226,12 @@ object EditSongMetadataDialog {
         }
 
         view.findViewById<MaterialButton>(R.id.btnSaveEdit).setOnClickListener {
+            // Si el usuario dejó un género escrito sin confirmar, se incluye.
+            val pending = etSearchGenres.text.toString().trim()
+            if (pending.isNotEmpty() && selectedGenreNames.none { it.equals(pending, ignoreCase = true) }) {
+                selectedGenreNames.add(pending)
+            }
+
             val title = etTitle.text.toString().trim().takeIf { it.isNotEmpty() }
             val artist = etArtist.text.toString().trim().takeIf { it.isNotEmpty() }
             val album = etAlbum.text.toString().trim().takeIf { it.isNotEmpty() }
@@ -179,6 +255,17 @@ object EditSongMetadataDialog {
             )
             dialog.dismiss()
             onSaved()
+
+            // Sincronización con el servidor. Sin conexión la edición queda
+            // guardada en el teléfono y se enviará automáticamente al reconectar.
+            CoroutineScope(Dispatchers.Main).launch {
+                val synced = if (ServerReachability.isOnline) {
+                    try { MetadataSyncManager.syncPendingEdits(sessionManager) } catch (e: Exception) { false }
+                } else false
+                val msg = if (synced) "Metadatos guardados y actualizados en el servidor"
+                else "Cambios guardados en el teléfono; se actualizarán en el servidor al recuperar la conexión"
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
         }
 
         dialog.setContentView(view)

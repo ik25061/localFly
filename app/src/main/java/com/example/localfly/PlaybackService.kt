@@ -46,8 +46,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.coroutines.resume
 
 /**
  * Service que mantiene la reproducción de música sonando en segundo plano,
@@ -156,7 +158,153 @@ class PlaybackService : MediaSessionService() {
         karaokeOriginal = null
     }
 
+    /** Karaoke pedido desde Inicio: se activa en cuanto la canción carga. */
+    private var playKaraokeOnNextLoad = false
+
+    /** Reproduce [song] y activa el instrumental (karaoke) al cargar. */
+    fun playSongForKaraoke(song: Song, localFilePath: String? = null) {
+        playKaraokeOnNextLoad = true
+        playSong(song, localFilePath)
+        // Si la reproducción no llegó a empezar (sin conexión y sin descarga),
+        // el pedido se descarta para que no afecte a la siguiente canción.
+        playKaraokeOnNextLoad = false
+    }
+
+    // ===== RECORTE DE SILENCIOS: SOLO AL INICIO Y AL FINAL =====
+    //
+    // El silencio se recorta únicamente si está al principio o al final real de
+    // la canción, y solo cuando el archivo está descargado (se puede analizar).
+    // La detección es conservadora: por debajo del 2 % del pico del archivo,
+    // para no confundir pasajes suaves con silencio.
+
+    private val SILENCE_AMPLITUDE_THRESHOLD = 2
+    private val MIN_START_SILENCE_MS = 800L
+    private val MIN_END_SILENCE_MS = 600L
+    private val MAX_START_TRIM_MS = 20_000L
+    private val MAX_END_TRIM_MS = 30_000L
+
+    private var trimStartMs = 0L
+    private var trimEndMs = 0L
+    private var trimSongId: String? = null
+    private var trimJob: kotlinx.coroutines.Job? = null
+    private var lastTrimPosition = 0L
+
+    private val trimTickerHandler = Handler(Looper.getMainLooper())
+    private val trimTickerRunnable = object : Runnable {
+        override fun run() {
+            val p = player
+            if (trimEndMs <= 0 || p == null || !p.isPlaying) {
+                trimTickerHandler.removeCallbacks(this)
+                return
+            }
+            val position = p.currentPosition
+            val delta = position - lastTrimPosition
+            lastTrimPosition = position
+            // Solo se corta el final si la canción llegó hasta ahí de forma
+            // continua: si el usuario movió la barra, se respeta su posición.
+            if (position >= trimEndMs && delta in 0..2000) {
+                LocalLogger.log(this@PlaybackService, "Silencio final recortado (${currentSong?.id})")
+                trimEndMs = 0
+                next()
+                return
+            }
+            trimTickerHandler.postDelayed(this, 400)
+        }
+    }
+
+
     private var crossfadeEnabled = false
+
+    /**
+     * Lanza el análisis del archivo local para saber cuánto silencio hay al
+     * principio y al final. Si la canción se reproduce desde el servidor (sin
+     * archivo local) no se hace nada: no se corta nada a mitad de canción.
+     */
+    private fun scheduleSilenceTrim(song: Song, localPath: String?) {
+        trimJob?.cancel()
+        trimJob = null
+        trimStartMs = 0L
+        trimEndMs = 0L
+        trimSongId = song.id
+        lastTrimPosition = 0L
+        trimTickerHandler.removeCallbacks(trimTickerRunnable)
+
+        if (localPath == null || song.isEpisode) return
+
+        val durationMs = player?.duration?.takeIf { it > 0 }
+            ?: ((song.duration ?: 0.0) * 1000.0).toLong()
+        if (durationMs <= 0) return
+
+        trimJob = serviceScope.launch(Dispatchers.IO) {
+            val range = analyzeSilenceTrim(localPath, durationMs) ?: return@launch
+            withContext(Dispatchers.Main) {
+                if (trimSongId != song.id) return@withContext
+                trimStartMs = range.first
+                trimEndMs = range.second
+                // Saltar el silencio inicial solo si la canción acaba de empezar.
+                if (trimStartMs > 0 && (player?.currentPosition ?: 0L) < 1500L) {
+                    player?.seekTo(trimStartMs)
+                    lastTrimPosition = trimStartMs
+                    LocalLogger.log(this@PlaybackService, "Silencio inicial recortado: ${trimStartMs}ms (${song.id})")
+                }
+                if (trimEndMs > 0) {
+                    lastTrimPosition = player?.currentPosition ?: 0L
+                    trimTickerHandler.postDelayed(trimTickerRunnable, 400)
+                }
+            }
+        }
+    }
+
+    /** Analiza el archivo con Amplituda (una muestra cada cierto tiempo). */
+    private suspend fun analyzeSilenceTrim(path: String, durationMs: Long): Pair<Long, Long>? =
+        suspendCancellableCoroutine { cont ->
+            try {
+                linc.com.amplituda.Amplituda(this)
+                    .processAudio(path)
+                    .get(
+                        { result ->
+                            if (cont.isActive) {
+                                cont.resume(buildTrimRange(result.amplitudesAsList().toList(), durationMs))
+                            }
+                        },
+                        { _ -> if (cont.isActive) cont.resume(null) }
+                    )
+            } catch (e: Exception) {
+                if (cont.isActive) cont.resume(null)
+            }
+        }
+
+    /**
+     * Devuelve (ms de silencio inicial a saltar, ms de fin de audio útil).
+     * El segundo valor es 0 si no hay que recortar el final.
+     */
+    private fun buildTrimRange(amplitudes: List<Int>, durationMs: Long): Pair<Long, Long>? {
+        if (amplitudes.size < 4 || durationMs <= 0) return null
+        val stepMs = durationMs.toDouble() / amplitudes.size
+
+        var firstAudible = -1
+        for (i in amplitudes.indices) {
+            if (amplitudes[i] > SILENCE_AMPLITUDE_THRESHOLD) { firstAudible = i; break }
+        }
+        var lastAudible = -1
+        for (i in amplitudes.indices.reversed()) {
+            if (amplitudes[i] > SILENCE_AMPLITUDE_THRESHOLD) { lastAudible = i; break }
+        }
+        if (firstAudible < 0 || lastAudible < 0) return null
+
+        val startSilenceMs = (firstAudible * stepMs).toLong()
+        val endSilenceMs = ((amplitudes.size - 1 - lastAudible) * stepMs).toLong()
+
+        val startTrim = if (startSilenceMs >= MIN_START_SILENCE_MS)
+            startSilenceMs.coerceAtMost(MAX_START_TRIM_MS) else 0L
+        val endTrim = if (endSilenceMs >= MIN_END_SILENCE_MS)
+            endSilenceMs.coerceAtMost(MAX_END_TRIM_MS) else 0L
+        val endOfAudio = if (endTrim > 0) (durationMs - endTrim) else 0L
+
+        if (startTrim == 0L && endOfAudio == 0L) return null
+        return startTrim to endOfAudio
+    }
+
     private var fadeOutStartedForCurrentSong = false
     private var fadeJob: kotlinx.coroutines.Job? = null
 
@@ -226,7 +374,12 @@ class PlaybackService : MediaSessionService() {
         crossfadeEnabled = sessionManager.isCrossfadeEnabled()
 
         player = ExoPlayer.Builder(this).build()
-        player?.skipSilenceEnabled = crossfadeEnabled
+        // IMPORTANTE: el "skipSilence" de ExoPlayer recorta silencios en
+        // CUALQUIER punto de la canción y confundía pasajes de audio muy bajo
+        // con silencio (p. ej. "Tren al cementerio" se escuchaba cortada).
+        // Se recorta solo el silencio real del principio y del final con
+        // analyzeSilenceTrim().
+        player?.skipSilenceEnabled = false
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 val original = karaokeOriginal ?: return
@@ -405,7 +558,10 @@ class PlaybackService : MediaSessionService() {
     fun setCrossfadeEnabled(enabled: Boolean) {
         crossfadeEnabled = enabled
         sessionManager.setCrossfadeEnabled(enabled)
-        player?.skipSilenceEnabled = enabled
+        // El recorte de silencios no depende del crossfade (ver onCreate): aquí
+        // nunca se activa el skipSilence de ExoPlayer para no cortar pasajes
+        // suaves a mitad de canción.
+        player?.skipSilenceEnabled = false
         if (!enabled) {
             fadeJob?.cancel()
             player?.volume = 1f
@@ -701,7 +857,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun toSong(d: DownloadedSong): Song = Song(
         id = d.id, title = d.title, artist = d.artist,
-        album = null, year = null, duration = d.duration,
+        album = d.album, year = d.year, duration = d.duration,
         bpm = d.bpm, key = d.key, liked = d.liked,
         hasCover = d.hasCover, hasLyrics = d.hasLyrics,
         isEpisode = d.isEpisode, lastPositionMs = 0L, genre = d.genre
@@ -1028,11 +1184,22 @@ class PlaybackService : MediaSessionService() {
             player?.seekTo(displayedSong.lastPositionMs)
         }
 
+        // Recorte de silencios SOLO al inicio y al final (archivo local).
+        scheduleSilenceTrim(displayedSong, localPath ?: downloadHelper.getLocalFilePath(song.id))
+
         fadeOutStartedForCurrentSong = false
         fadeJob?.cancel()
         player?.volume = if (crossfadeEnabled) 0f else 1f
         player?.play()
         if (crossfadeEnabled) startFade(from = 0f, to = 1f, durationMs = FADE_DURATION_MS)
+
+        // Karaoke solicitado desde la sección Karaoke de Inicio: al cargar la
+        // canción se cambia la fuente por el instrumental sin voz.
+        if (playKaraokeOnNextLoad) {
+            playKaraokeOnNextLoad = false
+            toggleKaraoke()
+        }
+
         updateMediaSessionCustomLayout()
         onStateChanged?.invoke()
     }
@@ -1264,6 +1431,8 @@ class PlaybackService : MediaSessionService() {
     override fun onDestroy() {
         fadeTickerHandler.removeCallbacks(fadeTickerRunnable)
         fadeJob?.cancel()
+        trimTickerHandler.removeCallbacks(trimTickerRunnable)
+        trimJob?.cancel()
         // Cerrar cualquier modo radio activo para no dejar la sesión colgada
         if (RadioManager.isHost) RadioManager.stopHosting()
         if (RadioManager.isListener) RadioManager.stopListening()
