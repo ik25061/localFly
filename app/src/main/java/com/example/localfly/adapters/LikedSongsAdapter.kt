@@ -12,11 +12,13 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
-import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.RetrofitClient
+import com.example.localfly.network.ServerReachability
+import com.example.localfly.network.SessionManager
 import com.example.localfly.utils.CoverPlaceholder
 import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
+import java.util.Locale
 
 class LikedSongsAdapter(
     private var songs: MutableList<Song>,
@@ -41,6 +43,7 @@ class LikedSongsAdapter(
         val btnSongMenu: ImageButton = view.findViewById(R.id.btnSongMenu)
         val ivLyricsIndicator: ImageView = view.findViewById(R.id.ivLyricsIndicator)
         val ivKaraokeIndicator: ImageView = view.findViewById(R.id.ivKaraokeIndicator)
+        val tvDuration: TextView? = view.findViewById(R.id.tvDuration)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -57,9 +60,14 @@ class LikedSongsAdapter(
         holder.tvIndex.text = (position + 1).toString()
         holder.tvTitle.text = song.title
         holder.tvArtist.text = song.artist ?: "Artista desconocido"
+        holder.tvDuration?.let {
+            it.visibility = View.VISIBLE
+            it.text = formatDuration(song.duration)
+        }
 
-        // Lyrics Indicator
-        holder.ivLyricsIndicator.visibility = if (song.hasLyrics) View.VISIBLE else View.GONE
+        // Indicador de letra (también episodios/podcasts con subtítulos)
+        holder.ivLyricsIndicator.visibility =
+            if (song.hasLyrics || !song.subtitleUrl.isNullOrEmpty()) View.VISIBLE else View.GONE
 
         // Indicador de instrumental (karaoke) disponible
         holder.ivKaraokeIndicator.visibility = if (song.hasKaraoke) View.VISIBLE else View.GONE
@@ -97,6 +105,24 @@ val seed = song.id
 
     private fun showSongMenu(holder: ViewHolder, song: Song) {
         val popup = PopupMenu(holder.itemView.context, holder.btnSongMenu)
+
+        // Sin conexión al servidor solo tiene sentido ofrecer la descarga
+        // (o quitarla), que es una acción local; el resto necesita servidor.
+        if (!ServerReachability.isOnline) {
+            popup.menu.add(
+                0,
+                MENU_DOWNLOAD,
+                0,
+                if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
+            )
+            popup.setOnMenuItemClickListener {
+                onDownloadClick(song)
+                true
+            }
+            popup.show()
+            return
+        }
+
         if (onDeleteClick != null) {
             popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
         }
@@ -112,6 +138,10 @@ val seed = song.id
             if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
         )
 
+        if (SessionManager(holder.itemView.context).isAdmin()) {
+            popup.menu.add(0, MENU_EDIT_LYRICS, 5, "Editar letra")
+        }
+
         popup.setOnMenuItemClickListener { item: MenuItem ->
             when (item.itemId) {
                 MENU_DELETE -> onDeleteClick?.invoke(song)
@@ -119,6 +149,9 @@ val seed = song.id
                 MENU_ADD_PLAYLIST -> onAddToPlaylistClick?.invoke(song)
                 MENU_PLAY_NEXT -> onPlayNextClick?.invoke(song)
                 MENU_DOWNLOAD -> onDownloadClick(song)
+                MENU_EDIT_LYRICS -> {
+                    com.example.localfly.dialogs.LyricsEditorDialog.show(holder.itemView.context, song)
+                }
             }
             true
         }
@@ -135,6 +168,14 @@ val seed = song.id
 
     fun refreshDownloadStates() {
         notifyDataSetChanged()
+    }
+
+    private fun formatDuration(durationSeconds: Double?): String {
+        if (durationSeconds == null) return "--:--"
+        val totalSeconds = durationSeconds.toInt()
+        val minutes = totalSeconds / 60
+        val seconds = totalSeconds % 60
+        return String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
     }
 
     /** Devuelve el índice de una canción en la lista, o -1 si no está. */
@@ -163,5 +204,6 @@ val seed = song.id
         const val MENU_PLAY_NEXT = 3
         const val MENU_DOWNLOAD = 4
         const val MENU_ADD_PLAYLIST = 5
+        const val MENU_EDIT_LYRICS = 6
     }
 }

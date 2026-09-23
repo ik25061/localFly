@@ -1,6 +1,9 @@
 package com.example.localfly.fragments
 
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -47,6 +50,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.materialswitch.MaterialSwitch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsFragment : Fragment() {
 
@@ -778,16 +782,97 @@ class SettingsFragment : Fragment() {
 
     private fun showLogDialog() {
         val logFile = File(requireContext().filesDir, "app_debug_log.txt")
-        val content = if (logFile.exists()) logFile.readText() else "No hay registros todavía."
-        AlertDialog.Builder(requireContext())
-            .setTitle("Registro de Depuración")
-            .setMessage(content)
-            .setPositiveButton("Cerrar", null)
-            .setNeutralButton("Borrar Log") { _, _ ->
-                logFile.delete()
-                Toast.makeText(requireContext(), "Log borrado", Toast.LENGTH_SHORT).show()
+        // Lectura en fondo: el log puede llegar a 1 MB y readText() en el hilo
+        // principal provocaría tirones o ANR.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val fullContent = try {
+                withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    if (logFile.exists()) logFile.readText() else ""
+                }
+            } catch (e: Exception) {
+                ""
             }
-            .show()
+            if (!isAdded) return@launch
+            val content = fullContent.takeLast(50_000)
+            val shownContent = if (fullContent.length > 50_000) {
+                "…(mostrando los últimos 50 KB de ${fullContent.length / 1024} KB)…\n\n$content"
+            } else if (content.isEmpty()) "No hay registros todavía." else content
+
+        // Vista personalizada: texto con scroll seleccionable + fila de
+        // acciones (Copiar / Compartir / Borrar). El diálogo solo lleva
+        // "Cerrar" como botón estándar.
+        val container = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 24, 48, 0)
+        }
+        val scroll = android.widget.ScrollView(requireContext()).apply {
+            addView(TextView(requireContext()).apply {
+                text = shownContent
+                textSize = 12f
+                setTextIsSelectable(true)
+            })
+        }
+        // Altura fija para que el texto tenga scroll y quepan los botones debajo.
+        val scrollHeight = (380 * resources.displayMetrics.density).toInt()
+        val scrollParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, scrollHeight
+        )
+        container.addView(scroll, scrollParams)
+
+        val buttonRow = LinearLayout(requireContext()).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, 24, 0, 8)
+        }
+        fun actionButton(label: String, onClick: () -> Unit) =
+            MaterialButton(requireContext(), null, com.google.android.material.R.attr.borderlessButtonStyle).apply {
+                text = label
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+                setOnClickListener { onClick() }
+            }
+        val dialogRef = arrayOfNulls<AlertDialog>(1)
+        buttonRow.addView(actionButton("Copiar") {
+            val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("LocalFly log", content))
+            Toast.makeText(requireContext(), "Log copiado al portapapeles", Toast.LENGTH_SHORT).show()
+        })
+        buttonRow.addView(actionButton("Compartir") {
+            dialogRef[0]?.dismiss()
+            shareLog(content)
+        })
+        buttonRow.addView(actionButton("Borrar") {
+            logFile.delete()
+            Toast.makeText(requireContext(), "Log borrado", Toast.LENGTH_SHORT).show()
+            dialogRef[0]?.dismiss()
+        })
+        container.addView(buttonRow)
+
+        dialogRef[0] = AlertDialog.Builder(requireContext())
+            .setTitle("Registro de Depuración")
+            .setView(container)
+            .setPositiveButton("Cerrar", null)
+            .create()
+        dialogRef[0]?.show()
+        } // fin lifecycleScope.launch
+    }
+
+    /** Envía el log a otra app (WhatsApp, Gmail, Drive, chat de IA…) como texto. */
+    private fun shareLog(content: String) {
+        // Límite conservador (~50 KB): extras Binder > ~500 KB-1 MB lanzan
+        // TransactionTooLargeException al abrir el chooser.
+        val text = if (content.isBlank()) "No hay registros todavía." else content.takeLast(50_000)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "LocalFly - registro de errores")
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        try {
+            startActivity(Intent.createChooser(send, "Compartir registro con…"))
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "No se pudo compartir: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     // --- Cuenta ---

@@ -16,17 +16,44 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-/** Cache independiente: nunca sobrescribe ni elimina la descarga original. */
-class KaraokeRepository(context: Context) {
-    private val directory = File(context.filesDir, "karaoke").apply { mkdirs() }
-    private val client = OkHttpClient.Builder().callTimeout(3, TimeUnit.MINUTES).build()
-
-    suspend fun instrumental(baseUrl: String, songId: String): File = withContext(Dispatchers.IO) {
+/**
+ * Clave de caché del instrumental: debe coincidir con [KaraokeRepository]
+ * (URL GET /karaoke/{songId} hasheada con SHA-256).
+ */
+object KaraokeCache {
+    fun fileFor(context: android.content.Context, baseUrl: String, songId: String): File {
         val url = baseUrl.toHttpUrl().newBuilder().addPathSegment("karaoke").addPathSegment(songId).build()
         val key = MessageDigest.getInstance("SHA-256").digest(url.toString().toByteArray())
             .joinToString("") { "%02x".format(it) }
-        val target = File(directory, "$key.audio")
+        return File(File(context.filesDir, "karaoke"), "$key.audio")
+    }
+
+    /**
+     * Borra el instrumental cacheado de una canción, si existe.
+     * El nombre del fichero es un hash de la URL completa (incluye IP/puerto):
+     * si el servidor cambió de IP desde que se cacheó, el hash antiguo no
+     * coincide y el fichero huérfano quedará sin borrar (limitación conocida;
+     * no se purga por antigüedad para no borrar instrumentales de otras
+     * canciones).
+     */
+    fun deleteFor(context: android.content.Context, songId: String): Boolean {
+        return try {
+            val baseUrl = com.example.localfly.network.RetrofitClient.getBaseUrl()
+            fileFor(context, baseUrl, songId).delete()
+        } catch (_: Exception) { false }
+    }
+}
+
+/** Cache independiente: nunca sobrescribe ni elimina la descarga original. */
+class KaraokeRepository(context: Context) {
+    private val appContext = context.applicationContext
+    private val directory = File(appContext.filesDir, "karaoke").apply { mkdirs() }
+    private val client = OkHttpClient.Builder().callTimeout(3, TimeUnit.MINUTES).build()
+
+    suspend fun instrumental(baseUrl: String, songId: String): File = withContext(Dispatchers.IO) {
+        val target = KaraokeCache.fileFor(appContext, baseUrl, songId)
         if (target.isFile && target.length() > 0) return@withContext target
+        val url = baseUrl.toHttpUrl().newBuilder().addPathSegment("karaoke").addPathSegment(songId).build()
         val temporary = File.createTempFile("karaoke-", ".part", directory)
         try {
             coroutineScope {

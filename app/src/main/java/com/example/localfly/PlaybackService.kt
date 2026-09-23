@@ -24,7 +24,6 @@ import com.example.localfly.ai.AIRecommendationManager
 import com.example.localfly.ai.AIWeightsStore
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import com.example.localfly.network.ApiConfig
 import com.example.localfly.network.ApiService
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
@@ -164,10 +163,12 @@ class PlaybackService : MediaSessionService() {
     /** Reproduce [song] y activa el instrumental (karaoke) al cargar. */
     fun playSongForKaraoke(song: Song, localFilePath: String? = null) {
         playKaraokeOnNextLoad = true
+        val before = currentSong?.id
         playSong(song, localFilePath)
-        // Si la reproducción no llegó a empezar (sin conexión y sin descarga),
-        // el pedido se descarta para que no afecte a la siguiente canción.
-        playKaraokeOnNextLoad = false
+        // Si la reproducción no llegó a empezar (sin conexión y sin
+        // descarga), currentSong no cambió: se descarta el pedido para que no
+        // afecte a la siguiente canción.
+        if (currentSong?.id == before) playKaraokeOnNextLoad = false
     }
 
     // ===== RECORTE DE SILENCIOS: SOLO AL INICIO Y AL FINAL =====

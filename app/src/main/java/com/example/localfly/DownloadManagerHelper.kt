@@ -266,10 +266,12 @@ class DownloadManagerHelper private constructor(context: Context) {
     fun removeDownload(songId: String) {
         val current = getDownloadedSongs().toMutableList()
         val target = current.find { it.id == songId }
-        target?.let { 
-            File(it.filePath).delete() 
-            // También borrar la letra si existe
-            File(downloadsDir(), "$songId.lrc").delete()
+        target?.let {
+            runCatching { File(it.filePath).delete() }
+            // También borrar la letra y la caché del instrumental si existen.
+            runCatching { File(downloadsDir(), "$songId.lrc").delete() }
+            runCatching { File(appContext.filesDir, "lyrics/$songId.lrc").delete() }
+            runCatching { com.example.localfly.karaoke.KaraokeCache.deleteFor(appContext, songId) }
         }
         current.removeAll { it.id == songId }
         val newList = current.toList()
@@ -281,6 +283,9 @@ class DownloadManagerHelper private constructor(context: Context) {
     fun removeAllDownloads() {
         getDownloadedSongs().forEach { song ->
             runCatching { File(song.filePath).delete() }
+            runCatching { File(downloadsDir(), "${song.id}.lrc").delete() }
+            runCatching { File(appContext.filesDir, "lyrics/${song.id}.lrc").delete() }
+            runCatching { com.example.localfly.karaoke.KaraokeCache.deleteFor(appContext, song.id) }
         }
         cachedDownloads = emptyList()
         prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()

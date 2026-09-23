@@ -10,6 +10,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
@@ -135,7 +136,23 @@ class SongAdapter(
 
         val popup = PopupMenu(holder.itemView.context, holder.btnSongMenu)
 
-
+        // Sin conexión al servidor: el resto de acciones (cola, listas,
+        // eliminar, editar letra) requieren el servidor, así que solo tiene
+        // sentido ofrecer la descarga/quitar descarga, que es local.
+        if (!ServerReachability.isOnline) {
+            popup.menu.add(
+                0,
+                MENU_DOWNLOAD,
+                0,
+                if (downloadHelper.isDownloaded(song.id)) "Quitar descarga" else "Descargar"
+            )
+            popup.setOnMenuItemClickListener { item: MenuItem ->
+                if (item.itemId == MENU_DOWNLOAD) onDownloadClick(song)
+                true
+            }
+            popup.show()
+            return
+        }
 
         if (onDeleteClick != null) {
             popup.menu.add(0, MENU_DELETE, 0, "Eliminar")
