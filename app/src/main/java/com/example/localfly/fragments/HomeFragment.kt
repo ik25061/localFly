@@ -28,6 +28,7 @@ import com.example.localfly.network.*
 import com.example.localfly.utils.CoverPlaceholder
 import com.example.localfly.utils.GenreUtils
 import com.google.android.material.chip.Chip
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -55,6 +56,34 @@ class HomeFragment : Fragment() {
     private lateinit var recommendationsAdapter: LikedSongsAdapter
     private lateinit var librarySectionAdapter: LikedSongsAdapter
     private lateinit var karaokeAdapter: HorizontalCardAdapter
+
+    /** Callback de estado de radio; se guarda para poder retirarlo al destruir la vista. */
+    private val radioStateCallback: (Boolean, Boolean) -> Unit = { _, _ -> refreshRadioBanner() }
+
+    /**
+     * `true` solo mientras la vista del fragmento está viva.
+     *
+     * Tras [onDestroyView] `_binding` es null y [viewLifecycleOwner] lanza
+     * `IllegalStateException`. Las corrutinas de [loadData] pueden despertar
+     * después de que la vista se destruya (al abrir el reproductor o cambiar de
+     * pestaña OkHttp responde `IOException: Canceled` y los `catch` la ignoran),
+     * así que todo acceso a vistas o al ciclo de vida de la vista se comprueba
+     * antes con esta función.
+     */
+    private fun isViewAlive(): Boolean = isAdded && _binding != null && view != null
+
+    /**
+     * Relanza la cancelación de la corrutina que OkHttp reporta como
+     * `IOException: Canceled`.
+     *
+     * Esa excepción es una `Exception` normal, así que un `catch (e: Exception)`
+     * la "traga" y la corrutina continúa ejecutándose cuando la vista ya fue
+     * destruida (al abrir el reproductor o cambiar de pestaña), provocando
+     * `IllegalStateException` al usar `viewLifecycleOwner` o `binding`.
+     */
+    private fun rethrowIfCancelled(e: Exception) {
+        if (e is CancellationException) throw e
+    }
 
     private val moods = listOf(
         "Energético" to "⚡",
@@ -102,9 +131,9 @@ class HomeFragment : Fragment() {
                 .commit()
         }
         
-        RadioManager.onRadioStateChanged = { _, _ ->
-            refreshRadioBanner()
-        }
+        // Se guarda la referencia para poder retirarla en onDestroyView sin
+        // pisar el callback de otro fragmento (ver RadioFragment).
+        RadioManager.onRadioStateChanged = radioStateCallback
         refreshRadioBanner()
 
         // Listeners "Ver todo"
@@ -175,7 +204,11 @@ class HomeFragment : Fragment() {
 
     /** Subtítulo del banner de Radio: emisión propia, escucha activa o nº de radios abiertas. */
     private fun refreshRadioBanner() {
-        lifecycleScope.launch {
+        // La consulta se hace con el scope del ciclo de vida de la vista: si la
+        // petición sigue en vuelo cuando la vista se destruye, OkHttp la cancela
+        // y la corrutina no debe tocar `binding` después.
+        if (!isViewAlive()) return
+        viewLifecycleOwner.lifecycleScope.launch {
             val subtitle = when {
                 RadioManager.isHost -> "🔴 Estás emitiendo tu radio ahora mismo"
                 RadioManager.isListener -> "🎧 Escuchando la radio de otro usuario"
@@ -184,12 +217,13 @@ class HomeFragment : Fragment() {
                         val stations = RetrofitClient.api.getRadioStations().body()?.stations.orEmpty()
                         if (stations.isEmpty()) "Emite lo que escuchas o únete a otra radio"
                         else "${stations.size} radio${if (stations.size == 1) "" else "s"} activa${if (stations.size == 1) "" else "s"} — únete"
-                    } catch (_: Exception) {
+                    } catch (e: Exception) {
+                        rethrowIfCancelled(e)
                         "Emite lo que escuchas o únete a otra radio"
                     }
                 }
             }
-            if (_binding != null) binding.tvRadioBannerSubtitle.text = subtitle
+            if (isViewAlive()) binding.tvRadioBannerSubtitle.text = subtitle
         }
     }
 
@@ -424,6 +458,7 @@ class HomeFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             Log.d("HomeFragment", "Loading data for userId: $userId")
+            if (!isViewAlive()) return@launch
             // 1. Canciones que me gustan (Limite aumentado a 50 para asegurar contenido)
             try {
                 val likedResp = RetrofitClient.api.getLikedSongs(userId = userId, limit = 50)
@@ -447,13 +482,16 @@ class HomeFragment : Fragment() {
                     }
                 }
             } catch (e: Exception) {
+                rethrowIfCancelled(e)
                 Log.e("HomeFragment", "Error loading liked songs", e)
                 try {
                     val libraryResp = RetrofitClient.api.getLibrary(userId = userId, limit = 50)
                     if (libraryResp.isSuccessful && libraryResp.body() != null) {
                         applyHomeSongs(libraryResp.body()!!.songs)
                     }
-                } catch (_: Exception) { }
+                } catch (e2: Exception) {
+                    rethrowIfCancelled(e2)
+                }
             }
 
             // 2. Playlists
@@ -462,7 +500,9 @@ class HomeFragment : Fragment() {
                 if (playlistsResp.isSuccessful && playlistsResp.body() != null) {
                     playlistAdapter.updateItems(playlistsResp.body()!!.playlists)
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 2c. Podcasts (Ahora agrupados por el servidor)
             try {
@@ -472,6 +512,7 @@ class HomeFragment : Fragment() {
                     podcastAdapter.updateItems(podcasts)
                 }
             } catch (e: Exception) { 
+                rethrowIfCancelled(e)
                 Log.e("HomeFragment", "Error loading podcasts", e)
             }
 
@@ -481,7 +522,9 @@ class HomeFragment : Fragment() {
                 if (albumsResp.isSuccessful && albumsResp.body() != null) {
                     albumAdapter.updateItems(albumsResp.body()!!.items.shuffled().take(20))
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 4. Artistas
             try {
@@ -489,7 +532,9 @@ class HomeFragment : Fragment() {
                 if (artistsResp.isSuccessful && artistsResp.body() != null) {
                     artistAdapter.updateItems(artistsResp.body()!!.items.shuffled().take(20))
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 5. Géneros
             try {
@@ -498,9 +543,11 @@ class HomeFragment : Fragment() {
                     val rawGenres = genresResp.body()!!.items
                     val flattenedGenres = GenreUtils.flattenLegacyGenres(rawGenres)
                     genreAdapter.updateItems(flattenedGenres.shuffled().take(20))
-                    if (isAdded) setupCategories(flattenedGenres)
+                    if (isViewAlive()) setupCategories(flattenedGenres)
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 6. Años
             try {
@@ -508,7 +555,9 @@ class HomeFragment : Fragment() {
                 if (yearsResp.isSuccessful && yearsResp.body() != null) {
                     yearAdapter.updateItems(yearsResp.body()!!.items.shuffled().take(20))
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 7. Recomendaciones con IA (Vinculación de Moods)
             try {
@@ -517,11 +566,13 @@ class HomeFragment : Fragment() {
                     AIWeightsStore(requireContext())
                 )
                 val recommendations = aiManager.getRecommendations(mood = currentMood)
-                if (isAdded) {
+                if (isViewAlive()) {
                     recommendationsAdapter.updateSongs(recommendations)
                     binding.sectionRecommendations.root.visibility = if (recommendations.isNotEmpty()) View.VISIBLE else View.GONE
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 8. Tu Biblioteca (previsualización de los primeros 10)
             try {
@@ -530,7 +581,7 @@ class HomeFragment : Fragment() {
                     val songs = libResp.body()!!.songs
                     librarySectionAdapter.updateSongs(songs.take(10))
 
-                    if (isAdded && songs.isNotEmpty()) {
+                    if (isViewAlive() && songs.isNotEmpty()) {
                         updateFeatured(songs.shuffled().first())
 
                         // Buscar último podcast escuchado
@@ -538,10 +589,12 @@ class HomeFragment : Fragment() {
                         if (lastEp != null) updateLastPodcast(lastEp)
                     }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
 
             // 9. Karaoke: canciones que ya tienen el audio sin voz.
-            loadKaraokeSection(userId)
+            if (isViewAlive()) loadKaraokeSection(userId)
 
             // 10. Resumen mensual (se maneja vía DownloadManagerHelper.downloadProgress)
         }
@@ -556,6 +609,11 @@ class HomeFragment : Fragment() {
      * en modo karaoke. Si no hay ninguna, la sección queda oculta.
      */
     private fun loadKaraokeSection(userId: String) {
+        // Defensivo: esta función es la que crasheaba cuando la corrutina de
+        // loadData sobrevivía a la destrucción de la vista (viewLifecycleOwner
+        // lanzaba IllegalStateException al ser getView() == null).
+        if (!isViewAlive()) return
+
         fun downloadedToSong(d: com.example.localfly.DownloadedSong): Song = Song(
             id = d.id, title = d.title, artist = d.artist, album = d.album, year = d.year,
             duration = d.duration, bpm = d.bpm, key = d.key, liked = d.liked,
@@ -566,7 +624,7 @@ class HomeFragment : Fragment() {
         val local = downloadHelper.getDownloadedSongs()
             .filter { it.hasKaraoke && !it.isEpisode }
             .map { downloadedToSong(it) }
-        if (local.isNotEmpty() && isAdded) {
+        if (local.isNotEmpty() && isViewAlive()) {
             karaokeAdapter.updateItems(local.take(20))
             binding.root.findViewById<View>(R.id.sectionKaraoke)?.visibility = View.VISIBLE
         }
@@ -577,12 +635,14 @@ class HomeFragment : Fragment() {
                 if (resp.isSuccessful) {
                     val remote = resp.body()?.songs.orEmpty().filter { it.hasKaraoke && !it.isEpisode }
                     val merged = (local + remote).distinctBy { it.id }
-                    if (isAdded && merged.isNotEmpty()) {
+                    if (isViewAlive() && merged.isNotEmpty()) {
                         karaokeAdapter.updateItems(merged.take(20))
                         binding.root.findViewById<View>(R.id.sectionKaraoke)?.visibility = View.VISIBLE
                     }
                 }
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                rethrowIfCancelled(e)
+            }
         }
     }
 
@@ -598,6 +658,10 @@ class HomeFragment : Fragment() {
     }
     // Funciones de interacción (delegar a la actividad o al servicio)
     private fun toggleLike(song: Song) {
+        // La vista puede haberse destruido (p. ej. si un callback tardío del
+        // adaptador llega después de onDestroyView): no tocar adaptadores ni
+        // `viewLifecycleOwner`.
+        if (!isViewAlive()) return
         val newLiked = !song.liked
         val updated = song.copy(liked = newLiked)
 
@@ -624,13 +688,16 @@ class HomeFragment : Fragment() {
                     sessionManager.addPendingLike(song.id, newLiked)
                 }
             } catch (e: Exception) {
-                // Sin conexión: guardar para sincronizar al volver al servidor
+                // Sin conexión (o petición cancelada al cerrar la pantalla):
+                // guardar para sincronizar al volver al servidor
                 sessionManager.addPendingLike(song.id, newLiked)
+                rethrowIfCancelled(e)
             }
         }
     }
 
     private fun hideSong(song: Song) {
+        if (!isViewAlive()) return
         // Registrar localmente para que el admin pueda revisarla y, si quiere,
         // borrarla por completo del disco.
         SongAdminStore.recordDislikedSong(song)
@@ -648,14 +715,17 @@ class HomeFragment : Fragment() {
                     sessionManager.addPendingDislike(song.id)
                 }
             } catch (e: Exception) {
-                // Sin conexión: guardar para sincronizar al volver al servidor
+                // Sin conexión (o petición cancelada al cerrar la pantalla):
+                // guardar para sincronizar al volver al servidor
                 sessionManager.addPendingDislike(song.id)
+                rethrowIfCancelled(e)
             }
         }
     }
 
     /** Descarga la canción si no está descargada; si ya lo está, la elimina. */
     private fun toggleDownload(song: Song) {
+        if (!isViewAlive()) return
         if (downloadHelper.isDownloaded(song.id)) {
             downloadHelper.removeDownload(song.id)
             Toast.makeText(requireContext(), "Descarga eliminada", Toast.LENGTH_SHORT).show()
@@ -665,6 +735,8 @@ class HomeFragment : Fragment() {
             viewLifecycleOwner.lifecycleScope.launch {
                 val audioUrl = "$serverBaseUrl/audio/${song.id}"
                 val success = downloadHelper.download(song, audioUrl)
+                // La vista puede haberse destruido mientras se descargaba.
+                if (!isViewAlive()) return@launch
                 if (success) {
                     Toast.makeText(requireContext(), "Descarga completa", Toast.LENGTH_SHORT).show()
                 } else {
@@ -757,6 +829,11 @@ class HomeFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        // Evita que RadioManager conserve una referencia a este fragmento (y que
+        // intente refrescar su banner cuando la vista ya no existe).
+        if (RadioManager.onRadioStateChanged === radioStateCallback) {
+            RadioManager.onRadioStateChanged = null
+        }
         super.onDestroyView()
         _binding = null
     }

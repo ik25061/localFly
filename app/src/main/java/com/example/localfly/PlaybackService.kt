@@ -423,6 +423,15 @@ class PlaybackService : MediaSessionService() {
                         currentIndex = newIndex
                         currentSong = queue.getOrNull(currentIndex)
                         LocalLogger.log(this@PlaybackService, "MediaItem sync: currentIndex=$currentIndex (ID=$mediaId)")
+                    } else {
+                        // La notificación la arma Media3 desde player.currentMediaItem
+                        // (siempre correcta), mientras la pantalla completa y el mini
+                        // leen `currentSong`. Si el player transiciona a un item que
+                        // ya no está en `queue` (desalineación de colas), SIN este
+                        // fallback `currentSong` se quedaba con la canción vieja y
+                        // las dos UIs mostraban una canción distinta de la que
+                        // sonaba. Adoptamos el item del player como fuente de verdad.
+                        adoptPlayerItemAsCurrent(mediaId, mediaItem)
                     }
                 } else {
                     syncIndexById()
@@ -894,6 +903,7 @@ class PlaybackService : MediaSessionService() {
         mutablePaths.add(insertIndex, null)
         queue = mutableQueue
         queueLocalPaths = mutablePaths
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -905,6 +915,7 @@ class PlaybackService : MediaSessionService() {
         mutablePaths.add(null)
         queue = mutableQueue
         queueLocalPaths = mutablePaths
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -916,6 +927,7 @@ class PlaybackService : MediaSessionService() {
         mutablePaths.addAll(songs.map { downloadHelper.getLocalFilePath(it.id) })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -935,6 +947,7 @@ class PlaybackService : MediaSessionService() {
             fromIndex > currentIndex && toIndex <= currentIndex -> currentIndex + 1
             else -> currentIndex
         }
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -947,6 +960,7 @@ class PlaybackService : MediaSessionService() {
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         if (index < currentIndex) currentIndex--
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -955,12 +969,7 @@ class PlaybackService : MediaSessionService() {
         queueLocalPaths = newSongs.map { downloadHelper.getLocalFilePath(it.id) }
         syncIndexById()
         // Reemplazar SOLO lo precargado, sin reiniciar la canción ni perder posición.
-        val p = player
-        if (p != null && p.currentMediaItem != null) {
-            val from = p.currentMediaItemIndex + 1
-            if (from < p.mediaItemCount) p.removeMediaItems(from, p.mediaItemCount)
-            preloadNextItem()
-        }
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -1023,6 +1032,66 @@ class PlaybackService : MediaSessionService() {
                 LocalLogger.log(this@PlaybackService, "Error rellenando cola: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Recoloca `queue`/`currentIndex`/`currentSong` sobre el item que el player
+     * está reproduciendo realmente cuando ese id no existe en la cola.
+     *
+     * Se usa como último recurso en `onMediaItemTransition`: la fuente de verdad
+     * en ese instante es el player (de ahí lee la notificación), así que se
+     * inserta un Song reconstruido desde los metadatos del MediaItem en la
+     * posición que le corresponde para restaurar el invariante
+     * `queue[currentIndex] == currentSong`.
+     */
+    private fun adoptPlayerItemAsCurrent(mediaId: String, mediaItem: MediaItem?) {
+        val meta = mediaItem?.mediaMetadata
+        val fallback = Song(
+            id = mediaId,
+            title = meta?.title?.toString() ?: mediaId,
+            artist = meta?.artist?.toString(),
+            album = meta?.albumTitle?.toString(),
+            year = null,
+            duration = mediaItem?.mediaMetadata?.durationMs
+                ?.takeIf { it > 0 }
+                ?.let { it / 1000.0 },
+            bpm = null,
+            key = null,
+            liked = false,
+            hasCover = meta?.artworkUri != null
+        )
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        val insertAt = (currentIndex + 1).coerceIn(0, mutableQueue.size)
+        mutableQueue.add(insertAt, fallback)
+        mutablePaths.add(insertAt, downloadHelper.getLocalFilePath(mediaId))
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        currentIndex = insertAt
+        currentSong = fallback
+        LocalLogger.log(
+            this,
+            "MediaItem sync: id=$mediaId no estaba en la cola; adoptado desde el player (index=$insertAt)"
+        )
+    }
+
+    /**
+     * Mantiene la lista interna del player alineada con `queue`: descarta lo
+     * precargado después del item actual y vuelve a precargar
+     * `queue[currentIndex + 1]`.
+     *
+     * Si `queue` y el player divergen, al transicionar el player a un item que
+     * ya no está en la cola, `currentSong` deja de coincidir con lo que suena y
+     * la UI (pantalla completa / mini) muestra una canción distinta de la
+     * notificación. Toda mutación de `queue` que pueda afectar al siguiente
+     * item debe llamar a este helper.
+     */
+    private fun resyncPreloadedNext() {
+        val p = player ?: return
+        if (p.currentMediaItem == null) return
+        val from = p.currentMediaItemIndex + 1
+        if (from < p.mediaItemCount) p.removeMediaItems(from, p.mediaItemCount)
+        preloadNextItem()
     }
 
     /**

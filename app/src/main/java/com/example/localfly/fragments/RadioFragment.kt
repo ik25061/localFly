@@ -43,6 +43,18 @@ class RadioFragment : Fragment() {
 
     private val stations = mutableListOf<RadioStation>()
 
+    /**
+     * Callback de cambios de modo radio. Se guarda en un campo para poder
+     * retirarlo en [onDestroyView] solo si sigue siendo el de este fragmento
+     * (así no se pisa el que registra Inicio para su banner).
+     */
+    private val radioStateCallback: (Boolean, Boolean) -> Unit = { _, _ ->
+        val root = view
+        if (isAdded && root != null) {
+            root.post { refreshActionState(); loadStations() }
+        }
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         inflater.inflate(R.layout.fragment_radio, container, false)
 
@@ -68,10 +80,10 @@ class RadioFragment : Fragment() {
         btnRefresh.setOnClickListener { loadStations() }
         btnRadioAction.setOnClickListener { toggleBroadcast() }
 
-        // Refrescar la lista cuando cambie el modo radio (emitir / dejar de escuchar)
-        RadioManager.onRadioStateChanged = { _, _ ->
-            view.post { refreshActionState(); loadStations() }
-        }
+        // Refrescar la lista cuando cambie el modo radio (emitir / dejar de escuchar).
+        // Se guarda la referencia para no borrar en onDestroyView el callback de
+        // otro fragmento (p. ej. el banner de Inicio).
+        RadioManager.onRadioStateChanged = radioStateCallback
 
         refreshActionState()
         loadStations()
@@ -84,7 +96,10 @@ class RadioFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        RadioManager.onRadioStateChanged = null
+        // Solo retirar el callback si sigue siendo el de este fragmento.
+        if (RadioManager.onRadioStateChanged === radioStateCallback) {
+            RadioManager.onRadioStateChanged = null
+        }
         super.onDestroyView()
     }
 
