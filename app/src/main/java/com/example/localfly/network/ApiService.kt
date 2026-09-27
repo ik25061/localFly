@@ -192,6 +192,17 @@ interface ApiService {
         @Path("id") playlistId: String
     ): Response<Unit>
 
+    // --- Listas automáticas IA (género + BPM + tonalidad, incrementales,
+    //     sin duplicados: port de build_quality_playlists.py en el servidor) ---
+
+    @GET("api/playlists/ai-quality/status")
+    suspend fun getAIQualityStatus(): Response<AIQualityStatus>
+
+    @POST("api/playlists/ai-quality/generate")
+    suspend fun generateAIQualityPlaylists(
+        @Body request: AIGenerateRequest
+    ): Response<AIGenerateResponse>
+
     @GET("api/songs/by-ids")
     suspend fun getSongsByIds(
         @Query("ids") ids: String,

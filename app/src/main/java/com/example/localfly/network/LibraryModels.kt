@@ -168,6 +168,50 @@ data class PlaylistSongsBulkRequest(
     val songIds: List<String>
 )
 
+// --- Listas automáticas IA (género + BPM + tonalidad, incrementales) ---
+
+/** Resumen de solo lectura para el diálogo previo del botón IA. */
+data class AIQualityStatus(
+    val analyzed: Int = 0,
+    val assigned: Int = 0,
+    val pending: Int = 0,
+    val playlists: Int = 0,
+    val stateExists: Boolean = false
+)
+
+/** Petición de generación: el servidor crea/amplía las listas sin duplicar. */
+data class AIGenerateRequest(
+    val userId: String?,
+    val bandWidth: Int = 10,
+    val minBandSize: Int = 6,
+    @SerializedName("isPublic")
+    val isPublic: Boolean = true,
+    val dryRun: Boolean = false
+)
+
+data class AIAppliedPlaylist(
+    val name: String = "",
+    val playlistId: String = "",
+    val total: Int = 0,
+    val added: Int = 0,
+    val created: Boolean = false
+)
+
+/** Respuesta de POST /api/playlists/ai-quality/generate. */
+data class AIGenerateResponse(
+    val ok: Boolean = false,
+    val dryRun: Boolean = false,
+    val analyzed: Int = 0,
+    val newClassified: Int = 0,
+    val totalAssigned: Int = 0,
+    val totalPlaylists: Int = 0,
+    val playlistsCreated: Int = 0,
+    val playlistsReused: Int = 0,
+    val songsAdded: Int = 0,
+    val addedPerPlaylist: Map<String, Int> = emptyMap(),
+    val applied: List<AIAppliedPlaylist> = emptyList()
+)
+
 data class DeleteSongRequest(
     val id: String,
     val userId: String?

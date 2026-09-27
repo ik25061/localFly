@@ -70,12 +70,118 @@ class PlaylistsFragment : Fragment() {
     }
 
     private fun showAIPlaylistDialog() {
+        // Diálogo previo con datos reales del servidor (solo lectura):
+        // cuántas canciones analizadas hay pendientes de clasificar.
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val statusResp = RetrofitClient.api.getAIQualityStatus()
+                if (!isAdded) return@launch
+                progressBar.visibility = View.GONE
+                if (statusResp.isSuccessful && statusResp.body() != null) {
+                    val status = statusResp.body()!!
+                    showAIQualityConfirmDialog(status)
+                } else {
+                    // Servidor antiguo sin el endpoint: usar el flujo anterior.
+                    showLegacyAIDialog()
+                }
+            } catch (e: Exception) {
+                if (!isAdded) return@launch
+                progressBar.visibility = View.GONE
+                // Sin conexión o servidor antiguo: flujo anterior.
+                showLegacyAIDialog()
+            }
+        }
+    }
+
+    private fun showAIQualityConfirmDialog(status: AIQualityStatus) {
+        val message = if (status.analyzed == 0) {
+            "Todavía no hay canciones con análisis de audio (BPM y tonalidad). " +
+                "Ejecuta primero el análisis de audio en el servidor y vuelve a intentarlo."
+        } else if (status.pending > 0) {
+            "El servidor tiene ${status.analyzed} canciones analizadas " +
+                "(BPM + tonalidad). Hay ${status.pending} nuevas por clasificar en " +
+                "listas de calidad (género + franja de BPM, ordenadas como un mix de DJ). " +
+                "Las ${status.assigned} ya clasificadas NO se duplican: solo se amplían las listas."
+        } else {
+            "Ya está todo clasificado: ${status.assigned} canciones en " +
+                "${status.playlists} listas de calidad. Si el servidor analizó audio nuevo " +
+                "desde la última vez, se agregará solo lo nuevo sin duplicar nada. " +
+                "¿Ejecutar de todos modos?"
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle("Listas automáticas IA")
+            .setMessage(message)
+            .setPositiveButton("Generar") { _, _ -> createAIQualityPlaylists() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun showLegacyAIDialog() {
         AlertDialog.Builder(requireContext())
             .setTitle("Lista Inteligente")
             .setMessage("¿Quieres que la IA genere una nueva lista basada en tus gustos musicales?")
             .setPositiveButton("Generar") { _, _ -> createAIPlaylist() }
             .setNegativeButton("Cancelar", null)
             .show()
+    }
+
+    /**
+     * Botón IA → listas automáticas de calidad (port de
+     * build_quality_playlists.py en el servidor). Idempotente: cada
+     * ejecución solo agrega canciones analizadas NUEVAS; nunca crea
+     * listas duplicadas ni duplica canciones.
+     */
+    private fun createAIQualityPlaylists() {
+        progressBar.visibility = View.VISIBLE
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val response = RetrofitClient.api.generateAIQualityPlaylists(
+                    AIGenerateRequest(userId = sessionManager.getUserId())
+                )
+                if (!isAdded) return@launch
+                progressBar.visibility = View.GONE
+                if (response.isSuccessful && response.body() != null) {
+                    val result = response.body()!!
+                    val summary = buildAIQualitySummary(result)
+                    Toast.makeText(requireContext(), summary, Toast.LENGTH_LONG).show()
+                    loadPlaylists()
+                } else if (response.code() == 409) {
+                    Toast.makeText(
+                        requireContext(),
+                        "Ya hay una generación en curso, espera a que termine",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        requireContext(),
+                        "El servidor no pudo generar las listas",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } catch (e: Exception) {
+                if (!isAdded) return@launch
+                progressBar.visibility = View.GONE
+                // Sin conexión: se usa el flujo local anterior como respaldo.
+                Toast.makeText(
+                    requireContext(),
+                    "Sin conexión al servidor: generando lista local",
+                    Toast.LENGTH_SHORT
+                ).show()
+                createAIPlaylist()
+            }
+        }
+    }
+
+    private fun buildAIQualitySummary(result: AIGenerateResponse): String {
+        return if (result.newClassified == 0 && result.songsAdded == 0) {
+            "Sin novedades: ${result.totalAssigned} canciones ya clasificadas " +
+                "en ${result.totalPlaylists} listas. Nada se duplicó."
+        } else {
+            "Listas IA actualizadas: +${result.newClassified} canciones " +
+                "(${result.playlistsCreated} listas nuevas, " +
+                "${result.playlistsReused} ampliadas, ${result.totalPlaylists} en total)"
+        }
     }
 
     private fun createAIPlaylist() {
