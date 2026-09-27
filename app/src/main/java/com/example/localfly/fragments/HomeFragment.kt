@@ -662,7 +662,8 @@ class HomeFragment : Fragment() {
         // adaptador llega después de onDestroyView): no tocar adaptadores ni
         // `viewLifecycleOwner`.
         if (!isViewAlive()) return
-        val newLiked = !song.liked
+        val newLiked = !com.example.localfly.network.LikeStateStore.isLiked(song)
+        com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
         val updated = song.copy(liked = newLiked)
 
         if (::likedAdapter.isInitialized) {

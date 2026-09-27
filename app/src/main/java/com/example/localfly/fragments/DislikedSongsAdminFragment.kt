@@ -105,9 +105,19 @@ class DislikedSongsAdminFragment : Fragment() {
     private fun refresh() {
         layoutDisliked.removeAllViews()
         val songs = SongAdminStore.getDislikedSongs()
-        tvCount.text = if (songs.size == 1) "1 canción" else "${songs.size} canciones"
+        val pending = songs.filter { !it.kept }
+        val kept = songs.filter { it.kept }
+        tvCount.text = buildString {
+            append(if (songs.size == 1) "1 canción" else "${songs.size} canciones")
+            append(" · ${pending.size} por revisar · ${kept.size} dejadas")
+        }
         tvNoDisliked.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
-        for (song in songs) {
+        // Las PENDIENTES (recuadro rojo oscuro) van primero: son las que hay que
+        // borrar o dejar, y las que forman la cola de revisión de reproducción.
+        for (song in pending) {
+            if (isAdded) layoutDisliked.addView(buildRow(song))
+        }
+        for (song in kept) {
             if (isAdded) layoutDisliked.addView(buildRow(song))
         }
     }
@@ -125,8 +135,52 @@ class DislikedSongsAdminFragment : Fragment() {
         row.findViewById<TextView>(R.id.tvDlSongArtist).text =
             if (parts.isEmpty()) "Artista desconocido" else parts.joinToString(" · ")
 
+        val card = row.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardDisliked)
+        val tvStatus = row.findViewById<TextView>(R.id.tvDlStatus)
+        val btnKeep = row.findViewById<MaterialButton>(R.id.btnKeepSong)
+
+        if (song.kept) {
+            // Recuadro apagado + aviso: ya la revisó y decidió no borrarla.
+            card.setCardBackgroundColor(Color.parseColor("#16211A"))
+            card.strokeColor = Color.parseColor("#2E5237")
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "✓ Dejada: ya la revisaste y no se eliminará (fuera de la cola de revisión)"
+            tvStatus.setTextColor(Color.parseColor("#6BCB77"))
+            btnKeep.text = "Volver a revisar"
+            btnKeep.setTextColor(Color.parseColor("#A8A8AF"))
+            btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#55555C"))
+        } else {
+            // Recuadro RELLENO EN ROJO OSCURO: pendiente de revisar.
+            card.setCardBackgroundColor(Color.parseColor("#3B0F14"))
+            card.strokeColor = Color.parseColor("#C0392B")
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "● Pendiente de revisar: ponla en la cola para decidir si la borras o la dejas"
+            tvStatus.setTextColor(Color.parseColor("#FF6B6B"))
+            btnKeep.text = "Dejar"
+            btnKeep.setTextColor(Color.parseColor("#6BCB77"))
+            btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#6BCB77"))
+        }
+
+        btnKeep.setOnClickListener {
+            val nowKept = !song.kept
+            if (nowKept) {
+                SongAdminStore.markDislikedSongKept(song.songId)
+            } else {
+                SongAdminStore.markDislikedSongPending(song.songId)
+            }
+            // Si la canción está sonando, rearmar la cola de revisión del servicio.
+            (requireActivity() as? MainActivity)?.playbackService?.refreshDislikedReviewQueue()
+            refresh()
+            Toast.makeText(
+                requireContext(),
+                if (nowKept) "Dejada: ya la revisaste, no se eliminará" else "Vuelta a poner en revisión",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
         row.findViewById<MaterialButton>(R.id.btnRemoveFromList).setOnClickListener {
             SongAdminStore.removeDislikedSong(song.songId)
+            (requireActivity() as? MainActivity)?.playbackService?.refreshDislikedReviewQueue()
             refresh()
             Toast.makeText(requireContext(), "Quitada de la lista local", Toast.LENGTH_SHORT).show()
         }
@@ -202,6 +256,8 @@ class DislikedSongsAdminFragment : Fragment() {
                         helper.removeDownload(song.songId)
                     }
                     SongAdminStore.removeDislikedSong(song.songId)
+                    // La cola de revisión ya no debe contener esta canción.
+                    activity?.playbackService?.refreshDislikedReviewQueue()
                     if (isAdded) {
                         Toast.makeText(requireContext(), "Canción eliminada del disco y saltada", Toast.LENGTH_SHORT).show()
                         refresh()

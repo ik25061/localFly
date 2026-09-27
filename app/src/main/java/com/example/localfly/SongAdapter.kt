@@ -10,6 +10,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
+import com.example.localfly.network.LikeStateStore
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
@@ -103,7 +104,7 @@ class SongAdapter(
  
         // Acciones visibles
         holder.btnLike.setImageResource(
-            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
+            if (LikeStateStore.isLiked(song)) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song, holder.bindingAdapterPosition) }
         holder.btnDislike.setOnClickListener { onDislikeClick(song, holder.bindingAdapterPosition) }
@@ -198,6 +199,21 @@ class SongAdapter(
     }
 
     override fun getItemCount(): Int = songs.size
+
+    // ===== Estado "me gusta" compartido (mini reproductor / pantalla completa) =====
+    // Al cambiar el "me gusta" desde cualquier otra pantalla, todas las listas
+    // visibles repintan su corazón.
+    private val likeStateListener: (String) -> Unit = { runCatching { notifyDataSetChanged() } }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        LikeStateStore.addListener(likeStateListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        LikeStateStore.removeListener(likeStateListener)
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
 
     fun updateSongs(newSongs: List<Song>) {
         songs.clear()

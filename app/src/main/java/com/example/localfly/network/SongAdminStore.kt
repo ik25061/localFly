@@ -45,7 +45,14 @@ data class DislikedSong(
     val artist: String? = null,
     val album: String? = null,
     val year: Int? = null,
-    val dislikedAtMs: Long = 0L
+    val dislikedAtMs: Long = 0L,
+    /**
+     * `true` = el administrador YA la revisó y decidió DEJARLA (no borrarla).
+     * `false` = pendiente: en la lista de "No me gusta" se muestra con el
+     * recuadro en rojo oscuro y entra en la cola de revisión de reproducción.
+     */
+    val kept: Boolean = false,
+    val keptAtMs: Long = 0L
 )
 
 data class CustomGenre(
@@ -67,6 +74,7 @@ object SongAdminStore {
     private const val KEY_EDITS = "edits"
     private const val KEY_DISLIKED = "disliked"
     private const val KEY_GENRES = "genres"
+    private const val KEY_PENDING_SYNC = "pending_sync_ids"
 
     private var context: Context? = null
 
@@ -78,6 +86,15 @@ object SongAdminStore {
     private var editsCache: Map<String, SongEdit> = emptyMap()
     private var dislikedCache: List<DislikedSong> = emptyList()
     private var genresCache: List<CustomGenre> = emptyList()
+
+    // JSON del que venían las cachés anteriores (comparación por referencia
+    // para saber si hace falta volver a analizarlo).
+    private var editsJson: String? = null
+    private var dislikedJson: String? = null
+    private var genresJson: String? = null
+
+    /** Ediciones locales aún no confirmadas por el servidor. */
+    private var pendingSyncIds: Set<String> = emptySet()
 
     /** Se llama desde SessionManager (que se crea en cada fragmento). */
     fun ensureContext(appContext: Context) {
@@ -92,24 +109,67 @@ object SongAdminStore {
 
     private fun reload() {
         val store = prefs() ?: return
-        editsCache = read(store, KEY_EDITS) { it.songId }
-        dislikedCache = readDisliked(store)
-        genresCache = readGenres(store)
+        editsJson = store.getString(KEY_EDITS, null)
+        dislikedJson = store.getString(KEY_DISLIKED, null)
+        genresJson = store.getString(KEY_GENRES, null)
+        editsCache = parseEdits(editsJson)
+        dislikedCache = parseDisliked(dislikedJson)
+        genresCache = parseGenres(genresJson)
+        pendingSyncIds = parseIdSet(store.getString(KEY_PENDING_SYNC, null))
     }
 
-    private fun read(store: SharedPreferences, key: String, keyOf: (SongEdit) -> String): Map<String, SongEdit> {
-        val json = store.getString(key, null) ?: return emptyMap()
+    private fun parseIdSet(json: String?): Set<String> {
+        if (json.isNullOrBlank()) return emptySet()
+        return try {
+            val type = object : TypeToken<List<String>>() {}.type
+            val list: List<String> = gson.fromJson(json, type) ?: emptyList()
+            list.toSet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
+
+    /**
+     * Rerecarga SOLO si el JSON persistido cambió desde la última lectura.
+     *
+     * `SharedPreferences` devuelve siempre la misma instancia del String
+     * guardado, así que basta comparar por referencia (O(1)). Antes se
+     * reanalizaba el JSON completo en cada llamada, y como `isPendingDislike()`
+     * se ejecuta fila a fila al pintar la cola, eso obligaba a decodificar
+     * toda la lista roja en cada repintado (tirones en la UI / Bluetooth).
+     */
+    private fun reloadIfChanged() {
+        val store = prefs() ?: return
+        val e = store.getString(KEY_EDITS, null)
+        if (e !== editsJson) {
+            editsJson = e
+            editsCache = parseEdits(e)
+        }
+        val d = store.getString(KEY_DISLIKED, null)
+        if (d !== dislikedJson) {
+            dislikedJson = d
+            dislikedCache = parseDisliked(d)
+        }
+        val g = store.getString(KEY_GENRES, null)
+        if (g !== genresJson) {
+            genresJson = g
+            genresCache = parseGenres(g)
+        }
+    }
+
+    private fun parseEdits(json: String?): Map<String, SongEdit> {
+        if (json.isNullOrBlank()) return emptyMap()
         return try {
             val type = object : TypeToken<List<SongEdit>>() {}.type
             val list: List<SongEdit> = gson.fromJson(json, type) ?: emptyList()
-            list.associate { keyOf(it) to it }
+            list.associate { it.songId to it }
         } catch (e: Exception) {
             emptyMap()
         }
     }
 
-    private fun readDisliked(store: SharedPreferences): List<DislikedSong> {
-        val json = store.getString(KEY_DISLIKED, null) ?: return emptyList()
+    private fun parseDisliked(json: String?): List<DislikedSong> {
+        if (json.isNullOrBlank()) return emptyList()
         return try {
             val type = object : TypeToken<List<DislikedSong>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -118,8 +178,8 @@ object SongAdminStore {
         }
     }
 
-    private fun readGenres(store: SharedPreferences): List<CustomGenre> {
-        val json = store.getString(KEY_GENRES, null) ?: return emptyList()
+    private fun parseGenres(json: String?): List<CustomGenre> {
+        if (json.isNullOrBlank()) return emptyList()
         return try {
             val type = object : TypeToken<List<CustomGenre>>() {}.type
             gson.fromJson(json, type) ?: emptyList()
@@ -161,7 +221,7 @@ object SongAdminStore {
     /** Estados de ánimo editados para una canción (lista de nombres). */
     fun getEditedMoods(songId: String): List<String> = editsCache[songId]?.moods ?: emptyList()
 
-    fun saveEdit(edit: SongEdit) {
+    fun saveEdit(edit: SongEdit, markPendingSync: Boolean = true) {
         if (edit.title.isNullOrBlank() && edit.artist.isNullOrBlank() && edit.album.isNullOrBlank() &&
             edit.genres.isEmpty() && edit.year == null && edit.mood.isNullOrBlank() &&
             edit.moods.isEmpty()
@@ -175,6 +235,10 @@ object SongAdminStore {
         map[updated.songId] = updated
         editsCache = map
         persistEdits()
+        // Solo las ediciones hechas por el usuario esperan subirse al servidor.
+        // La sincronización reescribe los "originales" con markPendingSync=false
+        // para no crearse a sí misma más trabajo (bucle infinito de sync).
+        if (markPendingSync) addToPendingSync(updated.songId)
     }
 
     fun removeEdit(songId: String) {
@@ -183,6 +247,42 @@ object SongAdminStore {
         map.remove(songId)
         editsCache = map
         persistEdits()
+        removeFromPendingSync(songId)
+    }
+
+    // ===== Ediciones pendientes de subir al servidor =====
+    //
+    // Antes se reenviaban TODAS las ediciones cada 30 s desde PlaybackService,
+    // aunque ya estuvieran confirmadas: peticiones constantes que además
+    // provocaban un bucle de sincronización interminable.
+
+    /** Ids de ediciones que todavía no ha confirmado el servidor. */
+    fun getPendingSyncIds(): Set<String> =
+        pendingSyncIds.filter { editsCache.containsKey(it) }.toSet()
+
+    /** El servidor ya aplicó estas ediciones: dejan de estar pendientes. */
+    fun markEditsSynced(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val remaining = pendingSyncIds.filter { it !in ids }.toMutableSet()
+        if (remaining == pendingSyncIds) return
+        pendingSyncIds = remaining
+        persistPendingSync()
+    }
+
+    private fun addToPendingSync(songId: String) {
+        if (songId in pendingSyncIds) return
+        pendingSyncIds = pendingSyncIds + songId
+        persistPendingSync()
+    }
+
+    private fun removeFromPendingSync(songId: String) {
+        if (songId !in pendingSyncIds) return
+        pendingSyncIds = pendingSyncIds - songId
+        persistPendingSync()
+    }
+
+    private fun persistPendingSync() {
+        prefs()?.edit()?.putString(KEY_PENDING_SYNC, gson.toJson(pendingSyncIds.toList()))?.apply()
     }
 
     private fun persistEdits() {
@@ -194,19 +294,74 @@ object SongAdminStore {
     // ===================== CANCIONES "NO ME GUSTA" =====================
 
     fun getDislikedSongs(): List<DislikedSong> {
-        if (context != null) reload() // Siempre recargar para asegurar datos frescos del disco
+        if (context != null) reloadIfChanged() // Siempre recargar para asegurar datos frescos del disco
         return dislikedCache.sortedByDescending { it.dislikedAtMs }
+    }
+
+    /** True si la canción está marcada como "No me gusta" (revisada o no). */
+    fun isDisliked(songId: String): Boolean {
+        if (context != null) reloadIfChanged()
+        return dislikedCache.any { it.songId == songId }
+    }
+
+    /** True si está marcada y AÚN NO se ha revisado (pendiente de borrar/dejar). */
+    fun isPendingDislike(songId: String): Boolean {
+        if (context != null) reloadIfChanged()
+        return dislikedCache.any { it.songId == songId && !it.kept }
+    }
+
+    /**
+     * Canciones marcadas PENDIENTES de revisión (el admin aún no decidió si las
+     * borra o las deja). Es la fuente de la "cola de revisión": cuando suena una
+     * de ellas, la lista de reproducción pasa a estar formada solo por estas,
+     * para poder gestionarlas una detrás de otra.
+     */
+    fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { !it.kept }
+
+    /** El admin decide DEJAR la canción: ya la revisó y no la borrará. */
+    fun markDislikedSongKept(songId: String) = setDislikedKept(songId, kept = true)
+
+    /** Devuelve la canción al estado pendiente (volver a decidir sobre ella). */
+    fun markDislikedSongPending(songId: String) = setDislikedKept(songId, kept = false)
+
+    private fun setDislikedKept(songId: String, kept: Boolean) {
+        if (context != null) reloadIfChanged()
+        val index = dislikedCache.indexOfFirst { it.songId == songId }
+        if (index == -1) return
+        val current = dislikedCache[index]
+        if (current.kept == kept) return
+        val updated = current.copy(
+            kept = kept,
+            keptAtMs = if (kept) System.currentTimeMillis() else 0L
+        )
+        dislikedCache = dislikedCache.toMutableList().also { it[index] = updated }
+        persistDisliked()
     }
 
     /** Registra la canción marcada como "No me gusta" para revisión del admin. */
     fun recordDislikedSong(song: Song) {
         if (song.id.isBlank()) return
-        if (context != null) reload()
+        if (context != null) reloadIfChanged()
         
         Log.d("SongAdminStore", "Recording dislike for: ${song.title} (${song.id})")
-        
-        // Evitar duplicados
-        if (dislikedCache.any { it.songId == song.id }) return
+
+        // Si ya estaba marcada: un nuevo dislike la devuelve a PENDIENTE (si el
+        // admin la había "dejado", vuelve a la lista roja y a la cola de revisión).
+        val existingIndex = dislikedCache.indexOfFirst { it.songId == song.id }
+        if (existingIndex != -1) {
+            val existing = dislikedCache[existingIndex]
+            if (existing.kept) {
+                dislikedCache = dislikedCache.toMutableList().also {
+                    it[existingIndex] = existing.copy(
+                        kept = false,
+                        keptAtMs = 0L,
+                        dislikedAtMs = System.currentTimeMillis()
+                    )
+                }
+                persistDisliked()
+            }
+            return
+        }
         
         dislikedCache = dislikedCache + DislikedSong(
             songId = song.id,

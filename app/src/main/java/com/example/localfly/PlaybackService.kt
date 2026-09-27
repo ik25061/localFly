@@ -25,6 +25,7 @@ import com.example.localfly.ai.AIWeightsStore
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.example.localfly.network.ApiService
+import com.example.localfly.network.DislikedSong
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.MetadataSyncManager
@@ -37,6 +38,7 @@ import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
+import com.example.localfly.utils.DislikedReviewQueue
 import com.example.localfly.utils.LocalLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -979,6 +981,10 @@ class PlaybackService : MediaSessionService() {
      */
     private fun checkAndRefillQueue() {
         pruneQueueToDownloadedIfOffline()
+        // MODO REVISIÓN "NO ME GUSTA": si está sonando una canción marcada y
+        // pendiente de revisión, la lista ("a continuación") pasa a ser SOLO
+        // las demás canciones marcadas.
+        if (applyDislikedReviewQueue()) return
         val pendingCount = queue.size - (currentIndex + 1)
         if (pendingCount >= 10) return
 
@@ -1003,7 +1009,15 @@ class PlaybackService : MediaSessionService() {
                         seedSong = currentSong
                     )
                     val existingIds = queue.map { it.id }.toSet()
-                    val newSongs = recommendations.filter { it.id !in existingIds }
+                    // Excluir descartadas ("No me gusta") y ya sonadas en esta
+                    // sesión: si no, volvían a entrar en la cola una y otra vez.
+                    val dislikedIds = SongAdminStore.getDislikedSongs()
+                        .mapNotNull { it.songId }.toSet()
+                    val newSongs = recommendations.filter {
+                        it.id !in existingIds &&
+                            it.id !in dislikedIds &&
+                            it.id !in playedInSessionIds
+                    }
                     if (newSongs.isNotEmpty()) {
                         addListToQueue(newSongs)
                     }
@@ -1033,6 +1047,125 @@ class PlaybackService : MediaSessionService() {
             }
         }
     }
+
+    /**
+     * Si la canción que suena está marcada como "No me gusta" y pendiente de
+     * revisión, rearma la parte "a continuación" de la cola con SOLO las demás
+     * canciones marcadas pendientes (primero las que aún no sonaron en esta
+     * sesión). Así, al terminar la actual —o al eliminarla/marcarla— la
+     * siguiente que suena es automáticamente otra canción por revisar.
+     *
+     * Con `kept` (botón "Dejar") la canción sale de esta cola: ya está revisada.
+     *
+     * Devuelve `true` si se ha hecho cargo de la cola (no hay que rellenarla con
+     * recomendaciones/descargas normales).
+     */
+    private fun applyDislikedReviewQueue(): Boolean {
+        val current = currentSong ?: return false
+        // Ya no es la actual la que está pendiente: si la lista que viene sigue
+        // siendo toda de pendientes, mantenemos el modo revisión (así al pulsar
+        // "Dejar" en la canción actual se sigue con las demás sin rellenar con
+        // recomendaciones normales).
+        if (!SongAdminStore.isPendingDislike(current.id)) return isUpcomingAllPendingDislikes()
+
+        // El invariante queue[currentIndex] == currentSong es necesario para
+        // reconstruir la cola sin desalinear índice y player.
+        if (queue.getOrNull(currentIndex)?.id != current.id) {
+            syncIndexById()
+            if (queue.getOrNull(currentIndex)?.id != current.id) return false
+        }
+
+        val pending = SongAdminStore.getPendingDislikedSongs()
+        if (pending.isEmpty()) return false
+        val pendingIds = pending.map { it.songId }.toSet()
+        val upcoming = queue.drop(currentIndex + 1)
+        // La cola de revisión ya está armada: respetar su orden (incluidos los
+        // reordenamientos manuales que haga el usuario en el panel).
+        if (upcoming.isNotEmpty() && upcoming.all { it.id in pendingIds }) return true
+
+        val ordered = DislikedReviewQueue.order(
+            pending = pending,
+            idOf = { it.songId },
+            currentId = current.id,
+            // Sin conexión solo se pueden revisar las canciones descargadas.
+            isAvailable = { d -> ServerReachability.isOnline || downloadHelper.isDownloaded(d.songId) },
+            alreadyPlayed = playedInSessionIds
+        )
+        // No hay otras canciones marcadas que revisar: mejor seguir con la
+        // sesión normal (vaciarla detendría la reproducción). La canción sigue
+        // marcada en la lista del admin para borrarla cuando el usuario quiera.
+        if (ordered.isEmpty()) return false
+
+        val history = queue.take((currentIndex + 1).coerceIn(0, queue.size))
+        updateFullQueue(history + ordered.map { dislikedToSong(it) })
+        LocalLogger.log(
+            this,
+            "Dislike review: cola de revisión con ${ordered.size} canciones marcadas pendientes"
+        )
+        return true
+    }
+
+    /** True si TODO lo que queda por delante en la cola son canciones marcadas
+     *  como "No me gusta" pendientes de revisión. */
+    private fun isUpcomingAllPendingDislikes(): Boolean {
+        val upcoming = queue.drop(currentIndex + 1)
+        return upcoming.isNotEmpty() && upcoming.all { SongAdminStore.isPendingDislike(it.id) }
+    }
+
+    /** True si la canción que está sonando está marcada como "No me gusta" y
+     *  aún no se ha revisado (debe mostrarse el botón "Dejar"). */
+    fun isCurrentPendingDislike(): Boolean =
+        currentSong?.let { SongAdminStore.isPendingDislike(it.id) } ?: false
+
+    /**
+     * Modo revisión: la canción actual está pendiente de revisión, así que la
+     * lista de reproducción debe contener SOLO canciones marcadas como "No me
+     * gusta". Quien rellene la cola (p. ej. el panel del reproductor) NO debe
+     * añadir recomendaciones ni descargas normales en este estado.
+     */
+    fun isDislikeReviewMode(): Boolean = isCurrentPendingDislike()
+
+    /**
+     * Marca una canción como "dejada": el admin ya la revisó y NO la eliminará.
+     * Sale de la lista roja de pendientes y de la cola de revisión.
+     *
+     * Si es la canción que está sonando, además salta a la siguiente marcada
+     * pendiente (o invita a las que queden); si es una de las próximas, se quita
+     * de la cola.
+     */
+    fun keepDislikedSong(songId: String) {
+        if (songId.isBlank()) return
+        SongAdminStore.markDislikedSongKept(songId)
+        LocalLogger.log(this, "keepDislike: '$songId' revisada y dejada (no se eliminará)")
+
+        val isCurrent = currentSong?.id == songId
+        val queueIndex = queue.indexOfFirst { it.id == songId }
+        if (!isCurrent && queueIndex > currentIndex) {
+            // Todavía no sonaba: sacarla de la lista de próximas.
+            removeFromQueue(queueIndex)
+            return
+        }
+        onStateChanged?.invoke()
+        if (!isCurrent) return
+        // Era la canción que estaba sonando y ya está revisada: si quedan más
+        // canciones marcadas por delante, seguir con ellas; si no, volver a la
+        // sesión normal (rellenar con recomendaciones/descargas).
+        if (hasNext()) next() else checkAndRefillQueue()
+    }
+
+    /** Convierte un registro local de "No me gusta" en una canción reproducible. */
+    private fun dislikedToSong(d: DislikedSong): Song = Song(
+        id = d.songId,
+        title = d.title,
+        artist = d.artist,
+        album = d.album,
+        year = d.year,
+        duration = null,
+        bpm = null,
+        key = null,
+        liked = false,
+        hasCover = downloadHelper.isDownloaded(d.songId)
+    )
 
     /**
      * Recoloca `queue`/`currentIndex`/`currentSong` sobre el item que el player
@@ -1435,6 +1568,9 @@ class PlaybackService : MediaSessionService() {
             sessionManager.addPendingLike(song.id, newLiked)
             LocalLogger.log(this, "toggleLike: '${song.title}' (${song.id}) → liked=$newLiked; guardado pendiente")
             syncLikeStateForSong(song.id, newLiked)
+            // Estado global para que el corazón de TODAS las listas abiertas
+            // (artista, playlist, biblioteca...) se repinte al instante.
+            com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
             AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
             downloadHelper.updateLiked(song.id, newLiked)
             updateMediaSessionCustomLayout()
@@ -1457,6 +1593,12 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Vuelve a calcular la "cola de revisión" tras cambios en la lista de
+     *  canciones marcadas como "No me gusta" (borradas, dejadas, quitadas...). */
+    fun refreshDislikedReviewQueue() {
+        checkAndRefillQueue()
+    }
+
     fun dislikeCurrentSong() {
         try {
             val songToHide = currentSong ?: return
@@ -1465,7 +1607,23 @@ class PlaybackService : MediaSessionService() {
             // borrarla por completo del disco.
             SongAdminStore.recordDislikedSong(songToHide)
             sessionManager.addPendingDislike(songToHide.id)
+            // Al marcar "No me gusta" la canción sale también de las descargas:
+            // el usuario la descartó, así que no debe seguir ocupando espacio ni
+            // apareciendo en la lista de descargas (bug: ahí seguía hasta que se
+            // borraba a mano desde el panel del administrador).
+            if (downloadHelper.isDownloaded(songToHide.id)) {
+                downloadHelper.removeDownload(songToHide.id)
+                queueLocalPaths = queueLocalPaths.mapIndexed { i, p ->
+                    if (queue.getOrNull(i)?.id == songToHide.id) null else p
+                }
+                LocalLogger.log(this, "dislike: descarga eliminada (${songToHide.id})")
+            }
             LocalLogger.log(this, "dislike: ${songToHide.id}; guardado pendiente")
+            // La canción que estaba sonando pasa a estar marcada y pendiente de
+            // revisión: la lista de reproducción se rearma con las demás
+            // canciones marcadas, de modo que la siguiente en sonar sea otra
+            // "No me gusta" (así se revisan seguidas y se borran o se dejan).
+            applyDislikedReviewQueue()
             serviceScope.launch {
                 try {
                     val response = RetrofitClient.api.hideSong(songToHide.id, HideRequest(sessionManager.getUserId()))

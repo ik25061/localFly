@@ -58,6 +58,13 @@ import java.net.URLEncoder
 import java.util.Locale
 import androidx.mediarouter.app.MediaRouteButton
 
+/**
+ * Duración asumida para el medio del Chromecast cuando ni el reproductor ni los
+ * metadatos de la canción conocen la duración real. Un MP3 de silencio de 1
+ * segundo terminaría al instante y el receptor volvería a su pantalla de reposo.
+ */
+private const val FALLBACK_CAST_DURATION_MS = 10L * 60L * 1000L
+
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class NowPlayingActivity : AppCompatActivity() {
 
@@ -76,6 +83,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnPlayPause: ImageButton
     private lateinit var btnLike: ImageButton
     private lateinit var btnDislike: ImageButton
+    private lateinit var btnKeepDislike: ImageButton
     private lateinit var btnPrev: ImageButton
     private lateinit var btnNext: ImageButton
     private lateinit var btnDeleteSong: ImageButton
@@ -115,6 +123,13 @@ class NowPlayingActivity : AppCompatActivity() {
     private var lyricsAdapter: LyricsAdapter? = null
     private var lyricsUpdateJob: Job? = null
 
+    // ===== Karaoke en Chromecast (letra en el TV, música en el teléfono) =====
+    /** Servidor local que entrega la letra (WebVTT) y el audio silencioso. */
+    private val castLyricsServer by lazy { com.example.localfly.karaoke.KaraokeLyricsServer(8099) }
+    private var castLyricsJob: Job? = null
+    /** Canción cuya letra ya está publicada en el servidor. */
+    private var castLyricsSongId: String? = null
+
     // Estado del scroll del usuario en la vista de letras: evita que el
     // auto-scroll "pelee" con el dedo y cause el efecto de texto atrasado.
     private var userScrollingLyrics = false
@@ -136,6 +151,9 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnCast: MediaRouteButton
     private var wasPlayingBeforeCast = false
 
+    /** Diálogo de destino del audio (evita mostrar dos copias a la vez). */
+    private var castTargetDialog: androidx.appcompat.app.AlertDialog? = null
+
     // Radio en vivo (emisión / escucha compartida)
     private lateinit var btnRadio: ImageButton
     private lateinit var btnMic: ImageButton
@@ -150,30 +168,41 @@ class NowPlayingActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Callback de estado del reproductor registrado en el servicio.
+     *
+     * Se guarda en un campo para poder DESREGISTRARLO en onDestroy: si el
+     * servicio seguía notificando a una actividad ya destruida, refreshUi() y
+     * setupQueue() podían tocar vistas/ Glide de una Activity cerrada y la app
+     * se caía al terminar una canción.
+     */
+    private val playbackStateChanged: () -> Unit = {
+        if (!isDestroyed && !isFinishing) {
+            refreshUi()
+            // Verificar si la cola se está vaciando y rellenar si es necesario
+            val service = playbackService
+            if (service != null) {
+                val pending = service.queue.size - (service.currentIndex + 1)
+                if (pending < 5) {
+                    setupQueue()
+                }
+            }
+        }
+    }
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as PlaybackService.LocalBinder
             playbackService = binder.getService()
             isBound = true
-            playbackService?.onStateChanged = { 
-                refreshUi()
-                // Verificar si la cola se está vaciando y rellenar si es necesario
-                val service = playbackService
-                if (service != null) {
-                    val pending = service.queue.size - (service.currentIndex + 1)
-                    if (pending < 5) {
-                        setupQueue()
-                    }
-                }
-            }
+            playbackService?.onStateChanged = playbackStateChanged
             if (queueIsVisible) updateQueueUI()
             setupQueue() // Asegurar canciones al entrar
             refreshUi()
-            // Si ya estamos transmitiendo a Chromecast, no duplicar el audio local
-            if (::castController.isInitialized && castController.isCasting &&
-                playbackService?.player?.isPlaying == true) {
-                wasPlayingBeforeCast = true
-                playbackService?.pause()
+            // El audio local NO se pausa con el cast: el Chromecast solo
+            // recibe portada + título + letra (karaoke), la música sigue aquí.
+            if (::castController.isInitialized && castController.isCasting) {
+                startCastLyricsMode()
             }
         }
 
@@ -209,6 +238,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnPlayPause = findViewById(R.id.btnFullPlayPause)
         btnLike = findViewById(R.id.btnFullLike)
         btnDislike = findViewById(R.id.btnFullDislike)
+        btnKeepDislike = findViewById(R.id.btnKeepDislike)
         btnPrev = findViewById(R.id.btnFullPrev)
         btnNext = findViewById(R.id.btnFullNext)
         btnDeleteSong = findViewById(R.id.btnDeleteSong)
@@ -252,28 +282,51 @@ class NowPlayingActivity : AppCompatActivity() {
         castController.songProvider = { buildCastSongData() }
         castController.playingProvider = { playbackService?.player?.isPlaying == true }
         castController.onCastingChanged = { casting ->
-            btnCast.backgroundTintList = android.content.res.ColorStateList.valueOf(
-                if (casting) android.graphics.Color.parseColor("#1DB954")
-                else android.graphics.Color.parseColor("#22000000")
-            )
+            // Sin fondo de color: el estado de transmisión se marca con la
+            // opacidad del icono (que ahora es siempre blanco).
+            btnCast.alpha = if (casting) 1f else 0.8f
         }
+        // Antes no existía: si el receptor rechazaba la carga (CORS, red,
+        // posición fuera del medio...) el TV se quedaba en su pantalla de
+        // reposo y en el teléfono no aparecía ningún aviso.
+        castController.onCastError = { message ->
+            LocalLogger.log(this, "Chromecast: $message")
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+        // Las trazas del servidor local (peticiones del TV y resultado del
+        // proxy) quedan guardadas en el log de la app para poder diagnosticar.
+        castLyricsServer.logger = { message -> LocalLogger.log(this, message) }
         castController.onCastStarted = {
+            // El destino del audio (teléfono o TV) se elige al conectar; por
+            // defecto sigue sonando aquí y el TV muestra la letra.
             wasPlayingBeforeCast = playbackService?.player?.isPlaying == true
-            playbackService?.pause()
-            castController.castCurrentSong(wasPlayingBeforeCast)
-            Toast.makeText(this, "Transmitiendo a Chromecast", Toast.LENGTH_SHORT).show()
+            startCastLyricsMode()
+            showCastAudioTargetDialog()
         }
         castController.onCastResumed = {
             wasPlayingBeforeCast = playbackService?.player?.isPlaying == true
-            playbackService?.pause()
-            Toast.makeText(this, "Conectado a Chromecast", Toast.LENGTH_SHORT).show()
+            startCastLyricsMode()
+            // Reaplicar el estilo de letra: el usuario pudo apagarlo en el mando.
+            castController.refreshLyricsStyle()
+            showCastAudioTargetDialog()
         }
         castController.onCastEnded = {
-            if (wasPlayingBeforeCast) playbackService?.play()
+            // Si el audio iba al televisor, al cortarse la sesion hay que devolver
+            // el sonido al telefono: si no, la cancion se quedaria muda.
+            if (!CastSettings.audioStaysOnPhone(this) && wasPlayingBeforeCast) {
+                playbackService?.player?.play()
+            }
             wasPlayingBeforeCast = false
+            stopCastLyricsMode()
             Toast.makeText(this, "Transmision finalizada", Toast.LENGTH_SHORT).show()
         }
         castController.setUpMediaRouteButton(btnCast)
+        // Pulsación larga sobre el icono: cambiar el destino del audio sin
+        // tener que desconectar y volver a conectar el Chromecast.
+        btnCast.setOnLongClickListener {
+            showCastAudioTargetDialog()
+            true
+        }
         castController.refreshSessionState()
 
         // ===== Radio en vivo =====
@@ -299,6 +352,7 @@ class NowPlayingActivity : AppCompatActivity() {
             playbackService?.dislikeCurrentSong()
             if (playbackService?.currentSong == null) finish()
         }
+        btnKeepDislike.setOnClickListener { keepCurrentDislikedSong() }
         btnPrev.setOnClickListener { playbackService?.prev() }
         btnNext.setOnClickListener { playbackService?.next() }
         btnLyrics.setOnClickListener { showLyrics() }
@@ -473,7 +527,9 @@ class NowPlayingActivity : AppCompatActivity() {
             // hay conexión, o solo descargas si no la hay.
             val pendingCount = service.queue.size - (service.currentIndex + 1)
 
-            if (pendingCount < 10) {
+            // En MODO REVISIÓN ("No me gusta") la lista debe contener SOLO
+            // canciones marcadas: no se añaden recomendaciones ni descargas.
+            if (pendingCount < 10 && !service.isDislikeReviewMode()) {
                 if (!ServerReachability.isOnline || service.isDownloadedMode()) {
                     val existingIds = service.queue.map { it.id }.toSet()
                     val offlineFill = service.buildOfflineSmartMix(existingIds, limit = 10 - pendingCount)
@@ -520,6 +576,17 @@ class NowPlayingActivity : AppCompatActivity() {
                 onRemove = { position ->
                     val offset = service.currentIndex + 1
                     service.removeFromQueue(position + offset)
+                },
+                onKeepDisliked = { position ->
+                    val offset = service.currentIndex + 1
+                    val absolute = position + offset
+                    val songId = service.queue.getOrNull(absolute)?.id
+                    if (songId != null) {
+                        // "Dejar": ya se revisó, no se eliminará → sale de la
+                        // cola de revisión y de la lista de próximas canciones.
+                        service.keepDislikedSong(songId)
+                        updateQueueUI()
+                    }
                 }
             )
             queueAdapter = adapter
@@ -626,6 +693,17 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun onDeleteSongClicked() {
+        // Sin conexión el servidor no puede borrar nada: el botón de eliminar
+        // se comporta como el de "No me gusta" (la canción queda marcada con el
+        // recuadro rojo en la lista del admin para borrarla al reconectar).
+        if (!ServerReachability.isOnline) {
+            if (deleteConfirmArmed) {
+                progressHandler.removeCallbacks(deleteConfirmResetRunnable)
+                resetDeleteConfirmState()
+            }
+            dislikeInsteadOfDelete()
+            return
+        }
         if (deleteConfirmArmed) {
             progressHandler.removeCallbacks(deleteConfirmResetRunnable)
             resetDeleteConfirmState()
@@ -643,7 +721,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private fun resetDeleteConfirmState() {
         deleteConfirmArmed = false
         btnDeleteSong.imageTintList = android.content.res.ColorStateList.valueOf(
-            android.graphics.Color.parseColor("#FF4444")
+            android.graphics.Color.WHITE
         )
     }
 
@@ -651,6 +729,13 @@ class NowPlayingActivity : AppCompatActivity() {
         val service = playbackService ?: return
         val song = service.currentSong ?: return
         val sessionManager = SessionManager(this)
+
+        // Sin conexión no se puede borrar en el servidor: mismo comportamiento
+        // que el botón "No me gusta".
+        if (!ServerReachability.isOnline) {
+            dislikeInsteadOfDelete()
+            return
+        }
 
         btnDeleteSong.isEnabled = false
 
@@ -664,6 +749,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     if (downloadHelper.isDownloaded(song.id)) {
                         withContext(Dispatchers.IO) { downloadHelper.removeDownload(song.id) }
                     }
+                    SongAdminStore.removeDislikedSong(song.id)
                     Toast.makeText(this@NowPlayingActivity, "Canción eliminada", Toast.LENGTH_SHORT).show()
                     if (service.hasNext()) {
                         service.next()
@@ -673,12 +759,51 @@ class NowPlayingActivity : AppCompatActivity() {
                 } else {
                     Toast.makeText(this@NowPlayingActivity, "No se pudo eliminar la canción", Toast.LENGTH_SHORT).show()
                 }
+            } catch (e: java.io.IOException) {
+                // Se perdió la conexión durante la petición: no se pudo borrar,
+                // así que la canción queda marcada como "No me gusta" pendiente.
+                dislikeInsteadOfDelete()
             } catch (e: Exception) {
                 Toast.makeText(this@NowPlayingActivity, "Sin conexión: no se pudo eliminar la canción", Toast.LENGTH_SHORT).show()
             } finally {
                 btnDeleteSong.isEnabled = true
             }
         }
+    }
+
+    /**
+     * "Dejar": el admin confirma que ya revisó la canción marcada, no la
+     * elimina, y por tanto sale de la cola de revisión (recuadro rojo).
+     */
+    private fun keepCurrentDislikedSong() {
+        val service = playbackService ?: return
+        val song = service.currentSong ?: return
+        service.keepDislikedSong(song.id)
+        Toast.makeText(
+            this,
+            "\"${song.title}\" queda como revisada (no se eliminará)",
+            Toast.LENGTH_SHORT
+        ).show()
+        if (queueIsVisible) updateQueueUI()
+        refreshUi()
+    }
+
+    /**
+     * Sustituto de "eliminar" cuando no hay servidor: hace lo mismo que el botón
+     * de "No me gusta" (registro local + pendiente de sincronizar) y salta a la
+     * siguiente canción. Al reconectar, la canción aparece con el recuadro en
+     * rojo oscuro en "Canciones que no me gustan" para borrarla o dejarla.
+     */
+    private fun dislikeInsteadOfDelete() {
+        val service = playbackService ?: return
+        val song = service.currentSong ?: return
+        service.dislikeCurrentSong()
+        Toast.makeText(
+            this,
+            "Sin conexión: \"${song.title}\" se marcó como \"No me gusta\". Gestiónala en la lista al reconectar.",
+            Toast.LENGTH_LONG
+        ).show()
+        if (service.currentSong == null) finish()
     }
 
     private fun showLyrics() {
@@ -1071,6 +1196,17 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // Desregistrar el callback ANTES de soltar la actividad: el servicio
+        // vive más que ella y seguiría notificando a vistas ya destruidas.
+        if (playbackService?.onStateChanged === playbackStateChanged) {
+            playbackService?.onStateChanged = null
+        }
+        lyricsUpdateJob?.cancel()
+        castLyricsJob?.cancel()
+        castLyricsJob = null
+        runCatching { castLyricsServer.stop() }
+        lyricsScrollHandler.removeCallbacks(lyricsScrollResumeRunnable)
+        progressHandler.removeCallbacksAndMessages(null)
         if (::castController.isInitialized) castController.release()
         super.onDestroy()
     }
@@ -1167,29 +1303,38 @@ class NowPlayingActivity : AppCompatActivity() {
         val hosting = RadioManager.isHost
         val listening = RadioManager.isListener
         
-        btnRadio.backgroundTintList = ColorStateList.valueOf(
+        // Sin fondo de color: el estado se marca con el tinte del icono
+        // (en reposo el icono es blanco como el resto).
+        btnRadio.imageTintList = ColorStateList.valueOf(
             when {
                 hosting -> Color.parseColor("#1DB954")
                 listening -> Color.parseColor("#FFA500")
-                else -> Color.parseColor("#22000000")
+                else -> Color.WHITE
             }
         )
         
         // El botón de micrófono solo es visible para el Host
         btnMic.visibility = if (hosting) View.VISIBLE else View.GONE
         if (hosting) {
-            btnMic.backgroundTintList = ColorStateList.valueOf(
-                if (RadioManager.isVoiceActive) Color.parseColor("#FF5252")
-                else Color.parseColor("#22000000")
-            )
+            // Sin fondo de color: el icono solo se tiñe cuando está hablando;
+            // en reposo queda blanco como el resto.
             btnMic.imageTintList = ColorStateList.valueOf(
-                if (RadioManager.isVoiceActive) Color.BLACK
+                if (RadioManager.isVoiceActive) Color.parseColor("#FF5252")
                 else Color.WHITE
             )
         }
     }
 
-    /** Construye los datos de la cancion actual para transmitirla a Chromecast. */
+    /**
+     * Construye los datos de la cancion actual para transmitirla a Chromecast.
+     *
+     * El usuario elige donde suena el audio (ver [CastSettings.AudioTarget]):
+     *  - en el TELEVISOR: se envia el audio real, pero servido por el proxy
+     *    local (/audio) porque Google Cast exige cabeceras CORS en el medio
+     *    cuando la carga lleva la pista de subtitulos.
+     *  - en el TELEFONO: se envia un MP3 de SILENCIO de la misma duracion y la
+     *    musica sigue sonando aqui; el TV solo muestra la letra (karaoke).
+     */
     private fun buildCastSongData(): CastController.CastSong? {
         val service = playbackService ?: return null
         val raw = service.currentSong ?: return null
@@ -1197,19 +1342,194 @@ class NowPlayingActivity : AppCompatActivity() {
         val base = RetrofitClient.getBaseUrl().trimEnd('/')
         val path = if (song.isEpisode) "podcast-audio" else "audio"
         val startMs = (playbackService?.player?.currentPosition ?: 0L).coerceAtLeast(0L)
-        val durationMs = playbackService?.getDurationMs()
+        // OJO: `getDurationMs()` devuelve 0 (no null) mientras el reproductor
+        // aún no conoce la duración, así que el antiguo `?:` nunca se cumplía:
+        // el MP3 de silencio salía de 1 segundo (el TV lo terminaba al instante
+        // y volvía a su pantalla de reposo mostrando solo el icono de Cast) y la
+        // posición de arranque podía caer fuera del medio.
+        val playerDurationMs = playbackService?.getDurationMs() ?: 0L
+        val durationMs = playerDurationMs.takeIf { it > 0L }
             ?: ((song.duration ?: 0.0) * 1000.0).toLong()
+        // Sin duración conocida por ninguna vía se asume una canción larga: es
+        // mejor una barra de progreso imprecisa que un medio que acaba ya.
+        val castDurationMs = durationMs.takeIf { it > 0L } ?: FALLBACK_CAST_DURATION_MS
+        val realStreamUrl = "$base/$path/${song.id}"
+        val lyrics = castLyricsServer.trackUrl(song.id)
+
+        // Elige el medio segun la preferencia de audio del usuario.
+        val audioOnTv = !CastSettings.audioStaysOnPhone(this)
+        val mediaUrl = when {
+            // Audio en el telefono: MP3 de silencio, la letra va como subtitulo.
+            !audioOnTv -> castLyricsServer.silenceUrl(song.id, castDurationMs)
+            // Audio en el TV: proxy propio para poder enviar CORS + Range.
+            else -> castLyricsServer.mediaProxyUrl(song.id, realStreamUrl)
+        } ?: realStreamUrl
+
+        // La letra solo se adjunta si el servidor local está levantado.
+        val withLyrics = lyrics != null
         return CastController.CastSong(
             id = song.id,
-            title = song.title ?: "",
+            title = song.title,
             artist = song.artist ?: "",
             album = song.album,
             artUrl = "$base/cover/${song.id}",
-            streamUrl = "$base/$path/${song.id}",
+            streamUrl = mediaUrl,
             startMs = startMs,
-            durationMs = durationMs.coerceAtLeast(0L),
-            contentType = "audio/mpeg"
+            durationMs = castDurationMs,
+            contentType = "audio/mpeg",
+            lyricsUrl = if (withLyrics) lyrics else null
         )
+    }
+
+    /**
+     * Muestra el dialogo para elegir donde suena el audio al transmitir.
+     *
+     * Si la opcion cambia, se reemite la cancion al receptor (el medio cambia
+     * entre el proxy de audio y el MP3 de silencio) y se enciende o apaga el
+     * audio local.
+     */
+    private fun showCastAudioTargetDialog() {
+        // Solo un diálogo a la vez: onCastStarted y onCastResumed pueden llegar
+        // seguidos y antes se apilaban dos copias.
+        if (castTargetDialog?.isShowing == true) return
+        // El diagnóstico ya NO se usa como texto del diálogo: parecía un error y
+        // tapaba las opciones. Se guarda en el log y se consulta con "Diagnóstico".
+        LocalLogger.log(this, "Chromecast diagnóstico: ${castLyricsServer.diagnostic()}")
+        val options = CastSettings.AudioTarget.entries.toTypedArray()
+        val current = options.indexOf(CastSettings.audioTarget(this))
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("¿Dónde quieres que suene el audio?")
+            .setMessage("Si el audio suena en el televisor, la letra se envía como subtítulos.")
+            .setSingleChoiceItems(
+                options.map { it.label }.toTypedArray(),
+                current
+            ) { dialog, which ->
+                val target = options[which]
+                dialog.dismiss()
+                applyCastAudioTarget(target)
+            }
+            .setNeutralButton("Diagnóstico") { _, _ -> showCastDiagnostic() }
+            .setNegativeButton("Cancelar", null)
+            .show()
+            .also { castTargetDialog = it }
+    }
+
+    /** Resumen técnico del servidor de letras/audio (para soporte). */
+    private fun showCastDiagnostic() {
+        val text = castLyricsServer.diagnostic()
+        AlertDialog.Builder(this)
+            .setTitle("Diagnóstico de subtítulos")
+            .setMessage(text)
+            .setPositiveButton("Guardar en el log") { _, _ ->
+                LocalLogger.log(this, "Chromecast diagnóstico: $text")
+                Toast.makeText(this, "Guardado en el log de la app", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Guarda la preferencia y la aplica de inmediato en la sesion de cast actual. */
+    private fun applyCastAudioTarget(target: CastSettings.AudioTarget) {
+        if (CastSettings.audioTarget(this) == target) return
+        CastSettings.setAudioTarget(this, target)
+        if (castController.isCasting) {
+            // Capturar si estaba sonando ANTES de tocar el reproductor local:
+            // al pasar el audio al TV hay que silenciar aquí, y si leyésemos
+            // isPlaying después obtendríamos false y el TV cargaría en pausa.
+            val wasPlaying = playbackService?.player?.isPlaying == true
+            applyCastAudioTargetToLocalPlayer()
+            // Reemitir para que el TV reciba el medio nuevo (silencio o proxy).
+            castController.reloadCurrentSong(wasPlaying)
+            Toast.makeText(
+                this,
+                if (target == CastSettings.AudioTarget.PHONE) {
+                    "El audio sigue en el teléfono · el TV muestra la letra"
+                } else {
+                    "El audio se reproduce en el televisor"
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    /**
+     * Silencia o reactiva el reproductor local segun el destino del audio.
+     *
+     * - Audio en el TV   -> se pausa aqui (el sonido sale del televisor).
+     * - Audio en el movil -> se reanuda si estaba sonando antes del cambio.
+     *
+     * No se reanuda si la canción ya terminó o si el usuario la pausó a mano.
+     */
+    private fun applyCastAudioTargetToLocalPlayer() {
+        val player = playbackService?.player ?: return
+        if (CastSettings.audioStaysOnPhone(this)) {
+            // Solo se reactiva si seguía sonando cuando llegó al televisor.
+            if (wasPlayingBeforeCast && !player.isPlaying) player.play()
+        } else {
+            if (player.isPlaying) wasPlayingBeforeCast = true
+            player.pause()
+        }
+    }
+
+    /**
+     * Karaoke en Chromecast: publica la letra de la canción actual en
+     * [castLyricsServer]. El receptor la recibe como subtítulos (WebVTT) y
+     * reproduce el medio que corresponda segun la preferencia de audio: un MP3
+     * de silencio (la música sigue en el teléfono) o el audio real servido por
+     * el proxy local.
+     */
+    private fun startCastLyricsMode() {
+        runCatching { castLyricsServer.start() }
+        castLyricsJob?.cancel()
+        castLyricsJob = lifecycleScope.launch {
+            var firstEmit = true
+            while (castController.isCasting && !isDestroyed) {
+                val song = playbackService?.currentSong
+                if (song == null) {
+                    delay(1000)
+                    continue
+                }
+
+                // El receptor pide /track.vtt justo al cargar: emitir YA y que
+                // la espera de hasta 15 s del servidor cubra la descarga.
+                if (firstEmit) {
+                    firstEmit = false
+                    // Capturar el estado local antes de silenciar el telefono:
+                    // en modo "audio en el televisor" se pausa aqui mismo, y si
+                    // se leyera isPlaying despues el TV cargaria en pausa.
+                    val wasPlaying = playbackService?.player?.isPlaying == true
+                    applyCastAudioTargetToLocalPlayer()
+                    castController.castCurrentSong(wasPlaying)
+                }
+
+                if (castLyricsSongId != song.id) {
+                    val lines = try {
+                        kotlinx.coroutines.withTimeoutOrNull(8000) { fetchLyrics(song) }
+                    } catch (e: Exception) {
+                        null
+                    }
+                    val durationMs = playbackService?.getDurationMs()
+                        ?: ((song.duration ?: 0.0) * 1000.0).toLong()
+                    castLyricsServer.setTrack(
+                        song.id,
+                        song.title,
+                        song.artist,
+                        lines?.map { it.timeMs to it.content } ?: emptyList(),
+                        durationMs.coerceAtLeast(0L)
+                    )
+                    castLyricsSongId = song.id
+                    // Si cambió la canción, reemitir (autoCast evita repetir).
+                    castController.autoCast()
+                }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun stopCastLyricsMode() {
+        castLyricsJob?.cancel()
+        castLyricsJob = null
+        castLyricsSongId = null
     }
 
     private fun refreshUi() {
@@ -1220,20 +1540,17 @@ class NowPlayingActivity : AppCompatActivity() {
             when {
                 service?.karaokeLoading == true -> {
                     alpha = 0.45f
-                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
-                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#000000"))
+                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
                     contentDescription = "Cancelar descarga instrumental"
                 }
                 service?.isKaraoke == true -> {
                     alpha = 1f
-                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#FFFFFF"))
                     imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
                     contentDescription = "Karaoke activo · Volver a voz"
                 }
                 else -> {
                     alpha = 1f
-                    backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#1DB954"))
-                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.parseColor("#000000"))
+                    imageTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.WHITE)
                     contentDescription = "Karaoke"
                 }
             }
@@ -1268,6 +1585,10 @@ class NowPlayingActivity : AppCompatActivity() {
             
             // Ocultar botones no relevantes para Podcast (la letra es automática)
             btnDislike.visibility = View.GONE
+            // El botón "Dejar" solo tiene sentido en canciones marcadas como
+            // "No me gusta" pendientes de revisar.
+            btnKeepDislike.visibility = View.GONE
+
             // btnLyrics.visibility = View.GONE // Mantener si quieres permitir ver la letra completa manual
             
             // Cargar imagen de cabecera grande
@@ -1292,6 +1613,9 @@ class NowPlayingActivity : AppCompatActivity() {
             // Mostrar botones para Música
             btnDislike.visibility = View.VISIBLE
             btnLyrics.visibility = View.VISIBLE
+            // "Dejar" solo aparece cuando la canción está marcada como
+            // "No me gusta" y todavía no se ha revisado.
+            btnKeepDislike.visibility = if (playbackService?.isCurrentPendingDislike() == true) View.VISIBLE else View.GONE
             
             val artistEncoded = URLEncoder.encode(song.artist ?: "", "UTF-8").replace("+", "%20")
             val artistImageUrl = "$serverBaseUrl/artist-cover/$artistEncoded"
@@ -1306,8 +1630,10 @@ class NowPlayingActivity : AppCompatActivity() {
         // Actualizar mini-reproductor de letras si el diálogo está abierto
         refreshLyricsMiniPlayer()
 
-        // Cargar waveform
-        loadWaveform(song)
+        // Cargar waveform: SOLO al cambiar de canción. Analizar el archivo
+        // completo (Amplituda) en cada refresco saturaba la CPU y provocaba
+        // tirones de audio (Bluetooth) al ver la pantalla de letras.
+        if (waveformSongId != song.id) loadWaveform(song)
 
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
         val isPlaying = playbackService?.player?.isPlaying == true
@@ -1392,11 +1718,16 @@ class NowPlayingActivity : AppCompatActivity() {
         }
     }
 
+    /** Canción cuya forma de onda ya está cargada (evita reanalizar el archivo). */
+    private var waveformSongId: String? = null
+
     private fun updateProgress() {
         val service = playbackService ?: return
         val duration = service.getDurationMs()
         val progress = service.getProgressMs()
-        if (duration > 0) {
+        // maxProgress fuerza relayout/redibujado de toda la onda: solo se toca
+        // cuando cambia la duración (antes se hacía cada 500 ms).
+        if (duration > 0 && waveformSeekBar.maxProgress.toLong() != duration) {
             waveformSeekBar.maxProgress = duration.toFloat()
             tvTotalTime.text = formatTime(duration)
         }
@@ -1415,6 +1746,7 @@ class NowPlayingActivity : AppCompatActivity() {
     }
 
     private fun loadWaveform(song: Song) {
+        waveformSongId = song.id
         val localPath = downloadHelper.getLocalFilePath(song.id)
         if (localPath != null) {
             amplituda.processAudio(localPath).get(

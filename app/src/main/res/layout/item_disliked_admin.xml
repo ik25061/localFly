@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardDisliked"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="8dp"
@@ -23,15 +24,15 @@
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
-            <!-- Play Button: Explicit Green Background for visibility -->
+            <!-- Play Button: transparente, sin fondo de color y con el dibujo blanco -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnPlayDisliked"
                 style="@style/Widget.Material3.Button.IconButton"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
                 app:icon="@android:drawable/ic_media_play"
-                app:iconTint="#000000"
-                app:backgroundTint="#1DB954"
+                app:iconTint="#FFFFFF"
                 android:contentDescription="@string/notification_play" />
 
             <LinearLayout
@@ -59,6 +60,18 @@
                     android:textSize="12sp"
                     android:maxLines="1"
                     android:ellipsize="end" />
+
+                <!-- Estado de revisión: pendiente (rojo) o dejada (verde). Es la
+                     señal de que la canción ya fue revisada y NO se borrará. -->
+                <TextView
+                    android:id="@+id/tvDlStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="#FF6B6B"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
             </LinearLayout>
 
         </LinearLayout>
@@ -70,12 +83,27 @@
             android:layout_marginTop="12dp"
             android:gravity="end">
 
-            <!-- "Quitar" button: Grey and low profile -->
+            <!-- Boton "Dejar": marca la cancion como revisada (no se borrara).
+                 Para las ya revisadas el mismo boton la devuelve a revision. -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnKeepSong"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Dejar"
+                android:textAllCaps="false"
+                android:textColor="#6BCB77"
+                android:textSize="12sp"
+                app:strokeColor="#6BCB77"
+                app:cornerRadius="12dp" />
+
+            <!-- Boton "Quitar": gris y discreto -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnRemoveFromList"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:text="Quitar de lista"
                 android:textAllCaps="false"
                 android:textColor="#A8A8AF"

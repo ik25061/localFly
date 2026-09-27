@@ -39,6 +39,12 @@ android {
         viewBinding = true
     }
 
+    // Las pruebas unitarias JVM ejercitan el servidor HTTP local, que usa
+    // android.util.Log: sin esto cualquier llamada lanza "not mocked".
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     // 16 KB page-size: no usar legacy packaging (alinea .so a 16 KB).
     packaging {
         jniLibs {

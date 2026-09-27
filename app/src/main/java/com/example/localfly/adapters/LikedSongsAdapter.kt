@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import com.example.localfly.DownloadManagerHelper
 import com.example.localfly.R
+import com.example.localfly.network.LikeStateStore
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.ServerReachability
 import com.example.localfly.network.SessionManager
@@ -74,7 +75,7 @@ class LikedSongsAdapter(
 
         // Acciones visibles
         holder.btnLike.setImageResource(
-            if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off
+            if (LikeStateStore.isLiked(song)) R.drawable.ic_like_on else R.drawable.ic_like_off
         )
         holder.btnLike.setOnClickListener { onLikeClick(song) }
         holder.btnDislike.setOnClickListener { onDislikeClick(song) }
@@ -159,6 +160,20 @@ val seed = song.id
     }
 
     override fun getItemCount() = songs.size
+
+    // Estado "me gusta" compartido: si cambia en el mini reproductor o en la
+    // pantalla completa, el corazón de esta lista se repinta solo.
+    private val likeStateListener: (String) -> Unit = { runCatching { notifyDataSetChanged() } }
+
+    override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
+        super.onAttachedToRecyclerView(recyclerView)
+        LikeStateStore.addListener(likeStateListener)
+    }
+
+    override fun onDetachedFromRecyclerView(recyclerView: RecyclerView) {
+        LikeStateStore.removeListener(likeStateListener)
+        super.onDetachedFromRecyclerView(recyclerView)
+    }
 
     fun updateSongs(newSongs: List<Song>) {
         songs.clear()

@@ -357,7 +357,8 @@ class GenreDetailFragment : Fragment() {
     }
 
     private fun toggleLike(song: Song, position: Int) {
-        val newLiked = !song.liked
+        val newLiked = !com.example.localfly.network.LikeStateStore.isLiked(song)
+        com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
         songsAdapter.updateSongAt(position, song.copy(liked = newLiked))
         viewLifecycleOwner.lifecycleScope.launch {
             try {

@@ -44,6 +44,26 @@ class DownloadsFragment : Fragment() {
     private lateinit var sessionManager: SessionManager
     private lateinit var adapter: DownloadedSongAdapter
 
+    /**
+     * Refresco en vivo: el servicio avisa (auto-eliminar al terminar una
+     * canción, "No me gusta", etc.) y la lista se actualiza sin salir de la
+     * pantalla. Antes solo se recargaba en onResume, así que las canciones
+     * borradas seguían apareciendo hasta volver a entrar.
+     */
+    private val playbackObserver: () -> Unit = {
+        if (isAdded && view != null) loadDownloads()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (activity as? MainActivity)?.addPlaybackObserver(playbackObserver)
+    }
+
+    override fun onStop() {
+        (activity as? MainActivity)?.removePlaybackObserver(playbackObserver)
+        super.onStop()
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         return inflater.inflate(R.layout.fragment_downloads, container, false)
     }

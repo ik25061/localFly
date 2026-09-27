@@ -52,15 +52,21 @@ class AIRecommendationManager(
             }
         }
 
+        // Canciones marcadas como "No me gusta": nunca se recomiendan de nuevo
+        // (bug: reaparecían en la cola aunque el usuario las hubiera descartado).
+        val dislikedIds = com.example.localfly.network.SongAdminStore.getDislikedSongs()
+            .mapNotNull { it.songId }.toSet()
+
         // 1. Canciones que le gustan
         val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
-        val likedSongs = if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList()
+        val likedSongs = (if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList())
+            .filter { it.id !in dislikedIds }
 
         // 2. Obtener candidatos
-        val musicSongs = if (includeMusic) {
+        val musicSongs = (if (includeMusic) {
             val libResp = RetrofitClient.api.getLibrary(userId, limit = 5000)
             if (libResp.isSuccessful) libResp.body()?.songs ?: emptyList() else emptyList()
-        } else emptyList()
+        } else emptyList()).filter { it.id !in dislikedIds }
 
         val podcastEpisodes = if (includePodcasts) {
             try {
@@ -83,7 +89,7 @@ class AIRecommendationManager(
             } catch (e: Exception) { emptyList() }
         } else emptyList()
 
-        var allSongs = musicSongs + podcastEpisodes
+        var allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
 
         // PUNTO DE VINCULACIÓN: Filtrar por estado de ánimo si se solicita
         if (!mood.isNullOrBlank()) {

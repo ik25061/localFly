@@ -16,7 +16,14 @@ object MetadataSyncManager {
     private const val TAG = "MetadataSyncManager"
 
     suspend fun syncPendingEdits(sessionManager: SessionManager): Boolean = withContext(Dispatchers.IO) {
-        val edits = SongAdminStore.getEdits().values.toList()
+        // Solo se suben las ediciones que el usuario hizo y el servidor aún no
+        // confirmó. Antes se reenviaba la lista COMPLETA cada 30 s aunque ya
+        // estuviera aplicada: un bucle de peticiones inútiles (y visible en el
+        // logcat como POST /api/metadata/sync cada 30 segundos).
+        val pendingIds = SongAdminStore.getPendingSyncIds()
+        if (pendingIds.isEmpty()) return@withContext true
+
+        val edits = SongAdminStore.getEdits().values.filter { it.songId in pendingIds }
         if (edits.isEmpty()) return@withContext true
 
         val payload = edits.map { e ->
@@ -40,7 +47,8 @@ object MetadataSyncManager {
             val body = response.body() ?: return@withContext false
 
             // Las ediciones aplicadas quedan confirmadas: se actualizan sus
-            // "originales" al valor actual del servidor para no reenviarlas.
+            // "originales" al valor actual del servidor para no reenviarlas
+            // (markPendingSync=false: esta escritura no genera nuevo trabajo).
             val appliedIds = body.applied.toSet()
             for (edit in edits) {
                 if (edit.songId in appliedIds) {
@@ -53,11 +61,15 @@ object MetadataSyncManager {
                                 originalArtist = current.artist,
                                 originalAlbum = current.album,
                                 originalYear = current.year
-                            )
+                            ),
+                            markPendingSync = false
                         )
                     }
                 }
             }
+            // Confirmadas por el servidor → dejan de estar pendientes.
+            SongAdminStore.markEditsSynced(appliedIds)
+
             body.conflicts.forEach { c ->
                 Log.w(TAG, "Conflicto de metadatos en ${c.songId}: ${c.reason}")
             }

@@ -44,7 +44,32 @@
             android:maxLines="1"
             android:ellipsize="end" />
 
+        <TextView
+            android:id="@+id/tvQueueDislikeTag"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:text="No me gusta · pendiente de revisar"
+            android:textColor="#FF6B6B"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
     </LinearLayout>
+
+    <!-- "Dejar": oculto salvo en las canciones marcadas como "No me gusta",
+         para indicar que ya se revisó y no se eliminará. -->
+    <ImageButton
+        android:id="@+id/btnQueueKeepDislike"
+        android:layout_width="32dp"
+        android:layout_height="32dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Dejar esta canción: ya la revisé, no la eliminaré"
+        android:padding="4dp"
+        android:scaleType="centerInside"
+        android:src="@drawable/ic_keep_dislike"
+        android:visibility="gone"
+        app:tint="#FFFFFF" />
 
     <ImageView
         android:id="@+id/ivQueueDragHandle"
@@ -53,6 +78,6 @@
         android:padding="4dp"
         android:scaleType="centerInside"
         android:src="@drawable/ic_drag_handle"
-        app:tint="#888888" />
+        app:tint="#FFFFFF" />
 
 </LinearLayout>

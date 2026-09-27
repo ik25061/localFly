@@ -46,6 +46,7 @@ import androidx.media3.common.util.UnstableApi
 import com.bumptech.glide.Glide
 import com.example.localfly.fragments.*
 import com.example.localfly.network.ApiConfig
+import com.example.localfly.network.LikeStateStore
 import com.example.localfly.network.MetadataSyncManager
 import com.example.localfly.network.PlaylistSyncManager
 import com.example.localfly.network.RescanManager
@@ -94,12 +95,43 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op: la notif. de MediaSession no depende de esto */ }
 
     // ===== SERVICE CONNECTION =====
+    /**
+     * Observadores del estado de reproducción (descargas, listas...).
+     * `onStateChanged` del servicio es de un solo suscriptor y NowPlayingActivity
+     * lo pisa al abrirse: este multiplexor mantiene vivos a los fragmentos
+     * (p. ej. Descargas se refresca solo cuando una canción se auto-elimina).
+     */
+    private val playbackObservers = java.util.concurrent.CopyOnWriteArrayList<() -> Unit>()
+
+    fun addPlaybackObserver(observer: () -> Unit) {
+        if (!playbackObservers.contains(observer)) playbackObservers.add(observer)
+    }
+
+    fun removePlaybackObserver(observer: () -> Unit) {
+        playbackObservers.remove(observer)
+    }
+
+    private fun notifyPlaybackObservers() {
+        for (observer in playbackObservers) {
+            try { observer() } catch (_: Exception) { }
+        }
+    }
+
+    /** Notificación única de cambio de estado (mini reproductor + observadores). */
+    private fun onPlaybackStateChanged() {
+        runOnUiThread {
+            if (isDestroyed) return@runOnUiThread
+            refreshMiniPlayer()
+            notifyPlaybackObservers()
+        }
+    }
+
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as PlaybackService.LocalBinder
             playbackService = binder.getService()
             isBound = true
-            playbackService?.onStateChanged = { refreshMiniPlayer() }
+            playbackService?.onStateChanged = { onPlaybackStateChanged() }
             refreshMiniPlayer()
         }
 
@@ -315,6 +347,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         FontApplier.apply(window.decorView, sessionManager.getFontFamily())
+        // NowPlayingActivity pisa `onStateChanged` mientras está abierta; al
+        // volver aquí volvemos a ser los dueños para que el mini reproductor y
+        // los fragmentos (p. ej. Descargas) sigan refrescándose.
+        if (isBound) playbackService?.onStateChanged = { onPlaybackStateChanged() }
+        refreshMiniPlayer()
+        notifyPlaybackObservers()
     }
 
     // ===== MINI REPRODUCTOR (punto 6) =====
@@ -359,7 +397,9 @@ class MainActivity : AppCompatActivity() {
             .centerCrop()
             .into(ivMiniCover)
 
-        btnMiniLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
+        btnMiniLike.setImageResource(
+            if (LikeStateStore.isLiked(song)) R.drawable.ic_like_on else R.drawable.ic_like_off
+        )
         btnMiniDislike.setImageResource(R.drawable.ic_dislike_off)
 
         val isPlaying = playbackService?.player?.isPlaying == true

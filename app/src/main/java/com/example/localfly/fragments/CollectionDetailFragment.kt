@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
@@ -53,6 +54,21 @@ class CollectionDetailFragment : Fragment() {
     private var isLoading = false
     private var hasMore = true
 
+    /** Buscador interno (solo en pantallas de artista). */
+    private lateinit var etSearch: EditText
+    private var searchQuery = ""
+
+    /** Canciones que se muestran (todas, o las que coinciden con la búsqueda). */
+    private fun visibleSongs(): List<Song> {
+        val query = searchQuery.trim()
+        if (query.isEmpty()) return currentSongs
+        return currentSongs.filter { song ->
+            song.title.contains(query, ignoreCase = true) ||
+                (song.artist ?: "").contains(query, ignoreCase = true) ||
+                (song.album ?: "").contains(query, ignoreCase = true)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
@@ -82,6 +98,7 @@ class CollectionDetailFragment : Fragment() {
         btnFavoriteArtist = view.findViewById(R.id.btnFavoriteArtist)
         btnHideArtist = view.findViewById(R.id.btnHideArtist)
         rvSongs = view.findViewById(R.id.rvCollectionSongs)
+        etSearch = view.findViewById<EditText>(R.id.etCollectionSearch)
 
         view.findViewById<ImageButton>(R.id.btnBack).setOnClickListener {
             parentFragmentManager.popBackStack()
@@ -161,8 +178,11 @@ class CollectionDetailFragment : Fragment() {
             downloadHelper = downloadHelper,
             onSongClick = { _, position ->
                 val activity = requireActivity() as? MainActivity
-                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
-                activity?.playbackService?.setQueueAndPlay(currentSongs, position, localPaths)
+                // La lista del adaptador es la filtrada: hay que reproducir
+                // exactamente lo que se está viendo (mismos índices).
+                val visible = visibleSongs()
+                val localPaths = visible.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(visible, position, localPaths)
             },
             onLikeClick = { song, position -> toggleLike(song, position) },
             onDislikeClick = { _, _ -> },
@@ -198,10 +218,11 @@ class CollectionDetailFragment : Fragment() {
         })
 
         btnPlay.setOnClickListener {
-            if (currentSongs.isNotEmpty()) {
+            val toPlay = visibleSongs()
+            if (toPlay.isNotEmpty()) {
                 val activity = requireActivity() as? MainActivity
-                val localPaths = currentSongs.map { downloadHelper.getLocalFilePath(it.id) }
-                activity?.playbackService?.setQueueAndPlay(currentSongs, 0, localPaths)
+                val localPaths = toPlay.map { downloadHelper.getLocalFilePath(it.id) }
+                activity?.playbackService?.setQueueAndPlay(toPlay, 0, localPaths)
             }
         }
 
@@ -224,7 +245,26 @@ class CollectionDetailFragment : Fragment() {
             }
         }
 
+        setupSearch()
         loadSongs()
+    }
+
+    /**
+     * Buscador interno: se muestra solo dentro de un artista y filtra la lista
+     * ya cargada (sin volver a pedir nada al servidor).
+     */
+    private fun setupSearch() {
+        val isArtist = itemType == "ARTIST"
+        etSearch.visibility = if (isArtist) View.VISIBLE else View.GONE
+        if (!isArtist) return
+        etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                searchQuery = s?.toString() ?: ""
+                adapter.updateSongs(visibleSongs())
+            }
+        })
     }
 
     private fun hideCurrentArtist() {
@@ -312,12 +352,12 @@ class CollectionDetailFragment : Fragment() {
                     // Aplicar ediciones locales del admin (título/álbum/año editados)
                     val displaySongs = SongAdminStore.applyTo(processedSongs)
 
-                    if (isNextPage) {
+                    if (isNextPage && searchQuery.isBlank()) {
                         currentSongs.addAll(displaySongs)
                         adapter.addSongs(displaySongs)
                     } else {
                         currentSongs.addAll(displaySongs)
-                        adapter.updateSongs(currentSongs)
+                        adapter.updateSongs(visibleSongs())
                     }
                     
                     val totalDuration = currentSongs.sumOf { it.duration ?: 0.0 }
@@ -343,7 +383,8 @@ class CollectionDetailFragment : Fragment() {
     }
 
     private fun toggleLike(song: Song, position: Int) {
-        val newLiked = !song.liked
+        val newLiked = !com.example.localfly.network.LikeStateStore.isLiked(song)
+        com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
         adapter.updateSongAt(position, song.copy(liked = newLiked))
         viewLifecycleOwner.lifecycleScope.launch {
             try {

@@ -157,6 +157,23 @@
 
                 </androidx.constraintlayout.widget.ConstraintLayout>
 
+                <!-- Buscador interno: solo visible dentro de un artista para
+                     filtrar sus canciones sin salir de la pantalla. -->
+                <EditText
+                    android:id="@+id/etCollectionSearch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
+                    android:background="#2A2A31"
+                    android:hint="Buscar canción de este artista"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:padding="12dp"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#8A8A8A"
+                    android:textSize="14sp"
+                    android:visibility="gone" />
+
             </LinearLayout>
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>
