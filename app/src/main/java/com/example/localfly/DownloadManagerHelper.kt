@@ -1,3 +1,4 @@
+
 package com.example.localfly
 
 import android.content.Context
@@ -268,24 +269,60 @@ class DownloadManagerHelper private constructor(context: Context) {
         val target = current.find { it.id == songId }
         target?.let {
             runCatching { File(it.filePath).delete() }
-            // También borrar la letra y la caché del instrumental si existen.
-            runCatching { File(downloadsDir(), "$songId.lrc").delete() }
-            runCatching { File(appContext.filesDir, "lyrics/$songId.lrc").delete() }
-            runCatching { com.example.localfly.karaoke.KaraokeCache.deleteFor(appContext, songId) }
         }
+        // La letra y el instrumental son artefactos locales de la canción:
+        // se borran siempre, esté o no registrada como descarga (p. ej. la
+        // letra pudo guardarse desde el editor sin descargar el audio).
+        // La subida pendiente NO se toca aquí: al quitar una descarga la
+        // canción sigue existiendo en el servidor y la letra debe subir igual.
+        deleteLyricsAndKaraoke(songId)
         current.removeAll { it.id == songId }
         val newList = current.toList()
         cachedDownloads = newList
         prefs.edit().putString("list", gson.toJson(newList)).apply()
     }
 
+    /**
+     * Borra TODOS los artefactos locales de una canción eliminada del
+     * servidor, haya o no descarga registrada: audio descargado (si lo hay),
+     * letra (downloads/<id>.lrc y lyrics/<id>.lrc), instrumental de karaoke
+     * cacheado y subida de letra pendiente (ya no tiene destino).
+     * Usar al eliminar la canción del servidor para no dejar huérfanos.
+     */
+    fun removeLocalArtifacts(songId: String) {
+        val current = getDownloadedSongs().toMutableList()
+        current.find { it.id == songId }?.let {
+            runCatching { File(it.filePath).delete() }
+        }
+        current.removeAll { it.id == songId }
+        cachedDownloads = current.toList()
+        prefs.edit().putString("list", gson.toJson(current.toList())).apply()
+        deleteLyricsAndKaraoke(songId)
+        // La canción ya no existe: su letra pendiente nunca podrá subirse.
+        runCatching {
+            com.example.localfly.network.SessionManager(appContext)
+                .removePendingLyricsUpload(songId)
+        }
+    }
+
+    /** Borra letra local (ambas copias) e instrumental de karaoke. */
+    private fun deleteLyricsAndKaraoke(songId: String) {
+        val downloadsDir = File(appContext.filesDir, "downloads")
+        if (downloadsDir.isDirectory) {
+            runCatching { File(downloadsDir, "$songId.lrc").delete() }
+        }
+        val lyricsDir = File(appContext.filesDir, "lyrics")
+        if (lyricsDir.isDirectory) {
+            runCatching { File(lyricsDir, "$songId.lrc").delete() }
+        }
+        runCatching { com.example.localfly.karaoke.KaraokeCache.deleteFor(appContext, songId) }
+    }
+
     /** Elimina todas las canciones descargadas (archivos y registro). */
     fun removeAllDownloads() {
         getDownloadedSongs().forEach { song ->
             runCatching { File(song.filePath).delete() }
-            runCatching { File(downloadsDir(), "${song.id}.lrc").delete() }
-            runCatching { File(appContext.filesDir, "lyrics/${song.id}.lrc").delete() }
-            runCatching { com.example.localfly.karaoke.KaraokeCache.deleteFor(appContext, song.id) }
+            deleteLyricsAndKaraoke(song.id)
         }
         cachedDownloads = emptyList()
         prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()

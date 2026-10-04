@@ -530,7 +530,7 @@ class NowPlayingActivity : AppCompatActivity() {
             // En MODO REVISIÓN ("No me gusta") la lista debe contener SOLO
             // canciones marcadas: no se añaden recomendaciones ni descargas.
             if (pendingCount < 10 && !service.isDislikeReviewMode()) {
-                if (!ServerReachability.isOnline || service.isDownloadedMode()) {
+                if (!ServerReachability.isOnline || service.isDownloadMixSession()) {
                     val existingIds = service.queue.map { it.id }.toSet()
                     val offlineFill = service.buildOfflineSmartMix(existingIds, limit = 10 - pendingCount)
                     if (offlineFill.isNotEmpty()) {
@@ -665,7 +665,7 @@ class NowPlayingActivity : AppCompatActivity() {
         if (service.queue.isEmpty()) return
 
         lifecycleScope.launch {
-            val offline = !ServerReachability.isOnline || service.isDownloadedMode()
+            val offline = !ServerReachability.isOnline || service.isDownloadMixSession()
             val toastMsg = if (offline) "🤖 Mezclando tus descargas..." else "🤖 IA mezclando tu sesión..."
             Toast.makeText(this@NowPlayingActivity, toastMsg, Toast.LENGTH_SHORT).show()
 
@@ -745,15 +745,18 @@ class NowPlayingActivity : AppCompatActivity() {
                     DeleteSongRequest(id = song.id, userId = sessionManager.getUserId())
                 )
                 if (response.isSuccessful) {
+                    // Limpieza local completa: audio, letra (ambas copias),
+                    // instrumental de karaoke y subida de letra pendiente,
+                    // haya o no descarga registrada.
                     val downloadHelper = DownloadManagerHelper.getInstance(this@NowPlayingActivity)
-                    if (downloadHelper.isDownloaded(song.id)) {
-                        withContext(Dispatchers.IO) { downloadHelper.removeDownload(song.id) }
-                    }
-                    SongAdminStore.removeDislikedSong(song.id)
+                    withContext(Dispatchers.IO) { downloadHelper.removeLocalArtifacts(song.id) }
+                    // Borrada del disco: que no reaparezca en "No me gusta" ni
+                    // pueda volver a sonar desde la cola de revisión.
+                    SongAdminStore.markSongDeleted(song.id)
+                    sessionManager.removePendingDislike(song.id)
+                    service.purgeDeletedSong(song.id)
                     Toast.makeText(this@NowPlayingActivity, "Canción eliminada", Toast.LENGTH_SHORT).show()
-                    if (service.hasNext()) {
-                        service.next()
-                    } else {
+                    if (service.currentSong == null) {
                         finish()
                     }
                 } else {

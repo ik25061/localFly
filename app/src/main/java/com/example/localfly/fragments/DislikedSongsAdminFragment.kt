@@ -25,7 +25,9 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.SongAdminStore
 import com.google.android.material.button.MaterialButton
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Pestaña "Canciones que no me gustan" del administrador. Combina el registro
@@ -78,6 +80,13 @@ class DislikedSongsAdminFragment : Fragment() {
         syncFromServerThenRefresh()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Al volver a la pantalla (p. ej. tras eliminar desde el reproductor),
+        // releer el registro local para no mostrar canciones ya borradas.
+        if (::layoutDisliked.isInitialized) refresh()
+    }
+
     /** Trae lo que el servidor tiene oculto y adopta en el registro local
      *  cualquier canción que faltara, sin duplicar las que ya están. */
     private fun syncFromServerThenRefresh() {
@@ -89,7 +98,9 @@ class DislikedSongsAdminFragment : Fragment() {
                     val localIds = SongAdminStore.getDislikedSongs().map { it.songId }.toSet()
                     var addedAny = false
                     serverHidden.forEach { song ->
-                        if (song.id !in localIds) {
+                        // El borrado en el servidor puede tardar en reflejarse:
+                        // jamás readoptar una canción eliminada del disco.
+                        if (song.id !in localIds && !SongAdminStore.isDeleted(song.id)) {
                             SongAdminStore.recordDislikedSong(song)
                             addedAny = true
                         }
@@ -105,22 +116,72 @@ class DislikedSongsAdminFragment : Fragment() {
     private fun refresh() {
         layoutDisliked.removeAllViews()
         val songs = SongAdminStore.getDislikedSongs()
-        val pending = songs.filter { !it.kept }
-        val kept = songs.filter { it.kept }
+        // La lista se divide en DOS grupos independientes, cada uno con su
+        // encabezado:
+        //   1. REVISADAS: el admin ya las escuchó y pulsó "Dejar" (kept = true).
+        //   2. SIN REVISAR: siguen pendientes, la "lista de eliminar después"
+        //      (kept = false); son las que forman la cola de revisión.
+        val reviewed = songs.filter { it.kept }
+        val unreviewed = songs.filter { !it.kept }
         tvCount.text = buildString {
             append(if (songs.size == 1) "1 canción" else "${songs.size} canciones")
-            append(" · ${pending.size} por revisar · ${kept.size} dejadas")
+            append(" · ${reviewed.size} dejadas · ${unreviewed.size} sin revisar")
         }
         tvNoDisliked.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
-        // Las PENDIENTES (recuadro rojo oscuro) van primero: son las que hay que
-        // borrar o dejar, y las que forman la cola de revisión de reproducción.
-        for (song in pending) {
-            if (isAdded) layoutDisliked.addView(buildRow(song))
+
+        // ---- Grupo 1: revisadas y dejadas (verde) ----
+        if (reviewed.isNotEmpty() && isAdded) {
+            layoutDisliked.addView(
+                buildSectionHeader("Revisadas · ya las dejaste (${reviewed.size})", "#6BCB77")
+            )
+            for (song in reviewed) layoutDisliked.addView(buildRow(song))
         }
-        for (song in kept) {
-            if (isAdded) layoutDisliked.addView(buildRow(song))
+
+        // ---- Grupo 2: sin revisar, para eliminar después (rojo) ----
+        if (unreviewed.isNotEmpty() && isAdded) {
+            layoutDisliked.addView(
+                buildSectionHeader("Sin revisar · para eliminar después (${unreviewed.size})", "#FF6B6B")
+            )
+            for (song in unreviewed) layoutDisliked.addView(buildRow(song))
         }
     }
+
+    /**
+     * Encabezado visual de cada grupo de la lista de "No me gusta": un título
+     * con el color del grupo y una línea inferior del mismo color para separar
+     * claramente las dos secciones.
+     */
+    private fun buildSectionHeader(text: String, accentHex: String): View {
+        val container = LinearLayout(requireContext())
+        container.orientation = LinearLayout.VERTICAL
+
+        val header = TextView(requireContext())
+        header.text = text
+        header.setTextColor(Color.parseColor(accentHex))
+        header.textSize = 13f
+        header.setTypeface(null, android.graphics.Typeface.BOLD)
+        header.setPadding(dp(6), dp(14), dp(6), dp(6))
+        container.addView(header)
+
+        val divider = View(requireContext())
+        val dividerParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(1)
+        )
+        dividerParams.bottomMargin = dp(4)
+        divider.layoutParams = dividerParams
+        divider.setBackgroundColor(Color.parseColor(accentHex))
+        container.addView(divider)
+
+        container.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        return container
+    }
+
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density).toInt()
 
     private fun buildRow(song: DislikedSong): View {
         val row = LayoutInflater.from(requireContext())
@@ -198,6 +259,16 @@ class DislikedSongsAdminFragment : Fragment() {
 
     @OptIn(UnstableApi::class)
     private fun playSong(disliked: DislikedSong) {
+        // La canción se eliminó del disco: ya no se puede reproducir aunque
+        // el servidor la siga devolviendo un rato en /by-ids.
+        if (SongAdminStore.isDeleted(disliked.songId)) {
+            SongAdminStore.removeDislikedSong(disliked.songId)
+            if (isAdded) {
+                refresh()
+                Toast.makeText(requireContext(), "Esa canción ya se eliminó del disco", Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
         val activity = requireActivity() as? MainActivity
         if (activity?.playbackService == null) {
             Toast.makeText(requireContext(), "Servicio de música no disponible", Toast.LENGTH_SHORT).show()
@@ -212,10 +283,27 @@ class DislikedSongsAdminFragment : Fragment() {
                     val songs = response.body()!!.songs
                     if (songs.isNotEmpty()) {
                         val fullSong = songs[0]
-                        activity.playbackService?.playSong(fullSong)
+                        // Si el servidor ya no la tiene pero aún la lista como
+                        // oculta, limpiarla de la lista en vez de reproducirla.
+                        if (SongAdminStore.isDeleted(fullSong.id)) {
+                            SongAdminStore.removeDislikedSong(fullSong.id)
+                            if (isAdded) {
+                                refresh()
+                                Toast.makeText(requireContext(), "Esa canción ya se eliminó del disco", Toast.LENGTH_SHORT).show()
+                            }
+                            return@launch
+                        }
+                        activity.playbackService?.playDislikedReview(fullSong)
                         Toast.makeText(requireContext(), "Escuchando: ${fullSong.title}", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(requireContext(), "Canción no encontrada en el catálogo", Toast.LENGTH_SHORT).show()
+                        // El servidor ya no devuelve la canción (borrada): no
+                        // ofrecer reproducirla, quitarla de la lista local.
+                        SongAdminStore.markSongDeleted(disliked.songId)
+                        activity.playbackService?.purgeDeletedSong(disliked.songId)
+                        if (isAdded) {
+                            refresh()
+                            Toast.makeText(requireContext(), "Esa canción ya no existe: se quitó de la lista", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 } else {
                     Log.e("DislikedAdmin", "Error server: ${response.code()} ${response.errorBody()?.string()}")
@@ -246,18 +334,20 @@ class DislikedSongsAdminFragment : Fragment() {
                     DeleteSongRequest(id = song.songId, userId = sessionManager.getUserId())
                 )
                 if (response.isSuccessful) {
-                    // Si la canción está sonando ahora mismo, saltar a la siguiente
-                    if (activity?.playbackService?.currentSong?.id == song.songId) {
-                        activity.playbackService?.next()
-                    }
-                    
+                    // Marcar como eliminada ANTES de rearmar nada: así ni la
+                    // sincronización con /hidden-songs ni la cola de revisión
+                    // pueden readoptarla mientras el servidor termina de
+                    // reflejar el borrado.
+                    SongAdminStore.markSongDeleted(song.songId)
+                    sessionManager.removePendingDislike(song.songId)
+
+                    // Limpieza local completa: audio, letra (ambas copias),
+                    // instrumental de karaoke y subida de letra pendiente,
+                    // haya o no descarga registrada.
                     val helper = DownloadManagerHelper.getInstance(requireContext())
-                    if (helper.isDownloaded(song.songId)) {
-                        helper.removeDownload(song.songId)
-                    }
-                    SongAdminStore.removeDislikedSong(song.songId)
-                    // La cola de revisión ya no debe contener esta canción.
-                    activity?.playbackService?.refreshDislikedReviewQueue()
+                    withContext(Dispatchers.IO) { helper.removeLocalArtifacts(song.songId) }
+                    // Sacarla de TODA la cola (incluida la que está sonando).
+                    activity?.playbackService?.purgeDeletedSong(song.songId)
                     if (isAdded) {
                         Toast.makeText(requireContext(), "Canción eliminada del disco y saltada", Toast.LENGTH_SHORT).show()
                         refresh()

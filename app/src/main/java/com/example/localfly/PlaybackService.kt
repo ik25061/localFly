@@ -360,6 +360,19 @@ class PlaybackService : MediaSessionService() {
     /** Canciones ya reproducidas en esta sesión (para no repetirlas al rellenar cola). */
     private val playedInSessionIds = LinkedHashSet<String>()
 
+    /** True solo si la sesión actual se lanzó como "modo descargas" (se pulsó
+     *  play sobre UNA única canción descargada, p. ej. desde la pantalla
+     *  Descargas). En ese caso la cola se rearma solo con descargas. Si se
+     *  lanzó una colección (artista/álbum/género/playlist) permanece en false,
+     *  de modo que NO se poda la cola ni salta a otros artistas. */
+    private var playingDownloadMix = false
+
+    /** True solo si la reproducción se lanzó desde el panel de "No me gusta"
+     *  (modo revisión). Evita que el modo revisión secuestre la cola cuando se
+     *  reproduce una colección normal en la que, por casualidad, aparece una
+     *  canción marcada. */
+    private var dislikeReviewSession = false
+
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
 
@@ -408,11 +421,23 @@ class PlaybackService : MediaSessionService() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
-                    next()
+                    // Un fallo al saltar de canción (índice/cola inconsistente,
+                    // etc.) NO debe cerrar la app: se registra y se sigue.
+                    try {
+                        next()
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@PlaybackService, "onPlaybackStateChanged(ENDED): fallo manejado al avanzar", e)
+                    }
                 }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // Todo el callback queda protegido: si la sincronización de la
+                // cola o la adopción del item fallan, se registra y la
+                // reproducción continúa en vez de cerrar la app (antes, un
+                // índice/cola inconsistente aquí tumbaba el servicio y el
+                // sistema lo reabría en bucle con startId incrementales).
+                try {
                 val previousSong = currentSong
                 val previousIndex = currentIndex
                 // Sincronización mediante mediaId: identificar la canción actual 
@@ -420,6 +445,17 @@ class PlaybackService : MediaSessionService() {
                 val mediaId = mediaItem?.mediaId
                 if (mediaId != previousSong?.id) clearKaraokeState()
                 if (mediaId != null) {
+                    // Seguridad: el player nunca debe transicionar a una canción
+                    // eliminada del disco (precarga vieja). Se salta fuera del
+                    // callback para no reentrar en ExoPlayer.
+                    if (SongAdminStore.isDeleted(mediaId)) {
+                        LocalLogger.log(this@PlaybackService, "MediaItem sync: id=$mediaId eliminado, saltando")
+                        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                            reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                            serviceScope.launch { next() }
+                        }
+                        return
+                    }
                     val newIndex = queue.indexOfFirst { it.id == mediaId }
                     if (newIndex != -1) {
                         currentIndex = newIndex
@@ -450,6 +486,9 @@ class PlaybackService : MediaSessionService() {
                 }
                 // Cada vez que cambiamos de canción, verificar si la cola se está agotando
                 checkAndRefillQueue()
+                } catch (e: Exception) {
+                    LocalLogger.log(this@PlaybackService, "onMediaItemTransition: fallo manejado (reason=$reason)", e)
+                }
             }
         })
 
@@ -774,18 +813,40 @@ class PlaybackService : MediaSessionService() {
         return START_STICKY
     }
 
-    fun setQueueAndPlay(songs: List<Song>, startIndex: Int, localPaths: List<String?>? = null) {
-        if (songs.isEmpty() || startIndex !in songs.indices) return
+    fun setQueueAndPlay(
+        songs: List<Song>,
+        startIndex: Int,
+        localPaths: List<String?>? = null,
+        reviewSession: Boolean = false
+    ) {
+        // Una canción eliminada del disco ya no se puede reproducir.
+        val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
+        if (aliveSongs.isEmpty()) return
+        // Estado de la sesión: por defecto NO es "modo descargas" ni "modo
+        // revisión". El modo descargas se activa abajo únicamente al reproducir
+        // una única descarga; el modo revisión, solo cuando lo pide el panel de
+        // "No me gusta" (reviewSession = true).
+        playingDownloadMix = false
+        dislikeReviewSession = reviewSession
+        // Reindexar: el startIndex original puede apuntar a una eliminada.
+        val requestedId = songs.getOrNull(startIndex)?.id?.takeIf { !SongAdminStore.isDeleted(it) }
+            ?: aliveSongs.first().id
+        val start = aliveSongs.indexOfFirst { it.id == requestedId }.takeIf { it >= 0 } ?: 0
+        val songsFiltered = aliveSongs
+        val startIndexFiltered = start
 
         playedInSessionIds.clear()
-        val requestedSong = songs.getOrNull(startIndex)
+        val requestedSong = songsFiltered.getOrNull(startIndexFiltered)
 
-        // MODO DESCARGAS: si la canción elegida está descargada, la cola
-        // ("a continuación") debe estar compuesta SOLO por canciones descargadas,
-        // reordenadas por artista/género. Se regenera cada vez que se pulsa play
-        // sobre una descarga; si luego se cambia a una canción normal, la cola
-        // vuelve a armarse con la lógica habitual.
-        if (requestedSong != null && downloadHelper.isDownloaded(requestedSong.id)) {
+        // MODO DESCARGAS: SOLO cuando se reproduce UNA única canción descargada
+        // (p. ej. desde la pantalla Descargas) la cola ("a continuación") se
+        // arma con canciones descargadas. Si se lanzó una colección completa
+        // (artista/álbum/género/playlist) NO se rearma con descargas: antes,
+        // pulsar play sobre una descarga dentro de la lista de un artista
+        // reemplazaba sus 73 canciones por una mezcla de descargas de otros
+        // artistas.
+        if (songs.size == 1 && requestedSong != null && downloadHelper.isDownloaded(requestedSong.id)) {
+            playingDownloadMix = true
             val mix = buildDownloadMix(requestedSong, excludeIds = setOf(requestedSong.id), limit = 80)
             queue = listOf(requestedSong) + mix
             queueLocalPaths = queue.map { downloadHelper.getLocalFilePath(it.id) }
@@ -796,13 +857,16 @@ class PlaybackService : MediaSessionService() {
 
         if (!ServerReachability.isOnline) {
             // Offline: la cola solo puede contener lo que ya está en el teléfono.
-            val indexed = songs.withIndex().filter { (_, s) -> downloadHelper.isDownloaded(s.id) }
+            val indexed = songsFiltered.withIndex().filter { (_, s) -> downloadHelper.isDownloaded(s.id) }
             if (indexed.isEmpty()) {
                 LocalLogger.log(this, "setQueueAndPlay: sin conexión y nada de esta lista está descargado")
                 return
             }
             val filteredSongs = indexed.map { it.value }
-            val filteredPaths = indexed.map { (i, s) -> localPaths?.getOrNull(i) ?: downloadHelper.getLocalFilePath(s.id) }
+            val filteredPaths = indexed.map { (fi, s) ->
+                val origIdx = songs.indexOfFirst { it.id == s.id }
+                localPaths?.getOrNull(origIdx) ?: downloadHelper.getLocalFilePath(s.id)
+            }
             val newStartIndex = requestedSong?.let { req -> filteredSongs.indexOfFirst { it.id == req.id } }
                 ?.takeIf { it >= 0 } ?: 0
 
@@ -813,9 +877,18 @@ class PlaybackService : MediaSessionService() {
             return
         }
 
-        queue = songs
-        queueLocalPaths = localPaths ?: List(songs.size) { null }
-        currentIndex = startIndex
+        queue = songsFiltered
+        // Los localPaths venían indexados sobre la lista original: si se
+        // filtró alguna eliminada, realinearlos por id para no desplazarlos.
+        queueLocalPaths = if (songsFiltered.size == songs.size && localPaths != null && localPaths.size == songs.size) {
+            localPaths
+        } else {
+            songsFiltered.map { s ->
+                val origIdx = songs.indexOfFirst { it.id == s.id }
+                localPaths?.getOrNull(origIdx)
+            }
+        }
+        currentIndex = startIndexFiltered
         playCurrentIndex()
     }
 
@@ -823,12 +896,22 @@ class PlaybackService : MediaSessionService() {
         setQueueAndPlay(listOf(song), 0, listOf(localFilePath))
     }
 
+    /** Reproduce una canción desde el panel de "No me gusta": activa el modo
+     *  revisión para que la cola "a continuación" sean las demás canciones
+     *  marcadas pendientes. */
+    fun playDislikedReview(song: Song, localFilePath: String? = null) {
+        setQueueAndPlay(listOf(song), 0, listOf(localFilePath), reviewSession = true)
+    }
+
     private fun pruneQueueToDownloadedIfOffline() {
-        // Se poda también cuando la canción actual es una descarga (modo
-        // descargas), aunque haya conexión: en esa sesión el "siguiente" debe
-        // ser solo de lo descargado.
-        val downloadMode = currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
-        if ((ServerReachability.isOnline && !downloadMode) || queue.isEmpty()) return
+        // Solo se poda en una sesión de descargas de verdad (se pulsó play
+        // sobre una única canción descargada) o cuando no hay conexión. NUNCA
+        // se poda una colección elegida por el usuario (artista/álbum/género/
+        // playlist): antes, en cuanto sonaba una canción descargada dentro de
+        // una colección, se borraban de la cola todas las demás canciones no
+        // descargadas y el reproductor saltaba a otro artista.
+        if (queue.isEmpty()) return
+        if (ServerReachability.isOnline && !playingDownloadMix) return
 
         // IMPORTANTE: la canción en currentIndex + 1 puede ya estar cargada como
         // "siguiente item" dentro del ExoPlayer (ver playCurrentIndex/
@@ -879,6 +962,12 @@ class PlaybackService : MediaSessionService() {
     fun isDownloadedMode(): Boolean =
         currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
 
+    /** True si la sesión actual se lanzó como "modo descargas" (play sobre una
+     *  única canción descargada). Distinto de [isDownloadedMode], que solo mira
+     *  si la canción actual está descargada. Úsalo para decidir si la cola debe
+     *  rellenarse solo con descargas. */
+    fun isDownloadMixSession(): Boolean = playingDownloadMix
+
     /** Lista SOLO de canciones descargadas, ORDENADA POR GÉNERO (estilo
      *  musical) y con afinidad respecto a la canción semilla:
      *   - Se agrupan en bloques por género: todas las canciones del mismo
@@ -890,13 +979,15 @@ class PlaybackService : MediaSessionService() {
     fun buildDownloadMix(seed: Song?, excludeIds: Set<String>, limit: Int = 40): List<Song> {
         val dislikedIds = SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
         val songs = downloadHelper.getDownloadedSongs()
-            .filter { it.id !in excludeIds && it.id !in playedInSessionIds && it.id !in dislikedIds }
+            .filter { it.id !in excludeIds && it.id !in playedInSessionIds && it.id !in dislikedIds && !SongAdminStore.isDeleted(it.id) }
             .shuffled().map { SongAdminStore.applyTo(toSong(it)) }
         return com.example.localfly.utils.GenreQueueOrder.reorder(songs, seed?.let { SongAdminStore.applyTo(it) })
             .take(limit.coerceAtLeast(0))
     }
 
     fun playNext(song: Song) {
+        // Una canción eliminada del disco ya no puede entrar en la cola.
+        if (SongAdminStore.isDeleted(song.id)) return
         if (queue.isEmpty()) { playSong(song); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
@@ -910,6 +1001,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun addToQueue(song: Song) {
+        if (SongAdminStore.isDeleted(song.id)) return
         if (queue.isEmpty()) { playSong(song); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
@@ -922,11 +1014,13 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun addListToQueue(songs: List<Song>) {
-        if (queue.isEmpty()) { setQueueAndPlay(songs, 0); return }
+        val filtered = songs.filter { !SongAdminStore.isDeleted(it.id) }
+        if (filtered.isEmpty()) return
+        if (queue.isEmpty()) { setQueueAndPlay(filtered, 0); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
-        mutableQueue.addAll(songs)
-        mutablePaths.addAll(songs.map { downloadHelper.getLocalFilePath(it.id) })
+        mutableQueue.addAll(filtered)
+        mutablePaths.addAll(filtered.map { downloadHelper.getLocalFilePath(it.id) })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         resyncPreloadedNext()
@@ -966,9 +1060,75 @@ class PlaybackService : MediaSessionService() {
         onStateChanged?.invoke()
     }
 
+    /**
+     * Saca una canción eliminada del disco de TODA la cola (historial,
+     * actual y próximos) para que no pueda volver a sonar aunque el
+     * servidor la siga devolviendo un rato en /hidden-songs o /by-ids.
+     * Si era la que sonaba, salta a la siguiente; si no queda nada,
+     * detiene la reproducción.
+     */
+    fun purgeDeletedSong(songId: String) {
+        if (songId.isBlank()) return
+        if (queue.none { it.id == songId } && currentSong?.id != songId) {
+            // Aun así: limpiar precarga del player por si quedó encolada ahí.
+            resyncPreloadedNext()
+            onStateChanged?.invoke()
+            return
+        }
+        val isCurrent = currentSong?.id == songId
+        val mutableQueue = queue.toMutableList()
+        val mutablePaths = queueLocalPaths.toMutableList()
+        // Recorrer de atrás hacia adelante para mantener los índices válidos.
+        for (i in mutableQueue.indices.reversed()) {
+            if (mutableQueue[i].id == songId && i != currentIndex) {
+                mutableQueue.removeAt(i)
+                mutablePaths.removeAt(i)
+                if (i < currentIndex) currentIndex--
+            }
+        }
+        if (isCurrent) {
+            // Quitar también la actual: la siguiente pasa a ser la actual.
+            val cur = currentIndex
+            if (cur in mutableQueue.indices && mutableQueue[cur].id == songId) {
+                mutableQueue.removeAt(cur)
+                mutablePaths.removeAt(cur)
+            } else {
+                val idx = mutableQueue.indexOfFirst { it.id == songId }
+                if (idx != -1) {
+                    mutableQueue.removeAt(idx)
+                    mutablePaths.removeAt(idx)
+                    if (idx < currentIndex) currentIndex--
+                }
+            }
+            queue = mutableQueue
+            queueLocalPaths = mutablePaths
+            if (mutableQueue.isEmpty()) {
+                player?.stop()
+                player?.clearMediaItems()
+                currentSong = null
+                currentIndex = -1
+                onStateChanged?.invoke()
+                return
+            }
+            currentIndex = currentIndex.coerceIn(0, mutableQueue.size - 1)
+            playCurrentIndex()
+            // Tras saltar, rearmar la cola de revisión sin la eliminada.
+            checkAndRefillQueue()
+            return
+        }
+        queue = mutableQueue
+        queueLocalPaths = mutablePaths
+        syncIndexById()
+        resyncPreloadedNext()
+        onStateChanged?.invoke()
+    }
+
     fun updateFullQueue(newSongs: List<Song>) {
-        queue = newSongs
-        queueLocalPaths = newSongs.map { downloadHelper.getLocalFilePath(it.id) }
+        // Nunca meter en la cola una canción eliminada del disco.
+        val alive = newSongs.filter { !SongAdminStore.isDeleted(it.id) }
+        if (alive.isEmpty()) return
+        queue = alive
+        queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
         syncIndexById()
         // Reemplazar SOLO lo precargado, sin reiniciar la canción ni perder posición.
         resyncPreloadedNext()
@@ -980,24 +1140,32 @@ class PlaybackService : MediaSessionService() {
      * Si es así, rellena con recomendaciones (online) o con descargas (offline).
      */
     private fun checkAndRefillQueue() {
-        pruneQueueToDownloadedIfOffline()
-        // MODO REVISIÓN "NO ME GUSTA": si está sonando una canción marcada y
-        // pendiente de revisión, la lista ("a continuación") pasa a ser SOLO
-        // las demás canciones marcadas.
-        if (applyDislikedReviewQueue()) return
+        // El rearmado de la cola (poda + cola de revisión) es propenso a fallar
+        // si el índice y la cola se desalinean; se protege para que un fallo
+        // aquí no cierre la app (antes tumbaba el servicio, que el sistema
+        // reabría en bucle).
+        try {
+            pruneQueueToDownloadedIfOffline()
+            // MODO REVISIÓN "NO ME GUSTA": si está sonando una canción marcada y
+            // pendiente de revisión, la lista ("a continuación") pasa a ser SOLO
+            // las demás canciones marcadas.
+            if (applyDislikedReviewQueue()) return
+        } catch (e: Exception) {
+            LocalLogger.log(this, "checkAndRefillQueue: fallo al rearmar la cola", e)
+        }
         val pendingCount = queue.size - (currentIndex + 1)
         if (pendingCount >= 10) return
 
         serviceScope.launch {
             try {
-                if (isDownloadedMode()) {
+                if (playingDownloadMix || !ServerReachability.isOnline) {
                     // Modo descargas: rellenar SIEMPRE solo con descargas (por
                     // género), haya o no conexión. Excluir además lo ya
                     // reproducido en esta sesión (bug: repetían canciones que
                     // ya habían sonado con el auto-eliminar activo).
                     val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
                     val mix = buildDownloadMix(currentSong, existingIds, limit = 15)
-                    if (mix.isNotEmpty()) addListToQueue(mix)
+                    if (mix.isNotEmpty()) addListToQueue(mix.filter { !SongAdminStore.isDeleted(it.id) })
                 } else if (ServerReachability.isServerReachable()) {
                     // MODO ONLINE: Usar IA para obtener recomendaciones
                     val aiManager = AIRecommendationManager(
@@ -1009,14 +1177,16 @@ class PlaybackService : MediaSessionService() {
                         seedSong = currentSong
                     )
                     val existingIds = queue.map { it.id }.toSet()
-                    // Excluir descartadas ("No me gusta") y ya sonadas en esta
-                    // sesión: si no, volvían a entrar en la cola una y otra vez.
+                    // Excluir descartadas ("No me gusta"), eliminadas del disco
+                    // y ya sonadas en esta sesión: si no, volvían a entrar en
+                    // la cola una y otra vez.
                     val dislikedIds = SongAdminStore.getDislikedSongs()
                         .mapNotNull { it.songId }.toSet()
                     val newSongs = recommendations.filter {
                         it.id !in existingIds &&
                             it.id !in dislikedIds &&
-                            it.id !in playedInSessionIds
+                            it.id !in playedInSessionIds &&
+                            !SongAdminStore.isDeleted(it.id)
                     }
                     if (newSongs.isNotEmpty()) {
                         addListToQueue(newSongs)
@@ -1026,6 +1196,7 @@ class PlaybackService : MediaSessionService() {
                     // ya sonado en la sesión y las marcadas como "No me gusta".
                     val downloads = downloadHelper.getDownloadedSongs()
                         .filter { d -> SongAdminStore.getDislikedSongs().none { it.songId == d.id } }
+                        .filter { d -> !SongAdminStore.isDeleted(d.id) }
                     if (downloads.isNotEmpty()) {
                         val existingIds = (queue.map { it.id }.toSet() + playedInSessionIds)
                         val candidates = downloads.filter { it.id !in existingIds }
@@ -1061,12 +1232,21 @@ class PlaybackService : MediaSessionService() {
      * recomendaciones/descargas normales).
      */
     private fun applyDislikedReviewQueue(): Boolean {
+        // El modo revisión solo actúa si la reproducción se lanzó desde el
+        // panel de "No me gusta". Así, reproducir la colección de un artista no
+        // se convierte en una lista de marcadas solo porque una de sus
+        // canciones esté marcada.
+        if (!dislikeReviewSession) return false
         val current = currentSong ?: return false
         // Ya no es la actual la que está pendiente: si la lista que viene sigue
         // siendo toda de pendientes, mantenemos el modo revisión (así al pulsar
         // "Dejar" en la canción actual se sigue con las demás sin rellenar con
-        // recomendaciones normales).
-        if (!SongAdminStore.isPendingDislike(current.id)) return isUpcomingAllPendingDislikes()
+        // recomendaciones normales). Si no, se sale del modo revisión.
+        if (!SongAdminStore.isPendingDislike(current.id)) {
+            if (isUpcomingAllPendingDislikes()) return true
+            dislikeReviewSession = false
+            return false
+        }
 
         // El invariante queue[currentIndex] == currentSong es necesario para
         // reconstruir la cola sin desalinear índice y player.
@@ -1123,7 +1303,7 @@ class PlaybackService : MediaSessionService() {
      * gusta". Quien rellene la cola (p. ej. el panel del reproductor) NO debe
      * añadir recomendaciones ni descargas normales en este estado.
      */
-    fun isDislikeReviewMode(): Boolean = isCurrentPendingDislike()
+    fun isDislikeReviewMode(): Boolean = dislikeReviewSession && isCurrentPendingDislike()
 
     /**
      * Marca una canción como "dejada": el admin ya la revisó y NO la eliminará.
@@ -1178,6 +1358,11 @@ class PlaybackService : MediaSessionService() {
      * `queue[currentIndex] == currentSong`.
      */
     private fun adoptPlayerItemAsCurrent(mediaId: String, mediaItem: MediaItem?) {
+        // Nunca adoptar una canción eliminada del disco: saltarla.
+        if (SongAdminStore.isDeleted(mediaId)) {
+            serviceScope.launch { next() }
+            return
+        }
         val meta = mediaItem?.mediaMetadata
         val fallback = Song(
             id = mediaId,
@@ -1596,6 +1781,10 @@ class PlaybackService : MediaSessionService() {
     /** Vuelve a calcular la "cola de revisión" tras cambios en la lista de
      *  canciones marcadas como "No me gusta" (borradas, dejadas, quitadas...). */
     fun refreshDislikedReviewQueue() {
+        // Llamado desde el panel de "No me gusta" tras Dejar/Quitar/eliminar:
+        // si la canción actual está marcada, reactivar el modo revisión para no
+        // perder la cola de revisión mientras el usuario gestiona la lista.
+        if (isCurrentPendingDislike()) dislikeReviewSession = true
         checkAndRefillQueue()
     }
 
