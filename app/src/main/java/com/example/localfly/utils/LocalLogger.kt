@@ -41,9 +41,26 @@ object LocalLogger {
      * Configura un capturador global de excepciones para registrar crashes.
      */
     fun initCrashHandler(context: Context) {
+        val appContext = context.applicationContext
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            log(context, "CRASH FATAL en hilo ${thread.name}", throwable)
+            // Contexto del dispositivo y de la app: sin estos datos un crash
+            // reportado por el usuario es casi imposible de reproducir.
+            val device = buildString {
+                append("modelo=").append(android.os.Build.MODEL)
+                append(" fabricante=").append(android.os.Build.MANUFACTURER)
+                append(" android=").append(android.os.Build.VERSION.RELEASE)
+                append(" (SDK ").append(android.os.Build.VERSION.SDK_INT).append(')')
+                try {
+                    val info = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
+                    append(" appVersion=").append(info.versionName)
+                } catch (_: Exception) {}
+                val rt = Runtime.getRuntime()
+                val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576L
+                val maxMb = rt.maxMemory() / 1048576L
+                append(" memoria=${usedMb}MB/${maxMb}MB")
+            }
+            log(appContext, "=== CRASH FATAL === hilo='${thread.name}' $device", throwable)
             defaultHandler?.uncaughtException(thread, throwable)
         }
     }

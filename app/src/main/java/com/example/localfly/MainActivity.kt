@@ -41,6 +41,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.util.UnstableApi
 import com.bumptech.glide.Glide
@@ -272,6 +273,14 @@ class MainActivity : AppCompatActivity() {
      */
     private fun applyConnectivityNavigation(online: Boolean) {
         if (!::bottomNav.isInitialized) return
+        // El monitor de conectividad puede invocar esto desde un hilo propio
+        // (NetworkCallback) o al terminar una comprobación en segundo plano:
+        // tocar la vista del menú fuera del hilo principal provoca
+        // CalledFromWrongThreadException.
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread { applyConnectivityNavigation(online) }
+            return
+        }
 
         listOf(R.id.nav_home, R.id.nav_search, R.id.nav_playlists, R.id.nav_ai).forEach { id ->
             bottomNav.menu.findItem(id)?.isVisible = online
@@ -282,6 +291,12 @@ class MainActivity : AppCompatActivity() {
 
         // Offline: asegurarse de que lo que se ve es Descargas (la pantalla
         // actual podría ser Inicio u otra sección que ya no está accesible).
+        // Solo si la actividad está en primer plano: si está en segundo plano
+        // (p. ej. con el reproductor a pantalla completa abierto mientras
+        // suena la música) onSaveInstanceState ya pasó y un commit() lanzaría
+        // "Can not perform this action after onSaveInstanceState", cerrando la
+        // app. Al volver a primer plano (onResume) se reaplica este estado.
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
         val current = supportFragmentManager.findFragmentById(R.id.container)
         if (current !is DownloadsFragment) {
             bottomNav.selectedItemId = R.id.nav_downloads
@@ -335,6 +350,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun replaceFragment(fragment: Fragment, addToBackStack: Boolean = false): Boolean {
         if (isFinishing || isDestroyed) return false
+        // Tras onSaveInstanceState (actividad en segundo plano) un commit()
+        // lanza IllegalStateException ("Can not perform this action after
+        // onSaveInstanceState"). Se descarta la operación en ese caso para no
+        // cerrar la app; la navegación se reajusta al volver a primer plano.
+        if (supportFragmentManager.isStateSaved) return false
         val transaction = supportFragmentManager.beginTransaction()
             .replace(R.id.container, fragment)
         if (addToBackStack) transaction.addToBackStack(null)
@@ -353,6 +373,10 @@ class MainActivity : AppCompatActivity() {
         if (isBound) playbackService?.onStateChanged = { onPlaybackStateChanged() }
         refreshMiniPlayer()
         notifyPlaybackObservers()
+        // Reaplica el estado de conectividad al volver a primer plano: si el
+        // servidor cayó mientras estaba en segundo plano (p.j. con el
+        // reproductor abierto) y no se pudo redirigir entonces, se hace ahora.
+        applyConnectivityNavigation(isServerOnline)
     }
 
     // ===== MINI REPRODUCTOR (punto 6) =====

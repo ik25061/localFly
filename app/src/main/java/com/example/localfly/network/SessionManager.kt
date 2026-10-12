@@ -120,6 +120,29 @@ class SessionManager(context: Context) {
 
     fun isPodcastMixingEnabled(): Boolean = prefs.getBoolean("podcast_mixing_enabled", true)
 
+    // --- Orden de las secciones de la pantalla de Inicio ---
+    // Lista de claves (ver `HomeSections`) en el orden en que el usuario quiere
+    // ver las secciones. Se guarda como JSON con Gson, igual que el resto de
+    // listas de la app.
+
+    fun getHomeSectionOrder(): List<String> {
+        val json = prefs.getString("home_section_order", null) ?: return HomeSections.DEFAULT_ORDER
+        return try {
+            val type = object : TypeToken<List<String>>() {}.type
+            val saved: List<String> = Gson().fromJson(json, type)
+            // Se ignoran claves desconocidas (p. ej. de versiones antiguas) y se
+            // añaden al final las nuevas que falten, para no perder secciones.
+            val known = saved.filter { it in HomeSections.DEFAULT_ORDER }.distinct()
+            known + HomeSections.DEFAULT_ORDER.filter { it !in known }
+        } catch (e: Exception) {
+            HomeSections.DEFAULT_ORDER
+        }
+    }
+
+    fun setHomeSectionOrder(order: List<String>) {
+        prefs.edit().putString("home_section_order", Gson().toJson(order)).apply()
+    }
+
     // --- Auto-descarga: modo de rellenado ---
     // "liked" = bajar canciones que ya le gustan para escucharlas sin conexión.
     // "new"   = bajar solo canciones aún no escuchadas (priorizando gustos) y,

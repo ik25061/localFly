@@ -53,7 +53,14 @@ data class LikeRequest(
 )
 
 data class HideRequest(
-    val userId: String?
+    val userId: String?,
+    /**
+     * true (por defecto) para ocultar la canción; false para mostrarla de nuevo.
+     * El backend acepta este campo y por defecto oculta si no se envía, así que
+     * los sitios que solo construyen [HideRequest] con el userId siguen
+     * ocultando como antes.
+     */
+    val hidden: Boolean = true
 )
 
 // --- Nuevos modelos para álbumes, artistas, géneros y años ---

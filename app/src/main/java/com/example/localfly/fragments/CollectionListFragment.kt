@@ -147,7 +147,10 @@ class CollectionListFragment : Fragment() {
             originalItems = emptyList()
         }
 
-        val minSongs = 0
+        // Exigir al menos 1 canción: el backend ya sabe filtrar por minSongs y
+        // así no aparecen artistas/géneros/álbumes cuyas canciones se movieron
+        // todas a la papelera (song_count = 0).
+        val minSongs = 1
 
         isLoading = true
         searchJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -219,10 +222,22 @@ class CollectionListFragment : Fragment() {
                         else -> emptyList()
                     }
 
+                    // Red de seguridad local: aunque el backend filtre por
+                    // minSongs, los años no aceptan ese parámetro y el aplanado
+                    // de géneros podría reintroducirlos. Se descartan las
+                    // colecciones con 0 canciones; las listas se conservan
+                    // siempre (no tienen conteo).
+                    val nonEmptyItems = newItems.filter { item ->
+                        when (item) {
+                            is Album, is Artist, is Genre, is Year -> getSongCount(item) > 0
+                            else -> true
+                        }
+                    }
+
                     if (isNextPage) {
-                        originalItems = originalItems + newItems
+                        originalItems = originalItems + nonEmptyItems
                     } else {
-                        originalItems = newItems
+                        originalItems = nonEmptyItems
                     }
                     
                     displayedItems = originalItems

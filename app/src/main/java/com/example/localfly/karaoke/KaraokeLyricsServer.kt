@@ -246,9 +246,20 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
         return clean.mapIndexed { i, line -> (i * slot).toLong() to line.second }
     }
 
-    /** URL de la letra (WebVTT) para incluirla en la pista de Chromecast. */
+    /**
+     * URL de la letra (WebVTT) para incluirla en la pista de Chromecast, o null
+     * si todavía no hay una letra registrada para [songId].
+     *
+     * Antes devolvía la URL en cuanto el socket estaba levantado, sin comprobar
+     * si había letras: el receptor recibía la pista, pedía /track.vtt y se
+     * encontraba un WebVTT vacío, así que el TV no mostraba ningún texto. Ahora
+     * solo se devuelve cuando [setTrack] ya registró al menos una línea para
+     * esta canción, de modo que si no hay letra no se engancha la pista (y no se
+     * obliga al receptor a esperar 15 s para nada).
+     */
     fun trackUrl(songId: String): String? {
         val ip = localIp() ?: return null
+        if (trackSongId != songId || trackLines.isEmpty()) return null
         return "http://$ip:$port/track.vtt?song=$songId"
     }
 

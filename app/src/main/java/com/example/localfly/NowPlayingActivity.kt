@@ -1521,6 +1521,16 @@ class NowPlayingActivity : AppCompatActivity() {
                         durationMs.coerceAtLeast(0L)
                     )
                     castLyricsSongId = song.id
+                    // Si no hay letra, dejar rastro en el log: el TV se queda sin
+                    // subtítulos y sin esta traza no se distingue de un fallo de
+                    // red o de CORS en el diagnóstico.
+                    if (lines.isNullOrEmpty()) {
+                        LocalLogger.log(
+                            this@NowPlayingActivity,
+                            "Chromecast: sin letra para «${song.title}» (${song.id}); " +
+                                "el TV no mostrará subtítulos"
+                        )
+                    }
                     // Si cambió la canción, reemitir (autoCast evita repetir).
                     castController.autoCast()
                 }

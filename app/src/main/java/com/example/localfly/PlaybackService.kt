@@ -92,6 +92,15 @@ class PlaybackService : MediaSessionService() {
         private set
     val isKaraoke: Boolean get() = karaokeOriginal?.mediaId == currentSong?.id && karaokeOriginal != null
 
+    /**
+     * Reintentos de error de audio NORMAL (no karaoke). Un fallo de red, un
+     * 404/500 del servidor o un timeout disparan onPlayerError; antes se
+     * ignoraban en silencio y la canción se quedaba muda. Ahora se reintenta
+     * una vez el mismo medio y, si vuelve a fallar, se salta a la siguiente.
+     */
+    private var playbackErrorRetries = 0
+    private var lastPlaybackErrorSongId: String? = null
+
     /** Cambia solo la fuente actual; conserva cola, posición, pausa y metadatos. */
     fun toggleKaraoke() {
         val p = player ?: return
@@ -195,23 +204,64 @@ class PlaybackService : MediaSessionService() {
     private val trimTickerHandler = Handler(Looper.getMainLooper())
     private val trimTickerRunnable = object : Runnable {
         override fun run() {
-            val p = player
-            if (trimEndMs <= 0 || p == null || !p.isPlaying) {
-                trimTickerHandler.removeCallbacks(this)
-                return
+            try {
+                val p = player
+                // El ticker es válido SOLO para la canción que lo armó: si la
+                // canción cambió por avance automático del player (item
+                // precargado), el trim viejo queda desarmado en vez de cortar
+                // la canción nueva a mitad de pista.
+                val expectedId = trimSongId
+                if (trimEndMs <= 0 || p == null || !p.isPlaying ||
+                    expectedId == null || currentSong?.id != expectedId
+                ) {
+                    trimTickerHandler.removeCallbacks(this)
+                    return
+                }
+                val position = p.currentPosition
+                val delta = position - lastTrimPosition
+                lastTrimPosition = position
+                val duration = p.duration.takeIf { it > 0 } ?: 0L
+                // Salvaguardas contra un trimEndMs rancio o calculado con una
+                // duración estimada errónea: solo se puede cortar cerca del
+                // final real (últimos ~35 s) y bien entrada la canción (más de
+                // 30 s y más de la mitad). Si no, se sigue esperando sin cortar.
+                if (duration > 0) {
+                    if (trimEndMs < 30_000L || trimEndMs < duration / 2) {
+                        trimEndMs = 0L
+                        trimTickerHandler.removeCallbacks(this)
+                        return
+                    }
+                    val remaining = duration - position
+                    if (remaining > MAX_END_TRIM_MS + 5000L) {
+                        trimTickerHandler.postDelayed(this, 400)
+                        return
+                    }
+                } else {
+                    // Sin duración real aún: no cortar a ciegas a mitad de pista.
+                    if (position < 30_000L) {
+                        trimTickerHandler.postDelayed(this, 400)
+                        return
+                    }
+                }
+                // Solo se corta el final si la canción llegó hasta ahí de forma
+                // continua: si el usuario movió la barra, se respeta su posición.
+                if (position >= trimEndMs && delta in 0..2000) {
+                    LocalLogger.log(this@PlaybackService, "Silencio final recortado (${currentSong?.id})")
+                    trimEndMs = 0
+                    try {
+                        next()
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@PlaybackService, "trimTicker: fallo manejado al avanzar", e)
+                    }
+                    return
+                }
+                trimTickerHandler.postDelayed(this, 400)
+            } catch (e: Exception) {
+                try {
+                    LocalLogger.log(this@PlaybackService, "trimTicker: fallo manejado", e)
+                } catch (_: Exception) { }
+                try { trimTickerHandler.removeCallbacks(this) } catch (_: Exception) { }
             }
-            val position = p.currentPosition
-            val delta = position - lastTrimPosition
-            lastTrimPosition = position
-            // Solo se corta el final si la canción llegó hasta ahí de forma
-            // continua: si el usuario movió la barra, se respeta su posición.
-            if (position >= trimEndMs && delta in 0..2000) {
-                LocalLogger.log(this@PlaybackService, "Silencio final recortado (${currentSong?.id})")
-                trimEndMs = 0
-                next()
-                return
-            }
-            trimTickerHandler.postDelayed(this, 400)
         }
     }
 
@@ -232,16 +282,57 @@ class PlaybackService : MediaSessionService() {
         lastTrimPosition = 0L
         trimTickerHandler.removeCallbacks(trimTickerRunnable)
 
+        // Sin archivo local en el teléfono no hay nada que analizar: además se
+        // exige que el archivo exista de verdad (un path rancio de una descarga
+        // borrada disparaba el análisis sobre un fichero inexistente).
         if (localPath == null || song.isEpisode) return
+        try {
+            if (!File(localPath).exists()) return
+        } catch (_: Exception) { return }
 
-        val durationMs = player?.duration?.takeIf { it > 0 }
-            ?: ((song.duration ?: 0.0) * 1000.0).toLong()
-        if (durationMs <= 0) return
-
+        // La duración del player NO es fiable justo después de setMediaItem/
+        // prepare (aún es 0 o la de la canción anterior). Si se usa ese valor
+        // para mapear las amplitudes, el trimEndMs sale desplazado y el ticker
+        // corta la canción A MITAD DE PISTA. Por eso se espera a tener la
+        // duración real del player; solo como último recurso se usa el
+        // metadato del servidor.
         trimJob = serviceScope.launch(Dispatchers.IO) {
+            var durationMs = 0L
+            for (i in 0 until 25) {
+                if (trimSongId != song.id) return@launch
+                val d = try { player?.duration ?: 0L } catch (_: Exception) { 0L }
+                if (d > 0) {
+                    durationMs = d
+                    break
+                }
+                delay(200)
+            }
+            if (trimSongId != song.id) return@launch
+            if (durationMs <= 0) {
+                durationMs = ((song.duration ?: 0.0) * 1000.0).toLong()
+            }
+            // Cordura: duraciones absurdas (< 30 s o > 30 min) no recortan nada.
+            if (durationMs < 30_000L || durationMs > 30 * 60_000L) return@launch
+            // Si la canción ya avanzó mientras se esperaba la duración, no
+            // tiene sentido armar el recorte (evita trims tardíos que cortan
+            // a mitad de pista).
+            val earlyPosition = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }
+            if (trimSongId != song.id || earlyPosition > 10_000L) return@launch
             val range = analyzeSilenceTrim(localPath, durationMs) ?: return@launch
             withContext(Dispatchers.Main) {
                 if (trimSongId != song.id) return@withContext
+                // Validar contra la duración REAL actual del player: si el
+                // análisis se hizo con otra duración, el rango es inválido.
+                val realDuration = try { player?.duration ?: 0L } catch (_: Exception) { 0L }
+                if (realDuration > 0 && kotlin.math.abs(realDuration - durationMs) > 5000L) return@withContext
+                // El fin de audio útil debe estar cerca del final real: si cae
+                // a mitad de pista (duración estimada errónea o canción con
+                // pasaje silencioso largo), NO se arma el corte.
+                val endOfAudio = range.second
+                if (endOfAudio > 0) {
+                    val ref = if (realDuration > 0) realDuration else durationMs
+                    if (endOfAudio < 30_000L || endOfAudio < ref - MAX_END_TRIM_MS - 5000L) return@withContext
+                }
                 trimStartMs = range.first
                 trimEndMs = range.second
                 // Saltar el silencio inicial solo si la canción acaba de empezar.
@@ -398,17 +489,67 @@ class PlaybackService : MediaSessionService() {
         player?.skipSilenceEnabled = false
         player?.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                val original = karaokeOriginal ?: return
-                clearKaraokeState()
-                LocalLogger.log(this@PlaybackService, "Error de instrumental; recuperando original", error)
-                replaceCurrentSource(original)
-                Toast.makeText(this@PlaybackService, "No se pudo reproducir el instrumental; volviendo al original", Toast.LENGTH_LONG).show()
+                // Detalle completo del fallo: sin esto un error de audio normal
+                // (red caída, 404/500 del servidor, timeout) no dejaba NINGUNA
+                // traza y la canción simplemente se quedaba muda.
+                val codeName = androidx.media3.common.PlaybackException.getErrorCodeName(error.errorCode)
+                val song = currentSong
+                val url = player?.currentMediaItem?.localConfiguration?.uri?.toString()
+                LocalLogger.log(
+                    this@PlaybackService,
+                    "onPlayerError: '${song?.title}' (id=${song?.id}) " +
+                        "code=${error.errorCode} ($codeName) msg=${error.message} " +
+                        "reintentos=$playbackErrorRetries url=$url",
+                    error
+                )
+                val original = karaokeOriginal
+                if (original != null) {
+                    // Fallo del instrumental: recuperar el original.
+                    clearKaraokeState()
+                    LocalLogger.log(this@PlaybackService, "Instrumental con error; volviendo al original")
+                    replaceCurrentSource(original)
+                    Toast.makeText(this@PlaybackService, "No se pudo reproducir el instrumental; volviendo al original", Toast.LENGTH_LONG).show()
+                    onStateChanged?.invoke()
+                    return
+                }
+                // Audio NORMAL fallando. Antes: return en silencio → silencio total.
+                // Ahora: reintenta una vez el mismo medio; si vuelve a fallar salta
+                // a la siguiente canción para no dejar al usuario en silencio.
+                val sameSong = song?.id == lastPlaybackErrorSongId
+                lastPlaybackErrorSongId = song?.id
+                if (!sameSong) playbackErrorRetries = 0
+                if (playbackErrorRetries < 1) {
+                    playbackErrorRetries++
+                    serviceScope.launch {
+                        try {
+                            val p = player ?: return@launch
+                            val position = p.currentPosition.coerceAtLeast(0)
+                            p.seekTo(position)
+                            p.prepare()
+                            Toast.makeText(this@PlaybackService, "Error al reproducir; reintentando…", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            LocalLogger.log(this@PlaybackService, "onPlayerError: fallo el reintento", e)
+                        }
+                    }
+                } else {
+                    playbackErrorRetries = 0
+                    lastPlaybackErrorSongId = null
+                    Toast.makeText(this@PlaybackService, "No se pudo reproducir '${song?.title ?: ""}'; pasando a la siguiente", Toast.LENGTH_LONG).show()
+                    serviceScope.launch {
+                        try { next() } catch (e: Exception) {
+                            LocalLogger.log(this@PlaybackService, "onPlayerError: fallo al saltar de canción", e)
+                        }
+                    }
+                }
                 onStateChanged?.invoke()
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 onStateChanged?.invoke()
                 if (isPlaying) {
+                    // Reproduciendo de verdad: se resetea el contador de errores.
+                    playbackErrorRetries = 0
+                    lastPlaybackErrorSongId = null
                     if (crossfadeEnabled) fadeTickerHandler.post(fadeTickerRunnable)
                     progressTrackerHandler.post(progressTrackerRunnable)
                 } else {
@@ -1433,6 +1574,17 @@ class PlaybackService : MediaSessionService() {
     private fun handleAutoAdvanceFromTransition() {
         fadeOutStartedForCurrentSong = false
         fadeJob?.cancel()
+        // El trim pertenecía a la canción anterior: si no se desarma aquí, el
+        // ticker viejo puede cortar la canción NUEVA a mitad de pista (el
+        // avance automático por item precargado no pasa por playCurrentIndex/
+        // scheduleSilenceTrim).
+        trimStartMs = 0L
+        trimEndMs = 0L
+        trimSongId = currentSong?.id
+        lastTrimPosition = 0L
+        try { trimTickerHandler.removeCallbacks(trimTickerRunnable) } catch (_: Exception) { }
+        try { trimJob?.cancel() } catch (_: Exception) { }
+        trimJob = null
         if (crossfadeEnabled) {
             player?.volume = 0f
             startFade(from = 0f, to = 1f, durationMs = FADE_DURATION_MS)

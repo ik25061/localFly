@@ -160,6 +160,38 @@ class HomeFragment : Fragment() {
         // oculta sola mientras no haya ninguna).
         binding.sectionKaraoke.tvSectionTitle.text = "Karaoke (audio sin voz)"
         binding.sectionKaraoke.tvSectionSeeAll.visibility = View.GONE
+
+        // Aplicar el orden de secciones guardado por el usuario (si lo hay).
+        applyHomeSectionOrder()
+    }
+
+    /**
+     * Reordena las 8 secciones estándar (los últimos hijos contiguos del
+     * contenedor) según el orden guardado en [SessionManager]. El enlace de
+     * vistas es por ID, no por posición, así que mover las vistas del
+     * contenedor es seguro. El bloque completo se recoloca donde empieza
+     * actualmente, sin tocar el resto de secciones fijas.
+     */
+    private fun applyHomeSectionOrder() {
+        val container = binding.homeSectionsContainer
+        val viewForKey = mapOf(
+            HomeSections.KEY_PLAYLISTS to binding.sectionPlaylists.root,
+            HomeSections.KEY_PODCASTS to binding.sectionPodcasts.root,
+            HomeSections.KEY_ALBUMS to binding.sectionAlbums.root,
+            HomeSections.KEY_ARTISTS to binding.sectionArtists.root,
+            HomeSections.KEY_GENRES to binding.sectionGenres.root,
+            HomeSections.KEY_YEARS to binding.sectionYears.root,
+            HomeSections.KEY_RECOMMENDATIONS to binding.sectionRecommendations.root,
+            HomeSections.KEY_LIBRARY to binding.sectionLibrary.root
+        )
+        val order = sessionManager.getHomeSectionOrder().filter { it in viewForKey }
+        if (order.isEmpty()) return
+
+        val startIndex = viewForKey.values.minOf { container.indexOfChild(it) }
+        viewForKey.values.forEach { container.removeView(it) }
+        order.forEachIndexed { index, key ->
+            container.addView(viewForKey.getValue(key), startIndex + index)
+        }
     }
 
     private fun setupSection(include: View, title: String, onSeeAll: () -> Unit) {
