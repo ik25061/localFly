@@ -89,6 +89,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnDeleteSong: ImageButton
     private lateinit var btnAddToPlaylist: ImageButton
     private lateinit var btnShuffle: ImageButton
+    private lateinit var btnRepeat: ImageButton
     private lateinit var btnLyrics: ImageButton
     private lateinit var btnEditLyrics: ImageButton
     private lateinit var btnComments: ImageButton
@@ -244,6 +245,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnDeleteSong = findViewById(R.id.btnDeleteSong)
         btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
         btnShuffle = findViewById(R.id.btnShuffle)
+        btnRepeat = findViewById(R.id.btnRepeat)
         btnLyrics = findViewById(R.id.btnLyrics)
         btnEditLyrics = findViewById(R.id.btnEditLyrics)
         btnComments = findViewById(R.id.btnComments)
@@ -385,6 +387,7 @@ class NowPlayingActivity : AppCompatActivity() {
         }
         btnDeleteSong.setOnClickListener { onDeleteSongClicked() }
         btnShuffle.setOnClickListener { playbackService?.toggleShuffle(); refreshUi() }
+        btnRepeat.setOnClickListener { playbackService?.toggleRepeat(); refreshUi() }
         btnShowQueueTop.setOnClickListener { toggleQueue() }
 
         tvArtist.setOnClickListener {
@@ -1660,6 +1663,12 @@ class NowPlayingActivity : AppCompatActivity() {
         } else {
             "Reproducción aleatoria desactivada"
         }
+        btnRepeat.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (playbackService?.player?.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF)
+                android.graphics.Color.parseColor("#1DB954")
+            else android.graphics.Color.WHITE
+        )
+        btnRepeat.contentDescription = "Repetición de reproducción"
         btnPrev.isEnabled = playbackService?.hasPrev() == true
         btnPrev.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
         btnNext.isEnabled = playbackService?.hasNext() == true
