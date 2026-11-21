@@ -1096,6 +1096,7 @@ class PlaybackService : MediaSessionService() {
                 .putInt("index", currentIndex)
                 .putLong("position", positionMs)
                 .putString("current_id", currentSong?.id)
+                .putBoolean("shuffle_enabled", shuffleEnabled)
                 .putLong("saved_at", System.currentTimeMillis())
                 .apply()
         } catch (e: Exception) {
@@ -1134,6 +1135,10 @@ class PlaybackService : MediaSessionService() {
             val position = prefs.getLong("position", 0L).coerceAtLeast(0L)
             queue = alive
             queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
+            shuffleEnabled = prefs.getBoolean("shuffle_enabled", false)
+            queueBeforeShuffle = null
+            pathsBeforeShuffle = null
+            player?.shuffleModeEnabled = false
             currentIndex = index
             LocalLogger.log(this, "restoreQueue: recuperadas ${alive.size} (index=$index, pos=$position)")
             playCurrentIndex(resumePositionMs = position)
