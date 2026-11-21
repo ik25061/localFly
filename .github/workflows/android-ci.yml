@@ -38,8 +38,8 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
-      - name: Install Android 37 SDK
-        run: sdkmanager --channel=3 "platforms;android-37" "build-tools;37.0.0"
+      - name: Install Android 36 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Build and run unit tests
         run: |
