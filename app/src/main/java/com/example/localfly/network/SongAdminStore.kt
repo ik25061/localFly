@@ -354,7 +354,7 @@ object SongAdminStore {
     /** El admin decide DEJAR la canción: ya la revisó y no la borrará. */
     fun markDislikedSongKept(songId: String) = setDislikedKept(songId, kept = true)
 
-    /** Devuelve la canción al estado pendiente (volver a decidir sobre ella). */
+    /** Marca expresamente la canción para eliminarla; entra en la cola de revisión. */
     fun markDislikedSongPending(songId: String) = setDislikedKept(songId, kept = false)
 
     private fun setDislikedKept(songId: String, kept: Boolean) {
