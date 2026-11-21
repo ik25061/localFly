@@ -19,6 +19,9 @@ import com.example.localfly.utils.LocalLogger
  * stack trace en app_debug_log.txt.
  */
 class LocalFlyApp : Application() {
+    lateinit var sessionManager: com.example.localfly.network.SessionManager
+        private set
+
     override fun onCreate() {
         super.onCreate()
         // Lo primero de todo: capturar también fallos de arranque del servicio.
@@ -27,5 +30,12 @@ class LocalFlyApp : Application() {
         // incluso si algo (notificación, servicio en segundo plano) se ejecuta
         // antes de que arranque una Activity.
         SongAdminStore.ensureContext(this)
+
+        // Una única instancia de SessionManager permite que Retrofit lea el token
+        // vigente en cada petición, también cuando cambia la URL del servidor.
+        sessionManager = com.example.localfly.network.SessionManager(this)
+        com.example.localfly.network.RetrofitClient.setTokenProvider {
+            sessionManager.getToken()
+        }
     }
 }
