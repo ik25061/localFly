@@ -24,8 +24,10 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub-hosted Android runners already include cmdline-tools. The
+      # setup-android action currently requests the removed "tools" package.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
 
       - name: Install Android 37 SDK
         run: sdkmanager "platforms;android-37" "build-tools;37.0.0"
