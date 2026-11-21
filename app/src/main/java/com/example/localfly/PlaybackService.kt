@@ -690,10 +690,10 @@ class PlaybackService : MediaSessionService() {
 
     private fun setupMediaSession() {
         val callback = object : MediaSession.Callback {
-            override fun onConnect(
+            override fun onConnectAsync(
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo
-            ): MediaSession.ConnectionResult {
+            ): ListenableFuture<MediaSession.ConnectionResult> {
                 // La cola real de LocalFly vive en PlaybackService, no en la
                 // playlist interna de ExoPlayer (que solo precarga el siguiente
                 // elemento). Por eso anterior/siguiente deben ser comandos de
@@ -706,9 +706,11 @@ class PlaybackService : MediaSessionService() {
                     .add(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
                     .build()
 
-                return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                val connectionResult = MediaSession.ConnectionResult.AcceptedResultBuilder(session, controller)
                     .setAvailableSessionCommands(sessionCommands)
+                    .setAvailablePlayerCommands(MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS)
                     .build()
+                return Futures.immediateFuture(connectionResult)
             }
 
             override fun onCustomCommand(
