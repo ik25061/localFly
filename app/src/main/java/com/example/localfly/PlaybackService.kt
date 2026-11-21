@@ -41,6 +41,7 @@ import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.DislikedReviewQueue
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.utils.OfflineQueuePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -1184,13 +1185,15 @@ class PlaybackService : MediaSessionService() {
         if (!ServerReachability.isOnline) {
             // Offline: construir la cola únicamente con archivos válidos y
             // conservar exactamente el orden de la lista que eligió el usuario.
-            val available = songsFiltered.map { song ->
-                val originalIndex = songs.indexOfFirst { it.id == song.id }
-                val storedPath = localPaths?.getOrNull(originalIndex)
-                    ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
-                val path = downloadHelper.getLocalFilePath(song.id) ?: storedPath
-                song to path
-            }.filter { (_, path) -> path != null }
+            val available = OfflineQueuePolicy.filterAvailableInOriginalOrder(
+                songsFiltered.map { song ->
+                    val originalIndex = songs.indexOfFirst { it.id == song.id }
+                    val storedPath = localPaths?.getOrNull(originalIndex)
+                        ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
+                    val path = downloadHelper.getLocalFilePath(song.id) ?: storedPath
+                    song to path
+                }
+            ) { (_, path) -> path != null }
 
             if (available.isEmpty()) {
                 LocalLogger.log(this, "setQueueAndPlay: sin conexión y ninguna canción de la lista tiene descarga válida")
