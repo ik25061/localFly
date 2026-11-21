@@ -88,7 +88,7 @@ class NowPlayingActivity : AppCompatActivity() {
     private lateinit var btnNext: ImageButton
     private lateinit var btnDeleteSong: ImageButton
     private lateinit var btnAddToPlaylist: ImageButton
-    private lateinit var btnRepeat: ImageButton
+    private lateinit var btnShuffle: ImageButton
     private lateinit var btnLyrics: ImageButton
     private lateinit var btnEditLyrics: ImageButton
     private lateinit var btnComments: ImageButton
@@ -243,7 +243,7 @@ class NowPlayingActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.btnFullNext)
         btnDeleteSong = findViewById(R.id.btnDeleteSong)
         btnAddToPlaylist = findViewById(R.id.btnAddToPlaylist)
-        btnRepeat = findViewById(R.id.btnRepeat)
+        btnShuffle = findViewById(R.id.btnShuffle)
         btnLyrics = findViewById(R.id.btnLyrics)
         btnEditLyrics = findViewById(R.id.btnEditLyrics)
         btnComments = findViewById(R.id.btnComments)
@@ -384,7 +384,7 @@ class NowPlayingActivity : AppCompatActivity() {
             AddToPlaylistDialog.show(this, lifecycleScope, song, sessionManager)
         }
         btnDeleteSong.setOnClickListener { onDeleteSongClicked() }
-        btnRepeat.setOnClickListener { playbackService?.toggleRepeat() }
+        btnShuffle.setOnClickListener { playbackService?.toggleShuffle(); refreshUi() }
         btnShowQueueTop.setOnClickListener { toggleQueue() }
 
         tvArtist.setOnClickListener {
@@ -1651,7 +1651,15 @@ class NowPlayingActivity : AppCompatActivity() {
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
         val isPlaying = playbackService?.player?.isPlaying == true
         btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
-        btnRepeat.imageTintList = android.content.res.ColorStateList.valueOf(if (playbackService?.player?.repeatMode != androidx.media3.common.Player.REPEAT_MODE_OFF) android.graphics.Color.parseColor("#1DB954") else android.graphics.Color.WHITE)
+        btnShuffle.imageTintList = android.content.res.ColorStateList.valueOf(
+            if (playbackService?.isShuffleEnabled() == true) android.graphics.Color.parseColor("#1DB954")
+            else android.graphics.Color.WHITE
+        )
+        btnShuffle.contentDescription = if (playbackService?.isShuffleEnabled() == true) {
+            "Reproducción aleatoria activada"
+        } else {
+            "Reproducción aleatoria desactivada"
+        }
         btnPrev.isEnabled = playbackService?.hasPrev() == true
         btnPrev.alpha = if (playbackService?.hasPrev() == true) 1f else 0.4f
         btnNext.isEnabled = playbackService?.hasNext() == true
