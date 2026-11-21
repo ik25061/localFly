@@ -79,6 +79,7 @@ object SongAdminStore {
     private const val KEY_GENRES = "genres"
     private const val KEY_PENDING_SYNC = "pending_sync_ids"
     private const val KEY_DELETED = "deleted_song_ids"
+    private const val KEY_PENDING_DELETIONS = "pending_song_deletions"
 
     private var context: Context? = null
 
@@ -105,6 +106,8 @@ object SongAdminStore {
      *  los siga devolviendo un tiempo en /hidden-songs o /by-ids. */
     private var deletedCache: Set<String> = emptySet()
     private var deletedJson: String? = null
+    private var pendingDeletionsCache: List<DislikedSong> = emptyList()
+    private var pendingDeletionsJson: String? = null
 
     /** Se llama desde SessionManager (que se crea en cada fragmento). */
     fun ensureContext(appContext: Context) {
@@ -128,6 +131,18 @@ object SongAdminStore {
         pendingSyncIds = parseIdSet(store.getString(KEY_PENDING_SYNC, null))
         deletedJson = store.getString(KEY_DELETED, null)
         deletedCache = parseIdSet(deletedJson)
+        pendingDeletionsJson = store.getString(KEY_PENDING_DELETIONS, null)
+        pendingDeletionsCache = parsePendingDeletions(pendingDeletionsJson)
+    }
+
+    private fun parsePendingDeletions(json: String?): List<DislikedSong> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<DislikedSong>>() {}.type
+            gson.fromJson<List<DislikedSong>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun parseIdSet(json: String?): Set<String> {
@@ -174,6 +189,11 @@ object SongAdminStore {
         if (del != deletedJson) {
             deletedJson = del
             deletedCache = parseIdSet(del)
+        }
+        val pendingDeletes = store.getString(KEY_PENDING_DELETIONS, null)
+        if (pendingDeletes != pendingDeletionsJson) {
+            pendingDeletionsJson = pendingDeletes
+            pendingDeletionsCache = parsePendingDeletions(pendingDeletes)
         }
     }
 
@@ -351,6 +371,42 @@ object SongAdminStore {
      */
     fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { it.markedForDeletion }
 
+    // ===================== COLA DE ELIMINACIÓN DIFERIDA =====================
+
+    /** Copia persistente e independiente de la lista de dislikes. */
+    fun getPendingSongDeletions(): List<DislikedSong> {
+        if (context != null) reloadIfChanged()
+        return pendingDeletionsCache
+    }
+
+    fun isPendingSongDeletion(songId: String): Boolean {
+        if (context != null) reloadIfChanged()
+        return pendingDeletionsCache.any { it.songId == songId }
+    }
+
+    /** Añade de forma idempotente una eliminación solicitada sin conexión. */
+    fun addPendingSongDeletion(song: DislikedSong) {
+        if (song.songId.isBlank() || isDeleted(song.songId)) return
+        if (context != null) reloadIfChanged()
+        if (pendingDeletionsCache.any { it.songId == song.songId }) return
+        pendingDeletionsCache = pendingDeletionsCache + song.copy(markedForDeletion = true, kept = false)
+        persistPendingSongDeletions()
+    }
+
+    fun removePendingSongDeletion(songId: String) {
+        if (context != null) reloadIfChanged()
+        val updated = pendingDeletionsCache.filterNot { it.songId == songId }
+        if (updated.size == pendingDeletionsCache.size) return
+        pendingDeletionsCache = updated
+        persistPendingSongDeletions()
+    }
+
+    private fun persistPendingSongDeletions() {
+        val json = gson.toJson(pendingDeletionsCache)
+        pendingDeletionsJson = json
+        prefs()?.edit()?.putString(KEY_PENDING_DELETIONS, json)?.apply()
+    }
+
     /** El admin decide DEJAR la canción: ya la revisó y no la borrará. */
     fun markDislikedSongKept(songId: String) = setDislikedKept(songId, kept = true)
 
@@ -434,10 +490,14 @@ object SongAdminStore {
         deletedCache = deletedCache + songId
         val jsonDeleted = gson.toJson(deletedCache.toList())
         deletedJson = jsonDeleted
+        pendingDeletionsCache = pendingDeletionsCache.filterNot { it.songId == songId }
+        val jsonPendingDeletions = gson.toJson(pendingDeletionsCache)
+        pendingDeletionsJson = jsonPendingDeletions
         val store = prefs() ?: return
         store.edit()
             .putString(KEY_DISLIKED, jsonDisliked)
             .putString(KEY_DELETED, jsonDeleted)
+            .putString(KEY_PENDING_DELETIONS, jsonPendingDeletions)
             .apply()
         // Las ediciones/pendientes de una canción que ya no existe estorban.
         removeEdit(songId)
