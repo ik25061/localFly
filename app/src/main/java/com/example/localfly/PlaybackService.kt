@@ -904,6 +904,15 @@ class PlaybackService : MediaSessionService() {
                     continue
                 }
 
+                // Capturar la cuenta al inicio del ciclo. Si se cierra sesión o
+                // cambia el usuario mientras sincronizamos, no reutilizar la cola
+                // de una cuenta con el token de otra.
+                val syncUserId = sessionManager.getUserId()
+                if (syncUserId.isNullOrBlank() || sessionManager.getToken().isNullOrBlank()) {
+                    delay(20000)
+                    continue
+                }
+
                 val pendingLikes = sessionManager.getPendingLikes()
                 val pendingDislikes = sessionManager.getPendingDislikes()
                 val pendingPlaylistCreations = sessionManager.getPendingPlaylistCreations()
@@ -927,7 +936,7 @@ class PlaybackService : MediaSessionService() {
                 LocalLogger.log(this@PlaybackService, "syncOfflineActions: sincronizando ${pendingLikes.size} likes y ${pendingDislikes.size} dislikes pendientes...")
                 pendingLikes.forEach { (songId, liked) ->
                     try {
-                        val response = RetrofitClient.api.likeSong(songId, LikeRequest(sessionManager.getUserId(), liked))
+                        val response = RetrofitClient.api.likeSong(songId, LikeRequest(syncUserId, liked))
                         if (response.isSuccessful) {
                             if (sessionManager.getPendingLikes()[songId] == liked) sessionManager.removePendingLike(songId)
                             anySuccess = true
@@ -943,7 +952,7 @@ class PlaybackService : MediaSessionService() {
                 // 2. Dislikes
                 pendingDislikes.forEach { songId ->
                     try {
-                        val response = RetrofitClient.api.hideSong(songId, HideRequest(sessionManager.getUserId()))
+                        val response = RetrofitClient.api.hideSong(songId, HideRequest(syncUserId))
                         if (response.isSuccessful) {
                             sessionManager.removePendingDislike(songId)
                             anySuccess = true
