@@ -170,23 +170,37 @@ class DownloadsFragment : Fragment() {
     }
 
     private fun playDownloaded(downloaded: DownloadedSong) {
-        val song = Song(
-            id = downloaded.id,
-            title = downloaded.title,
-            artist = downloaded.artist,
-            album = downloaded.album,
-            year = downloaded.year,
-            duration = downloaded.duration,
-            bpm = downloaded.bpm,
-            key = downloaded.key,
-            liked = downloaded.liked,
-            hasCover = downloaded.hasCover,
-            hasLyrics = downloaded.hasLyrics,
-            genre = downloaded.genre
-        )
+        // En Descargas, tocar una pista inicia la cola completa de descargas
+        // en el mismo orden que muestra esta pantalla y desde la pista elegida.
+        // No se genera una mezcla aleatoria automática.
+        val downloads = downloadHelper.getDownloadedSongs()
+        val songs = downloads.map { item ->
+            Song(
+                id = item.id,
+                title = item.title,
+                artist = item.artist,
+                album = item.album,
+                year = item.year,
+                duration = item.duration,
+                bpm = item.bpm,
+                key = item.key,
+                liked = item.liked,
+                hasCover = item.hasCover,
+                hasLyrics = item.hasLyrics,
+                hasKaraoke = item.hasKaraoke,
+                isEpisode = item.isEpisode,
+                genre = item.genre
+            )
+        }
+        val startIndex = songs.indexOfFirst { it.id == downloaded.id }
+        if (startIndex < 0) {
+            Toast.makeText(requireContext(), "La descarga ya no está disponible", Toast.LENGTH_SHORT).show()
+            loadDownloads()
+            return
+        }
+        val localPaths = downloads.map { downloadHelper.getLocalFilePath(it.id) }
         val activity = requireActivity() as? MainActivity
-        val localPath = downloadHelper.getLocalFilePath(song.id)
-        activity?.playbackService?.playSong(song, localPath)
+        activity?.playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
     }
 
     override fun onResume() {
