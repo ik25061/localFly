@@ -23,6 +23,8 @@ import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.DislikedSong
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
+import com.example.localfly.network.ServerReachability
+import com.example.localfly.network.Song
 import com.example.localfly.network.SongAdminStore
 import com.google.android.material.button.MaterialButton
 import kotlinx.coroutines.Dispatchers
@@ -274,7 +276,43 @@ class DislikedSongsAdminFragment : Fragment() {
 
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                // Obtener detalles completos de la canción desde el servidor para poder reproducirla
+                // Si ya está descargada, reproducir la copia local sin depender
+                // del servidor. Esto también permite revisar offline las que
+                // están marcadas expresamente para eliminar.
+                val helper = DownloadManagerHelper.getInstance(requireContext())
+                val downloaded = helper.getDownloadedSongs().firstOrNull { it.id == disliked.songId }
+                val localPath = helper.getLocalFilePath(disliked.songId)
+                if (downloaded != null && localPath != null) {
+                    val localSong = Song(
+                        id = downloaded.id,
+                        title = downloaded.title,
+                        artist = downloaded.artist,
+                        album = downloaded.album ?: disliked.album,
+                        year = downloaded.year ?: disliked.year,
+                        duration = downloaded.duration,
+                        bpm = downloaded.bpm,
+                        key = downloaded.key,
+                        liked = downloaded.liked,
+                        hasCover = downloaded.hasCover,
+                        hasLyrics = downloaded.hasLyrics,
+                        hasKaraoke = downloaded.hasKaraoke,
+                        isEpisode = downloaded.isEpisode,
+                        genre = downloaded.genre
+                    )
+                    if (disliked.markedForDeletion) {
+                        activity.playbackService?.playDislikedReview(localSong, localPath)
+                    } else {
+                        activity.playbackService?.playSong(localSong, localPath)
+                    }
+                    Toast.makeText(requireContext(), "Reproduciendo descarga: ${localSong.title}", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                if (!ServerReachability.isOnline) {
+                    Toast.makeText(requireContext(), "Esta canción no está descargada y no se puede reproducir sin conexión", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Si no hay copia local y el servidor está disponible, recuperar los metadatos.
                 val response = RetrofitClient.api.getSongsByIds(disliked.songId, sessionManager.getUserId())
                 if (response.isSuccessful && response.body() != null) {
                     val songs = response.body()!!.songs
