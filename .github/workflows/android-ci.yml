@@ -15,17 +15,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      # GitHub-hosted Android runners already include cmdline-tools. The
-      # setup-android action currently requests the removed "tools" package.
+      # The runner image already contains Android cmdline-tools, but the
+      # SDK manager binary is not on PATH by default.
+      - name: Configure Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          CMDLINE_TOOLS="$(find "$SDK_ROOT/cmdline-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$CMDLINE_TOOLS/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
