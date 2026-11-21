@@ -1204,9 +1204,9 @@ class PlaybackService : MediaSessionService() {
                     val storedPath = localPaths?.getOrNull(originalIndex)
                         ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
                     val path = downloadHelper.getLocalFilePath(song.id) ?: storedPath
-                    song to path
+                    Triple(song, path, originalIndex)
                 }
-            ) { (_, path) -> path != null }
+            ) { (_, path, _) -> path != null }
 
             if (available.isEmpty()) {
                 LocalLogger.log(this, "setQueueAndPlay: sin conexión y ninguna canción de la lista tiene descarga válida")
@@ -1216,9 +1216,13 @@ class PlaybackService : MediaSessionService() {
 
             val filteredSongs = available.map { it.first }
             val filteredPaths = available.map { it.second }
-            val newStartIndex = requestedSong?.let { req ->
-                filteredSongs.indexOfFirst { it.id == req.id }
-            }?.takeIf { it >= 0 } ?: 0
+            val requestedOriginalIndex = requestedSong?.let { req ->
+                songs.indexOfFirst { it.id == req.id }
+            } ?: 0
+            // Si se pulsa una canción que no está descargada, empezar por la
+            // siguiente descarga de la lista (y volver al principio si no hay).
+            val newStartIndex = available.indexOfFirst { it.third >= requestedOriginalIndex }
+                .takeIf { it >= 0 } ?: 0
 
             queue = filteredSongs
             queueLocalPaths = filteredPaths
