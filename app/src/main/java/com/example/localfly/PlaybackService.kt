@@ -465,6 +465,11 @@ class PlaybackService : MediaSessionService() {
     /** Canciones ya reproducidas en esta sesión (para no repetirlas al rellenar cola). */
     private val playedInSessionIds = LinkedHashSet<String>()
 
+    /** Shuffle controlado por la cola completa de LocalFly (ExoPlayer solo ve una precarga). */
+    private var shuffleEnabled = false
+    private var queueBeforeShuffle: List<Song>? = null
+    private var pathsBeforeShuffle: List<String?>? = null
+
     /** True solo si la reproducción se lanzó desde el panel de "No me gusta"
      *  (modo revisión). Evita que el modo revisión secuestre la cola cuando se
      *  reproduce una colección normal en la que, por casualidad, aparece una
@@ -1159,10 +1164,9 @@ class PlaybackService : MediaSessionService() {
         // Una canción eliminada del disco ya no se puede reproducir.
         val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
         if (aliveSongs.isEmpty()) return
-        // Estado de la sesión: por defecto NO es "modo descargas" ni "modo
-        // revisión". El modo descargas se activa abajo únicamente al reproducir
-        // una única descarga; el modo revisión, solo cuando lo pide el panel de
-        // "No me gusta" (reviewSession = true).
+        // El modo revisión solo se activa cuando lo pide el panel de
+        // "Para eliminar" (reviewSession = true). Una canción individual no
+        // crea automáticamente una mezcla de descargas.
         shuffleEnabled = false
         queueBeforeShuffle = null
         pathsBeforeShuffle = null
@@ -1244,12 +1248,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun pruneQueueToDownloadedIfOffline() {
-        // Solo se poda en una sesión de descargas de verdad (se pulsó play
-        // sobre una única canción descargada) o cuando no hay conexión. NUNCA
-        // se poda una colección elegida por el usuario (artista/álbum/género/
-        // playlist): antes, en cuanto sonaba una canción descargada dentro de
-        // una colección, se borraban de la cola todas las demás canciones no
-        // descargadas y el reproductor saltaba a otro artista.
+        // Solo se poda cuando el servidor no está disponible. En ese caso se
+        // eliminan las pistas futuras sin archivo local y se conserva el orden
+        // relativo de las canciones descargadas de la lista elegida.
         if (queue.isEmpty()) return
         if (ServerReachability.isOnline) return
 
@@ -1490,8 +1491,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * Verifica si quedan menos de 10 canciones por delante en la cola.
-     * Si es así, rellena con recomendaciones (online) o con descargas (offline).
+     * Verifica si quedan menos de 10 canciones por delante.
+     * Solo se amplía con recomendaciones del servidor; offline se respeta
+     * exactamente la lista elegida y no se añaden pistas ajenas.
      */
     private fun checkAndRefillQueue() {
         // El rearmado de la cola (poda + cola de revisión) es propenso a fallar
