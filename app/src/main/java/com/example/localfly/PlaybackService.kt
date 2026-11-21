@@ -66,6 +66,8 @@ class PlaybackService : MediaSessionService() {
         const val FADE_DURATION_MS = 2500L
         const val FADE_STEP_MS = 100L
 
+        const val COMMAND_PREVIOUS = "com.example.localfly.COMMAND_PREVIOUS"
+        const val COMMAND_NEXT = "com.example.localfly.COMMAND_NEXT"
         const val COMMAND_LIKE = "com.example.localfly.COMMAND_LIKE"
         const val COMMAND_DISLIKE = "com.example.localfly.COMMAND_DISLIKE"
 
@@ -692,21 +694,20 @@ class PlaybackService : MediaSessionService() {
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo
             ): MediaSession.ConnectionResult {
+                // La cola real de LocalFly vive en PlaybackService, no en la
+                // playlist interna de ExoPlayer (que solo precarga el siguiente
+                // elemento). Por eso anterior/siguiente deben ser comandos de
+                // sesión y no Player.Commands: estos últimos se deshabilitan si
+                // ExoPlayer no tiene ese elemento en su timeline.
                 val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                    .add(SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY))
+                    .add(SessionCommand(COMMAND_NEXT, Bundle.EMPTY))
                     .add(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
                     .add(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
                     .build()
-                
-                val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
-                    .add(Player.COMMAND_SEEK_TO_NEXT)
-                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
-                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-                    .add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                    .build()
-                
+
                 return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                     .setAvailableSessionCommands(sessionCommands)
-                    .setAvailablePlayerCommands(playerCommands)
                     .build()
             }
 
@@ -717,6 +718,8 @@ class PlaybackService : MediaSessionService() {
                 args: Bundle
             ): ListenableFuture<SessionResult> {
                 when (customCommand.customAction) {
+                    COMMAND_PREVIOUS -> prev()
+                    COMMAND_NEXT -> next()
                     COMMAND_LIKE -> toggleLike()
                     COMMAND_DISLIKE -> dislikeCurrentSong()
                 }
@@ -747,29 +750,47 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun updateMediaButtonPreferences() {
-        val song = currentSong
-        val likeIcon = if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off
-        
-        val likeButton = CommandButton.Builder(CommandButton.ICON_HEART_FILLED)
+        // LocalFly administra una cola propia y ExoPlayer solo mantiene el medio
+        // actual más una precarga. Exponer los comandos SEEK_TO_PREVIOUS/NEXT de
+        // Player hacía que Android ocultara anterior/siguiente cuando esos medios
+        // no estaban en el timeline interno de ExoPlayer.
+        val previousButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
+            .setSessionCommand(SessionCommand(COMMAND_PREVIOUS, Bundle.EMPTY))
+            .setSlots(intArrayOf(CommandButton.SLOT_BACK))
+            .setDisplayName("Anterior")
+            .build()
+
+        val nextButton = CommandButton.Builder(CommandButton.ICON_NEXT)
+            .setSessionCommand(SessionCommand(COMMAND_NEXT, Bundle.EMPTY))
+            .setSlots(intArrayOf(CommandButton.SLOT_FORWARD))
+            .setDisplayName("Siguiente")
+            .build()
+
+        val likeIcon = if (currentSong?.liked == true) {
+            CommandButton.ICON_HEART_FILLED
+        } else {
+            CommandButton.ICON_HEART_UNFILLED
+        }
+        val likeButton = CommandButton.Builder(likeIcon)
             .setSessionCommand(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
-            .setSlots(intArrayOf(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW))
-            .setIconResId(likeIcon)
+            .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
             .setDisplayName("Me gusta")
             .build()
 
         val dislikeButton = CommandButton.Builder(CommandButton.ICON_BLOCK)
             .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
-            .setSlots(intArrayOf(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW))
-            .setIconResId(R.drawable.ic_dislike_off)
+            .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
             .setDisplayName("No me gusta")
             .build()
 
-        // Android 13+ construye los controles desde las preferencias de botones de la
-        // MediaSession. setCustomLayout está obsoleto para este uso y puede dejar
-        // los botones personalizados fuera de los controles modernos del sistema.
-        // Los botones de transporte (anterior/play/siguiente) proceden de Player;
-        // like/dislike ocupan las ranuras secundarias y, si no caben, overflow.
-        mediaSession?.setMediaButtonPreferences(listOf(likeButton, dislikeButton))
+        // Android System UI documenta tres ranuras de transporte (back, central,
+        // forward) y dos de overflow. Las ranuras BACK_SECONDARY/FORWARD_SECONDARY
+        // no son compatibles con la superficie móvil estándar y podían descartar
+        // las acciones personalizadas. La lista produce: anterior, play/pausa,
+        // siguiente, me gusta y no me gusta.
+        mediaSession?.setMediaButtonPreferences(
+            listOf(previousButton, nextButton, likeButton, dislikeButton)
+        )
     }
 
     fun setCrossfadeEnabled(enabled: Boolean) {
