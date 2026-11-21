@@ -75,6 +75,11 @@ class DownloadManagerHelper private constructor(context: Context) {
     private val gson = Gson()
 
     private var cachedDownloads: List<DownloadedSong>? = null
+        set(value) {
+            field = value
+            cachedDownloadById = value?.associateBy { it.id }
+        }
+    private var cachedDownloadById: Map<String, DownloadedSong>? = null
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -129,7 +134,8 @@ class DownloadManagerHelper private constructor(context: Context) {
         // archivo solicitado. No llamar a getDownloadedSongs(): esa función
         // valida todos los archivos y provocaba un recorrido completo por cada
         // canción al construir una cola offline (O(canciones × descargas)).
-        val song = loadDownloadIndex().firstOrNull { it.id == songId } ?: return null
+        loadDownloadIndex()
+        val song = cachedDownloadById?.get(songId) ?: return null
         val file = File(song.filePath)
         return if (file.isFile && file.length() > 0L) file.absolutePath else null
     }
