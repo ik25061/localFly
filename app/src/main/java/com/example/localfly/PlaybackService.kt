@@ -713,6 +713,29 @@ class PlaybackService : MediaSessionService() {
                 return Futures.immediateFuture(connectionResult)
             }
 
+            override fun onPostConnect(
+                session: MediaSession,
+                controller: MediaSession.ControllerInfo
+            ) {
+                // El proveedor de notificaciones necesita que los comandos
+                // personalizados estén disponibles también después de conectar
+                // su propio controller. Configuramos explícitamente la sesión
+                // compartida que usa System UI en Android 13+.
+                if (!session.isMediaNotificationController(controller)) return
+
+                val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                    .add(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
+                    .add(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
+                    .build()
+                val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
+                    .add(Player.COMMAND_SEEK_TO_PREVIOUS)
+                    .add(Player.COMMAND_SEEK_TO_NEXT)
+                    .build()
+
+                session.setAvailableCommands(controller, sessionCommands, playerCommands)
+                session.setMediaButtonPreferences(controller, session.getMediaButtonPreferences())
+            }
+
             override fun onCustomCommand(
                 session: MediaSession,
                 controller: MediaSession.ControllerInfo,
