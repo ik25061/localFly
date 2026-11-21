@@ -856,14 +856,14 @@ class PlaybackService : MediaSessionService() {
                 val pendingPlaylistCreations = sessionManager.getPendingPlaylistCreations()
                 val pendingPlaylistAdds = sessionManager.getPendingPlaylistSongAdds()
                 val pendingLyrics = sessionManager.getPendingLyricsUploads()
+                val pendingComments = sessionManager.getPendingComments()
+                val pendingMetadata = SongAdminStore.getPendingSyncIds().isNotEmpty()
 
+                // Los comentarios y los metadatos también deben mantener despierto
+                // el sincronizador cuando son la única operación pendiente.
                 if (pendingLikes.isEmpty() && pendingDislikes.isEmpty() &&
                     pendingPlaylistCreations.isEmpty() && pendingPlaylistAdds.isEmpty() &&
-                    pendingLyrics.isEmpty()) {
-                    
-                    // Sincronizar metadatos pendientes (si existen)
-                    try { MetadataSyncManager.syncPendingEdits(sessionManager) } catch (_: Exception) {}
-                    
+                    pendingLyrics.isEmpty() && pendingComments.isEmpty() && !pendingMetadata) {
                     delay(30000)
                     continue
                 }
@@ -925,7 +925,6 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 // 5. Comentarios/Valoraciones offline
-                val pendingComments = sessionManager.getPendingComments()
                 if (pendingComments.isNotEmpty()) {
                     pendingComments.forEach { (songId, request) ->
                         try {
@@ -936,6 +935,14 @@ class PlaybackService : MediaSessionService() {
                             }
                         } catch (e: Exception) {}
                     }
+                }
+
+                // 6. Metadatos pendientes: se sincronizan también cuando hay
+                // otras colas activas, no solo cuando la cola está vacía.
+                if (pendingMetadata) {
+                    try {
+                        if (MetadataSyncManager.syncPendingEdits(sessionManager)) anySuccess = true
+                    } catch (_: Exception) {}
                 }
 
                 if (anySuccess) withContext(Dispatchers.Main) { onStateChanged?.invoke() }
