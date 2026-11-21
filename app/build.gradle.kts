@@ -6,12 +6,12 @@ android {
     namespace = "com.example.localfly"
 
     // Usa la sintaxis estándar para compileSdk (número entero)
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.localfly"
         minSdk = 34
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
