@@ -46,13 +46,14 @@ object PlaylistSyncManager {
                         CreatePlaylistRequest(creation.name, creation.description, userId, creation.isPublic)
                     )
                     if (!createResp.isSuccessful) continue
-                    realPlaylist = createResp.body()?.playlist ?: continue
+                    val createdPlaylist = createResp.body()?.playlist ?: continue
+                    realPlaylist = createdPlaylist
 
                     // Guardar el id antes de subir canciones. Si se pierde la
                     // conexión después, el próximo ciclo no crea otra lista.
                     sessionManager.updatePendingPlaylistCreation(
                         creation.localId,
-                        creation.copy(serverId = realPlaylist.id)
+                        creation.copy(serverId = createdPlaylist.id)
                     )
                 }
 
