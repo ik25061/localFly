@@ -841,8 +841,9 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         // Se reservan las ranuras de navegación para los comandos estándar del
-        // Player y se colocan las dos acciones propias en overflow. La lista
-        // produce: anterior, play/pausa, siguiente, me gusta y no me gusta.
+        // Player y se colocan las dos acciones propias en overflow. Las ranuras
+        // secundarias pueden tener capacidad cero en superficies móviles Android.
+        // Resultado: anterior, play/pausa, siguiente, me gusta y no me gusta.
         mediaSession?.setMediaButtonPreferences(
             listOf(previousButton, nextButton, likeButton, dislikeButton)
         )
