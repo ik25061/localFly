@@ -56,7 +56,7 @@ object PlaylistSyncManager {
                     )
                 }
 
-                val targetPlaylist = realPlaylist
+                val targetPlaylist = realPlaylist ?: continue
                 var allAdded = true
                 if (creation.songIds.isNotEmpty()) {
                     try {
