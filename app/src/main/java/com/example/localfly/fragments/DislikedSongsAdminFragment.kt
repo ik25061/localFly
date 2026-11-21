@@ -420,8 +420,12 @@ class DislikedSongsAdminFragment : Fragment() {
                         Toast.makeText(requireContext(), "Canción eliminada del disco y saltada", Toast.LENGTH_SHORT).show()
                         refresh()
                     }
+                } else if (!ServerReachability.isOnline) {
+                    SongAdminStore.addPendingSongDeletion(song)
+                    refresh()
+                    Toast.makeText(requireContext(), "Conexión perdida: eliminación guardada para sincronizar", Toast.LENGTH_LONG).show()
                 } else if (isAdded) {
-                    Toast.makeText(requireContext(), "No se pudo eliminar del disco", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(requireContext(), "El servidor no aceptó la eliminación (HTTP ${response.code()})", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 // La conexión puede caer entre la comprobación y la petición.
