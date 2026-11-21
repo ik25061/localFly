@@ -101,6 +101,14 @@ class PlaybackService : MediaSessionService() {
     private var playbackErrorRetries = 0
     private var lastPlaybackErrorSongId: String? = null
 
+    /**
+     * Anti-doble-avance: ExoPlayer ya avanza solo al item precargado
+     * (onMediaItemTransition AUTO). Si además onPlaybackStateChanged(ENDED)
+     * llama a next(), se salta una canción o se corta la cola. Se registra
+     * cuándo hubo avance automático para ignorar el ENDED duplicado.
+     */
+    private var lastAutoAdvanceAtMs = 0L
+
     /** Cambia solo la fuente actual; conserva cola, posición, pausa y metadatos. */
     fun toggleKaraoke() {
         val p = player ?: return
@@ -414,6 +422,8 @@ class PlaybackService : MediaSessionService() {
     private val progressTrackerRunnable = object : Runnable {
         override fun run() {
             saveEpisodeProgress()
+            // Guardar la posición cada 5 s: si el proceso muere, se reanuda cerca.
+            try { persistQueue() } catch (_: Exception) { }
             progressTrackerHandler.postDelayed(this, 5000)
         }
     }
@@ -565,6 +575,15 @@ class PlaybackService : MediaSessionService() {
                     // Un fallo al saltar de canción (índice/cola inconsistente,
                     // etc.) NO debe cerrar la app: se registra y se sigue.
                     try {
+                        // OFFLINE FIX: ExoPlayer ya avanza SOLO al item precargado
+                        // (onMediaItemTransition AUTO). Si aquí se llama a next()
+                        // además, se salta una canción o se corta la cola (el
+                        // síntoma era "al terminar una canción offline ya no sigue").
+                        // Solo se avanza manualmente cuando NO hubo avance AUTO
+                        // reciente y el player NO tiene siguiente encolado.
+                        val sinceAuto = android.os.SystemClock.uptimeMillis() - lastAutoAdvanceAtMs
+                        if (sinceAuto < 2000L) return
+                        if (player?.hasNextMediaItem() == true) return
                         next()
                     } catch (e: Exception) {
                         LocalLogger.log(this@PlaybackService, "onPlaybackStateChanged(ENDED): fallo manejado al avanzar", e)
@@ -951,7 +970,78 @@ class PlaybackService : MediaSessionService() {
             this,
             "PlaybackService onStartCommand flags=$flags startId=$startId action=${intent?.action ?: "null"}"
         )
+        // START_STICKY con intent null = el sistema nos recrea tras matar el
+        // proceso. Solo aquí el servicio ya tiene el binder disponible para
+        // que la UI lo enlace: así no se restaure una cola antigua cuando el
+        // framework creó el servicio en blanco (lo que dejaba la notificación
+        // sin titulo y el mini reproductor vacio).
+        if (intent == null || intent.action == null) {
+            restoreQueueIfEmpty()
+        }
         return START_STICKY
+    }
+
+    private fun queuePrefs() =
+        getSharedPreferences("localfly_queue", android.content.Context.MODE_PRIVATE)
+
+    private val queueGson: com.google.gson.Gson by lazy { com.google.gson.Gson() }
+
+    /** Guarda la cola actual para sobrevivir a la muerte del proceso. */
+    private fun persistQueue(positionMs: Long = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }) {
+        try {
+            val songs = queue
+            if (songs.isEmpty()) return
+            val json = queueGson.toJson(songs)
+            if (json.length > 1_500_000) return
+            queuePrefs().edit()
+                .putString("songs", json)
+                .putInt("index", currentIndex)
+                .putLong("position", positionMs)
+                .putString("current_id", currentSong?.id)
+                .putLong("saved_at", System.currentTimeMillis())
+                .apply()
+        } catch (e: Exception) {
+            LocalLogger.log(this, "persistQueue: fallo (${e.message})")
+        }
+    }
+
+    /** Restaura la cola persistida si la actual está vacía (renacer tras muerte). */
+    private fun restoreQueueIfEmpty() {
+        try {
+            if (queue.isNotEmpty()) return
+            // downloadHelper/sessionManager pueden no estar listos si el
+            // onStartCommand llega antes que onCreate: no hacer nada entonces.
+            if (!::downloadHelper.isInitialized || !::sessionManager.isInitialized) return
+            if (player == null) return
+            val prefs = queuePrefs()
+            val json = prefs.getString("songs", null) ?: return
+            val savedAt = prefs.getLong("saved_at", 0L)
+            if (savedAt > 0 && System.currentTimeMillis() - savedAt > 24 * 60 * 60 * 1000L) {
+                prefs.edit().clear().apply()
+                return
+            }
+            val type = object : com.google.gson.reflect.TypeToken<List<Song>>() {}.type
+            val songs: List<Song> = try {
+                queueGson.fromJson(json, type) ?: return
+            } catch (_: Exception) { return }
+            if (songs.isEmpty()) return
+            val alive = songs.filter { !SongAdminStore.isDeleted(it.id) }
+            if (alive.isEmpty()) return
+            var index = prefs.getInt("index", 0).coerceIn(0, alive.size - 1)
+            val savedId = prefs.getString("current_id", null)
+            if (savedId != null && alive.getOrNull(index)?.id != savedId) {
+                val byId = alive.indexOfFirst { it.id == savedId }.takeIf { it >= 0 }
+                if (byId != null) index = byId
+            }
+            val position = prefs.getLong("position", 0L).coerceAtLeast(0L)
+            queue = alive
+            queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
+            currentIndex = index
+            LocalLogger.log(this, "restoreQueue: recuperadas ${alive.size} (index=$index, pos=$position)")
+            playCurrentIndex(resumePositionMs = position)
+        } catch (e: Exception) {
+            LocalLogger.log(this, "restoreQueue: fallo", e)
+        }
     }
 
     fun setQueueAndPlay(
@@ -1066,14 +1156,22 @@ class PlaybackService : MediaSessionService() {
         // completa (que leen `currentSong`) mostraban otro. Por eso protegemos
         // ese slot y solo podamos desde dos canciones por delante en adelante.
         val protectedUpcomingIndex = currentIndex + 1
-        val history = queue.take(protectedUpcomingIndex + 1)
-        val prunablePortion = queue.drop(protectedUpcomingIndex + 1)
+        // OFFLINE FIX: solo se protege el siguiente si está descargado. Antes
+        // se protegía incluso sin descarga y se precargaba con URL remota, que
+        // offline falla y cortaba la reproducción al terminar la actual.
+        val protectsNext = queue.getOrNull(protectedUpcomingIndex)?.let { downloadHelper.isDownloaded(it.id) } == true
+        val keepThrough = if (protectsNext) protectedUpcomingIndex else currentIndex
+        val history = queue.take((keepThrough + 1).coerceIn(0, queue.size))
+        val prunablePortion = queue.drop((keepThrough + 1).coerceIn(0, queue.size))
         val prunedPortion = prunablePortion.filter { downloadHelper.isDownloaded(it.id) }
-        if (prunedPortion.size == prunablePortion.size) return
+        if (prunedPortion.size == prunablePortion.size && protectsNext) return
 
         val newQueue = history + prunedPortion
         queue = newQueue
         queueLocalPaths = newQueue.map { downloadHelper.getLocalFilePath(it.id) }
+        // Mantener la lista interna del player alineada: si se quitó el
+        // siguiente precargado (no descargado), sacarlo también del player.
+        resyncPreloadedNext()
         onStateChanged?.invoke()
     }
 
@@ -1277,6 +1375,35 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
+     * OFFLINE FIX: relleno síncrono con descargas. Devuelve false cuando ya
+     * se encargó de la recarga (modo offline/descargas) para no lanzar el
+     * refill asíncrono duplicado; true cuando hay que seguir con la vía
+     * asíncrona online.
+     */
+    private fun tryRefillOfflineSync(limit: Int = 15): Boolean {
+        if (!playingDownloadMix && ServerReachability.isOnline) return true
+        try {
+            val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
+            val dislikedIds = SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
+            val mix = buildDownloadMix(currentSong, existingIds, limit = limit)
+                .filter { it.id !in dislikedIds && !SongAdminStore.isDeleted(it.id) }
+            if (mix.isEmpty()) return false
+            val mutableQueue = queue.toMutableList()
+            val mutablePaths = queueLocalPaths.toMutableList()
+            mutableQueue.addAll(mix)
+            mutablePaths.addAll(mix.map { downloadHelper.getLocalFilePath(it.id) })
+            queue = mutableQueue
+            queueLocalPaths = mutablePaths
+            resyncPreloadedNext()
+            onStateChanged?.invoke()
+            LocalLogger.log(this, "Refill offline síncrono: +${mix.size} descargas")
+        } catch (e: Exception) {
+            LocalLogger.log(this, "Refill offline síncrono: fallo (${e.message})")
+        }
+        return false
+    }
+
+    /**
      * Verifica si quedan menos de 10 canciones por delante en la cola.
      * Si es así, rellena con recomendaciones (online) o con descargas (offline).
      */
@@ -1296,6 +1423,12 @@ class PlaybackService : MediaSessionService() {
         }
         val pendingCount = queue.size - (currentIndex + 1)
         if (pendingCount >= 10) return
+
+        // OFFLINE FIX: rellenar de forma SÍNCRONA con descargas antes de que
+        // next() decida parar. Antes era todo asíncrono: al terminar la última
+        // canción de la cola, next() paraba (stop + clear) y el refill llegaba
+        // tarde, así que la reproducción "se cortaba" offline.
+        if (!tryRefillOfflineSync(limit = 15)) return
 
         serviceScope.launch {
             try {
@@ -1572,6 +1705,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun handleAutoAdvanceFromTransition() {
+        lastAutoAdvanceAtMs = android.os.SystemClock.uptimeMillis()
         fadeOutStartedForCurrentSong = false
         fadeJob?.cancel()
         // El trim pertenecía a la canción anterior: si no se desarma aquí, el
@@ -1598,10 +1732,18 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun preloadNextItem() {
-        // Cargar el siguiente item en el buffer del player si existe
+        // Cargar el siguiente item en el buffer del player si existe.
+        // OFFLINE FIX: sin conexión nunca se precarga una URL remota; dejaba
+        // el player en error y "se cortaba" al terminar la canción actual.
         if (hasNext()) {
-            val nextSong = queue[currentIndex + 1]
+            val nextSongRaw = queue[currentIndex + 1]
+            val nextSong = SongAdminStore.applyTo(nextSongRaw)
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
+                ?: downloadHelper.getLocalFilePath(nextSongRaw.id)
+            if (nextLocalPath == null && !ServerReachability.isOnline) {
+                LocalLogger.log(this, "preloadNextItem: sin descarga para ${nextSong.id}, no se precarga offline")
+                return
+            }
             val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
             if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
             
@@ -1633,6 +1775,17 @@ class PlaybackService : MediaSessionService() {
             while (nextIdx < queue.size && finishedId != null && queue[nextIdx].id == finishedId) {
                 nextIdx++
                 LocalLogger.log(this, "next: saltando duplicado inmediato de $finishedId")
+            }
+            // OFFLINE FIX: sin conexión, saltar lo que NO esté descargado en vez
+            // de intentar reproducir una URL remota (fallaba y "se cortaba").
+            if (!ServerReachability.isOnline || playingDownloadMix) {
+                while (nextIdx < queue.size &&
+                    queueLocalPaths.getOrNull(nextIdx) == null &&
+                    downloadHelper.getLocalFilePath(queue[nextIdx].id) == null
+                ) {
+                    LocalLogger.log(this, "next: saltando no descargado offline (${queue[nextIdx].id})")
+                    nextIdx++
+                }
             }
             if (nextIdx >= queue.size) {
                 player?.stop()
@@ -1669,10 +1822,21 @@ class PlaybackService : MediaSessionService() {
     fun getDurationMs(): Long = player?.duration?.takeIf { it > 0 } ?: 0L
     fun seekTo(positionMs: Long) { player?.seekTo(positionMs) }
 
-    private fun playCurrentIndex() {
+    private fun playCurrentIndex(resumePositionMs: Long = 0L) {
         clearKaraokeState()
         val song = queue.getOrNull(currentIndex) ?: return
-        val localPath = queueLocalPaths.getOrNull(currentIndex)
+        // OFFLINE FIX: re-resolver el archivo local (queueLocalPaths puede traer
+        // un null rancio si la descarga se registró después de armar la cola).
+        val resolvedLocalPath = queueLocalPaths.getOrNull(currentIndex)
+            ?: downloadHelper.getLocalFilePath(song.id)
+        if (resolvedLocalPath == null && !ServerReachability.isOnline && !song.isEpisode) {
+            // Sin archivo y sin red la URL remota fallaría y "se cortaría":
+            // saltar a la siguiente descarga disponible.
+            LocalLogger.log(this, "playCurrentIndex: sin descarga offline para ${song.id}, saltando")
+            serviceScope.launch { next() }
+            return
+        }
+        val localPath = resolvedLocalPath
         currentSong = song
 
         // Registrar la canción como "escuchada" (útil para el modo de
@@ -1705,23 +1869,33 @@ class PlaybackService : MediaSessionService() {
             val nextSong = SongAdminStore.applyTo(nextSongRaw)
             
             val nextLocalPath = queueLocalPaths.getOrNull(currentIndex + 1)
-            val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
-            if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
-            
-            // También para el siguiente item en el buffer
-            val nextBaseUrl = if (nextSong.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
-            val nextMediaItem = MediaItem.Builder()
-                .setMediaId(nextSong.id)
-                .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$nextBaseUrl${nextSong.id}"))
-                .setMediaMetadata(nextMetaBuilder.build())
-                .build()
-            player?.addMediaItem(nextMediaItem)
+                ?: downloadHelper.getLocalFilePath(nextSongRaw.id)
+            // OFFLINE FIX: sin conexion no se precarga URL remota.
+            if (nextLocalPath == null && !ServerReachability.isOnline) {
+                LocalLogger.log(this, "playCurrentIndex: sin descarga para siguiente offline (${nextSong.id}), sin precarga")
+            } else {
+                val nextMetaBuilder = MediaMetadata.Builder().setTitle(nextSong.title).setArtist(nextSong.artist)
+                if (nextLocalPath == null) nextMetaBuilder.setArtworkUri(Uri.parse("$serverBaseUrl/cover/${nextSong.id}"))
+
+                // También para el siguiente item en el buffer
+                val nextBaseUrl = if (nextSong.isEpisode) "$serverBaseUrl/podcast-audio/" else "$serverBaseUrl/audio/"
+                val nextMediaItem = MediaItem.Builder()
+                    .setMediaId(nextSong.id)
+                    .setUri(if (nextLocalPath != null) Uri.fromFile(File(nextLocalPath)) else Uri.parse("$nextBaseUrl${nextSong.id}"))
+                    .setMediaMetadata(nextMetaBuilder.build())
+                    .build()
+                player?.addMediaItem(nextMediaItem)
+            }
         }
         player?.prepare()
         
         // Continuar episodio donde se dejó
         if (displayedSong.isEpisode && displayedSong.lastPositionMs > 0) {
             player?.seekTo(displayedSong.lastPositionMs)
+        }
+        // Restauración tras muerte del proceso: continuar donde se quedó.
+        if (resumePositionMs > 1000L && !(displayedSong.isEpisode && displayedSong.lastPositionMs > 0)) {
+            try { player?.seekTo(resumePositionMs) } catch (_: Exception) { }
         }
 
         // Recorte de silencios SOLO al inicio y al final (archivo local).
@@ -1742,6 +1916,9 @@ class PlaybackService : MediaSessionService() {
 
         updateMediaSessionCustomLayout()
         onStateChanged?.invoke()
+        // Persistir para sobrevivir a la muerte del proceso. La posición se
+        // guarda en el arranque diferido (el player aún no tiene posición).
+        persistQueue(positionMs = resumePositionMs)
     }
 
     fun togglePlayPause() { player?.let { if (it.isPlaying) it.pause() else it.play() } }
