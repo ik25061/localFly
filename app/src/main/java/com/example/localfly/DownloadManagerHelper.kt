@@ -130,7 +130,7 @@ class DownloadManagerHelper private constructor(context: Context) {
     fun isDownloaded(songId: String): Boolean = getLocalFilePath(songId) != null
 
     fun getLocalFilePath(songId: String): String? {
-        // Búsqueda O(n) en el índice en memoria + una sola comprobación del
+        // Búsqueda O(1) en el índice en memoria + una sola comprobación del
         // archivo solicitado. No llamar a getDownloadedSongs(): esa función
         // valida todos los archivos y provocaba un recorrido completo por cada
         // canción al construir una cola offline (O(canciones × descargas)).
