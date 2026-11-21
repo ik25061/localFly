@@ -1835,7 +1835,7 @@ class PlaybackService : MediaSessionService() {
         // un null rancio si la descarga se registró después de armar la cola).
         val resolvedLocalPath = queueLocalPaths.getOrNull(currentIndex)
             ?: downloadHelper.getLocalFilePath(song.id)
-        if (resolvedLocalPath == null && !ServerReachability.isOnline && !song.isEpisode) {
+        if (resolvedLocalPath == null && !ServerReachability.isOnline) {
             // Sin archivo y sin red la URL remota fallaría y "se cortaría":
             // saltar a la siguiente descarga disponible.
             LocalLogger.log(this, "playCurrentIndex: sin descarga offline para ${song.id}, saltando")
