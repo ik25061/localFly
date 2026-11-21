@@ -1124,10 +1124,13 @@ class PlaybackService : MediaSessionService() {
                 queueGson.fromJson(json, type) ?: return
             } catch (_: Exception) { return }
             if (songs.isEmpty()) return
-            val alive = songs.filter { !SongAdminStore.isDeleted(it.id) }
+            val savedId = prefs.getString("current_id", null)
+            val alive = songs.filter {
+                !SongAdminStore.isDeleted(it.id) &&
+                    (ServerReachability.isOnline || it.id == savedId || downloadHelper.isDownloaded(it.id))
+            }
             if (alive.isEmpty()) return
             var index = prefs.getInt("index", 0).coerceIn(0, alive.size - 1)
-            val savedId = prefs.getString("current_id", null)
             if (savedId != null && alive.getOrNull(index)?.id != savedId) {
                 val byId = alive.indexOfFirst { it.id == savedId }.takeIf { it >= 0 }
                 if (byId != null) index = byId
