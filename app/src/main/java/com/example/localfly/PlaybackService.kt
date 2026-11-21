@@ -743,27 +743,33 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(sessionActivityPendingIntent)
             .build()
             
-        updateMediaSessionCustomLayout()
+        updateMediaButtonPreferences()
     }
 
-    private fun updateMediaSessionCustomLayout() {
+    private fun updateMediaButtonPreferences() {
         val song = currentSong
         val likeIcon = if (song?.liked == true) R.drawable.ic_like_on else R.drawable.ic_like_off
         
         val likeButton = CommandButton.Builder(CommandButton.ICON_HEART_FILLED)
             .setSessionCommand(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
+            .setSlots(intArrayOf(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW))
             .setIconResId(likeIcon)
             .setDisplayName("Me gusta")
             .build()
 
         val dislikeButton = CommandButton.Builder(CommandButton.ICON_BLOCK)
             .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
+            .setSlots(intArrayOf(CommandButton.SLOT_FORWARD_SECONDARY, CommandButton.SLOT_OVERFLOW))
             .setIconResId(R.drawable.ic_dislike_off)
             .setDisplayName("No me gusta")
             .build()
 
-        // Enviar botones custom. El sistema los ubicará según la versión de Android.
-        mediaSession?.setCustomLayout(listOf(likeButton, dislikeButton))
+        // Android 13+ construye los controles desde las preferencias de botones de la
+        // MediaSession. setCustomLayout está obsoleto para este uso y puede dejar
+        // los botones personalizados fuera de los controles modernos del sistema.
+        // Los botones de transporte (anterior/play/siguiente) proceden de Player;
+        // like/dislike ocupan las ranuras secundarias y, si no caben, overflow.
+        mediaSession?.setMediaButtonPreferences(listOf(likeButton, dislikeButton))
     }
 
     fun setCrossfadeEnabled(enabled: Boolean) {
@@ -1728,7 +1734,7 @@ class PlaybackService : MediaSessionService() {
         
         preloadNextItem()
         onStateChanged?.invoke()
-        updateMediaSessionCustomLayout()
+        updateMediaButtonPreferences()
     }
 
     private fun preloadNextItem() {
@@ -1914,7 +1920,7 @@ class PlaybackService : MediaSessionService() {
             toggleKaraoke()
         }
 
-        updateMediaSessionCustomLayout()
+        updateMediaButtonPreferences()
         onStateChanged?.invoke()
         // Persistir para sobrevivir a la muerte del proceso. La posición se
         // guarda en el arranque diferido (el player aún no tiene posición).
@@ -2087,7 +2093,7 @@ class PlaybackService : MediaSessionService() {
             com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
             AIWeightsStore(this).reinforce(song.id, if (newLiked) 1f else -0.5f)
             downloadHelper.updateLiked(song.id, newLiked)
-            updateMediaSessionCustomLayout()
+            updateMediaButtonPreferences()
             onStateChanged?.invoke()
             serviceScope.launch {
                 try {
