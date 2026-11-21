@@ -25,6 +25,7 @@ object PlaylistSyncManager {
 
     private suspend fun performSync(sessionManager: SessionManager) {
         val userId = sessionManager.getUserId()
+        if (userId.isNullOrBlank() || sessionManager.getToken().isNullOrBlank()) return
 
         // 1) Listas creadas sin conexión. Si ya se creó en el servidor en un
         // ciclo anterior, reutilizar serverId y continuar con sus canciones.
