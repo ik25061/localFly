@@ -470,6 +470,12 @@ class PlaybackService : MediaSessionService() {
     private var queueBeforeShuffle: List<Song>? = null
     private var pathsBeforeShuffle: List<String?>? = null
 
+    /** Evita restaurar una instantánea antigua tras editar manualmente la cola. */
+    private fun invalidateShuffleSnapshot() {
+        queueBeforeShuffle = null
+        pathsBeforeShuffle = null
+    }
+
     /** True solo si la reproducción se lanzó desde el panel de "No me gusta"
      *  (modo revisión). Evita que el modo revisión secuestre la cola cuando se
      *  reproduce una colección normal en la que, por casualidad, aparece una
@@ -1329,6 +1335,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun playNext(song: Song) {
+        invalidateShuffleSnapshot()
         // Una canción eliminada o no descargada offline no puede entrar en cola.
         if (SongAdminStore.isDeleted(song.id)) return
         if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
@@ -1345,6 +1352,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun addToQueue(song: Song) {
+        invalidateShuffleSnapshot()
         if (SongAdminStore.isDeleted(song.id)) return
         if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
         if (queue.isEmpty()) { playSong(song); return }
@@ -1377,6 +1385,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        invalidateShuffleSnapshot()
         if (fromIndex == currentIndex || toIndex == currentIndex) return
         if (fromIndex !in queue.indices || toIndex !in queue.indices) return
         val mutableQueue = queue.toMutableList()
@@ -1397,6 +1406,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun removeFromQueue(index: Int) {
+        invalidateShuffleSnapshot()
         if (index == currentIndex || index !in queue.indices) return
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
@@ -1417,6 +1427,7 @@ class PlaybackService : MediaSessionService() {
      * detiene la reproducción.
      */
     fun purgeDeletedSong(songId: String) {
+        invalidateShuffleSnapshot()
         if (songId.isBlank()) return
         if (queue.none { it.id == songId } && currentSong?.id != songId) {
             // Aun así: limpiar precarga del player por si quedó encolada ahí.
@@ -1473,6 +1484,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun updateFullQueue(newSongs: List<Song>) {
+        invalidateShuffleSnapshot()
         // Nunca meter en la cola canciones eliminadas ni canciones remotas
         // cuando el servidor no está disponible. Se conserva la actual aunque
         // haya empezado online y se haya perdido la conexión durante la pista.
