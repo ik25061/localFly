@@ -465,13 +465,6 @@ class PlaybackService : MediaSessionService() {
     /** Canciones ya reproducidas en esta sesión (para no repetirlas al rellenar cola). */
     private val playedInSessionIds = LinkedHashSet<String>()
 
-    /** True solo si la sesión actual se lanzó como "modo descargas" (se pulsó
-     *  play sobre UNA única canción descargada, p. ej. desde la pantalla
-     *  Descargas). En ese caso la cola se rearma solo con descargas. Si se
-     *  lanzó una colección (artista/álbum/género/playlist) permanece en false,
-     *  de modo que NO se poda la cola ni salta a otros artistas. */
-    private var playingDownloadMix = false
-
     /** True solo si la reproducción se lanzó desde el panel de "No me gusta"
      *  (modo revisión). Evita que el modo revisión secuestre la cola cuando se
      *  reproduce una colección normal en la que, por casualidad, aparece una
@@ -1309,12 +1302,6 @@ class PlaybackService : MediaSessionService() {
     fun isDownloadedMode(): Boolean =
         currentSong?.let { downloadHelper.isDownloaded(it.id) } ?: false
 
-    /** True si la sesión actual se lanzó como "modo descargas" (play sobre una
-     *  única canción descargada). Distinto de [isDownloadedMode], que solo mira
-     *  si la canción actual está descargada. Úsalo para decidir si la cola debe
-     *  rellenarse solo con descargas. */
-    fun isDownloadMixSession(): Boolean = playingDownloadMix
-
     /** Lista SOLO de canciones descargadas, ORDENADA POR GÉNERO (estilo
      *  musical) y con afinidad respecto a la canción semilla:
      *   - Se agrupan en bloques por género: todas las canciones del mismo
@@ -1843,7 +1830,7 @@ class PlaybackService : MediaSessionService() {
             }
             // OFFLINE FIX: sin conexión, saltar lo que NO esté descargado en vez
             // de intentar reproducir una URL remota (fallaba y "se cortaba").
-            if (!ServerReachability.isOnline || playingDownloadMix) {
+            if (!ServerReachability.isOnline) {
                 while (nextIdx < queue.size &&
                     queueLocalPaths.getOrNull(nextIdx) == null &&
                     downloadHelper.getLocalFilePath(queue[nextIdx].id) == null
