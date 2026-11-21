@@ -813,13 +813,13 @@ class PlaybackService : MediaSessionService() {
         // estándar SEEK_TO_PREVIOUS/NEXT y los deriva a esa cola.
         val previousButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
             .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
-            .setSlots(intArrayOf(CommandButton.SLOT_BACK))
+            .setSlots(CommandButton.SLOT_BACK)
             .setDisplayName("Anterior")
             .build()
 
         val nextButton = CommandButton.Builder(CommandButton.ICON_NEXT)
             .setPlayerCommand(Player.COMMAND_SEEK_TO_NEXT)
-            .setSlots(intArrayOf(CommandButton.SLOT_FORWARD))
+            .setSlots(CommandButton.SLOT_FORWARD)
             .setDisplayName("Siguiente")
             .build()
 
@@ -830,13 +830,13 @@ class PlaybackService : MediaSessionService() {
         }
         val likeButton = CommandButton.Builder(likeIcon)
             .setSessionCommand(SessionCommand(COMMAND_LIKE, Bundle.EMPTY))
-            .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
+            .setSlots(CommandButton.SLOT_OVERFLOW)
             .setDisplayName("Me gusta")
             .build()
 
         val dislikeButton = CommandButton.Builder(CommandButton.ICON_THUMB_DOWN_UNFILLED)
             .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
-            .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
+            .setSlots(CommandButton.SLOT_OVERFLOW)
             .setDisplayName("No me gusta")
             .build()
 
