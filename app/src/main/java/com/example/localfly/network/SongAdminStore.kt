@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 
 /**
@@ -52,7 +53,9 @@ data class DislikedSong(
      * recuadro en rojo oscuro y entra en la cola de revisión de reproducción.
      */
     val kept: Boolean = false,
-    val keptAtMs: Long = 0L
+    val keptAtMs: Long = 0L,
+    /** true solo cuando el usuario ha decidido explícitamente ponerla para eliminar. */
+    val markedForDeletion: Boolean = false
 )
 
 data class CustomGenre(
@@ -188,8 +191,18 @@ object SongAdminStore {
     private fun parseDisliked(json: String?): List<DislikedSong> {
         if (json.isNullOrBlank()) return emptyList()
         return try {
-            val type = object : TypeToken<List<DislikedSong>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
+            // Migración compatible: antes kept=false significaba "pendiente de
+            // decidir si borrar". Se conserva esa intención en las instalaciones
+            // existentes; los nuevos dislikes se guardan como solo-dislike.
+            JsonParser.parseString(json).asJsonArray.map { element ->
+                val item = element.asJsonObject
+                val song = gson.fromJson(item, DislikedSong::class.java)
+                if (!item.has("markedForDeletion")) {
+                    song.copy(markedForDeletion = !song.kept)
+                } else {
+                    song
+                }
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -329,7 +342,7 @@ object SongAdminStore {
     fun isPendingDislike(songId: String): Boolean {
         if (context != null) reloadIfChanged()
         if (songId in deletedCache) return false
-        return dislikedCache.any { it.songId == songId && !it.kept }
+        return dislikedCache.any { it.songId == songId && it.markedForDeletion }
     }
 
     /**
@@ -338,7 +351,7 @@ object SongAdminStore {
      * de ellas, la lista de reproducción pasa a estar formada solo por estas,
      * para poder gestionarlas una detrás de otra.
      */
-    fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { !it.kept }
+    fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { it.markedForDeletion }
 
     /** El admin decide DEJAR la canción: ya la revisó y no la borrará. */
     fun markDislikedSongKept(songId: String) = setDislikedKept(songId, kept = true)
@@ -355,7 +368,8 @@ object SongAdminStore {
         if (current.kept == kept) return
         val updated = current.copy(
             kept = kept,
-            keptAtMs = if (kept) System.currentTimeMillis() else 0L
+            keptAtMs = if (kept) System.currentTimeMillis() else 0L,
+            markedForDeletion = !kept
         )
         dislikedCache = dislikedCache.toMutableList().also { it[index] = updated }
         persistDisliked()
@@ -371,23 +385,10 @@ object SongAdminStore {
 
         Log.d("SongAdminStore", "Recording dislike for: ${song.title} (${song.id})")
 
-        // Si ya estaba marcada: un nuevo dislike la devuelve a PENDIENTE (si el
-        // admin la había "dejado", vuelve a la lista roja y a la cola de revisión).
-        val existingIndex = dislikedCache.indexOfFirst { it.songId == song.id }
-        if (existingIndex != -1) {
-            val existing = dislikedCache[existingIndex]
-            if (existing.kept) {
-                dislikedCache = dislikedCache.toMutableList().also {
-                    it[existingIndex] = existing.copy(
-                        kept = false,
-                        keptAtMs = 0L,
-                        dislikedAtMs = System.currentTimeMillis()
-                    )
-                }
-                persistDisliked()
-            }
-            return
-        }
+        // Un dislike no significa que el usuario quiera borrar el archivo.
+        // Si ya existe, respetar la decisión explícita de conservarlo o
+        // marcarlo para eliminar; repetir la acción no cambia esa decisión.
+        if (dislikedCache.any { it.songId == song.id }) return
         
         dislikedCache = dislikedCache + DislikedSong(
             songId = song.id,
@@ -395,7 +396,9 @@ object SongAdminStore {
             artist = song.artist,
             album = song.album,
             year = song.year,
-            dislikedAtMs = System.currentTimeMillis()
+            dislikedAtMs = System.currentTimeMillis(),
+            kept = true,
+            markedForDeletion = false
         )
         persistDisliked()
     }
