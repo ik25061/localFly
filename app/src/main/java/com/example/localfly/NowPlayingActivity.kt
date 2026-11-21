@@ -659,7 +659,7 @@ class NowPlayingActivity : AppCompatActivity() {
         if (service.queue.isEmpty()) return
 
         lifecycleScope.launch {
-            val offline = !ServerReachability.isOnline || service.isDownloadMixSession()
+            val offline = !ServerReachability.isOnline
             val toastMsg = if (offline) "🤖 Mezclando tus descargas..." else "🤖 IA mezclando tu sesión..."
             Toast.makeText(this@NowPlayingActivity, toastMsg, Toast.LENGTH_SHORT).show()
 
