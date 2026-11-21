@@ -1162,7 +1162,6 @@ class PlaybackService : MediaSessionService() {
         // revisión". El modo descargas se activa abajo únicamente al reproducir
         // una única descarga; el modo revisión, solo cuando lo pide el panel de
         // "No me gusta" (reviewSession = true).
-        playingDownloadMix = false
         shuffleEnabled = false
         queueBeforeShuffle = null
         pathsBeforeShuffle = null
@@ -1251,7 +1250,7 @@ class PlaybackService : MediaSessionService() {
         // una colección, se borraban de la cola todas las demás canciones no
         // descargadas y el reproductor saltaba a otro artista.
         if (queue.isEmpty()) return
-        if (ServerReachability.isOnline && !playingDownloadMix) return
+        if (ServerReachability.isOnline) return
 
         // IMPORTANTE: la canción en currentIndex + 1 puede ya estar cargada como
         // "siguiente item" dentro del ExoPlayer (ver playCurrentIndex/
@@ -1496,38 +1495,6 @@ class PlaybackService : MediaSessionService() {
     }
 
     /**
-     * OFFLINE FIX: relleno síncrono con descargas. Devuelve false cuando ya
-     * se encargó de la recarga (modo offline/descargas) para no lanzar el
-     * refill asíncrono duplicado; true cuando hay que seguir con la vía
-     * asíncrona online.
-     */
-    private fun tryRefillOfflineSync(limit: Int = 15): Boolean {
-        // Una lista normal elegida por el usuario nunca se amplía con canciones
-        // ajenas al terminar, ni siquiera cuando estamos offline. Solo un modo
-        // de mezcla iniciado explícitamente puede rellenarse con descargas.
-        if (!playingDownloadMix) return ServerReachability.isOnline
-        try {
-            val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
-            val dislikedIds = SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
-            val mix = buildDownloadMix(currentSong, existingIds, limit = limit)
-                .filter { it.id !in dislikedIds && !SongAdminStore.isDeleted(it.id) }
-            if (mix.isEmpty()) return false
-            val mutableQueue = queue.toMutableList()
-            val mutablePaths = queueLocalPaths.toMutableList()
-            mutableQueue.addAll(mix)
-            mutablePaths.addAll(mix.map { downloadHelper.getLocalFilePath(it.id) })
-            queue = mutableQueue
-            queueLocalPaths = mutablePaths
-            resyncPreloadedNext()
-            onStateChanged?.invoke()
-            LocalLogger.log(this, "Refill offline síncrono: +${mix.size} descargas")
-        } catch (e: Exception) {
-            LocalLogger.log(this, "Refill offline síncrono: fallo (${e.message})")
-        }
-        return false
-    }
-
-    /**
      * Verifica si quedan menos de 10 canciones por delante en la cola.
      * Si es así, rellena con recomendaciones (online) o con descargas (offline).
      */
@@ -1548,20 +1515,16 @@ class PlaybackService : MediaSessionService() {
         val pendingCount = queue.size - (currentIndex + 1)
         if (pendingCount >= 10) return
 
-        // OFFLINE FIX: rellenar de forma SÍNCRONA con descargas antes de que
-        // next() decida parar. Antes era todo asíncrono: al terminar la última
-        // canción de la cola, next() paraba (stop + clear) y el refill llegaba
-        // tarde, así que la reproducción "se cortaba" offline.
-        if (!tryRefillOfflineSync(limit = 15)) return
+        // Offline: la lista termina exactamente donde termina la selección del
+        // usuario. No se añaden descargas ajenas ni canciones aleatorias.
+        if (!ServerReachability.isOnline) {
+            LocalLogger.log(this, "Refill: sin conexión; no se amplía la lista seleccionada.")
+            return
+        }
 
         serviceScope.launch {
             try {
-                if (playingDownloadMix) {
-                    // Solo el modo de mezcla explícito puede rellenar con descargas.
-                    val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
-                    val mix = buildDownloadMix(currentSong, existingIds, limit = 15)
-                    if (mix.isNotEmpty()) addListToQueue(mix.filter { !SongAdminStore.isDeleted(it.id) })
-                } else if (ServerReachability.isServerReachable()) {
+                if (ServerReachability.isServerReachable()) {
                     // MODO ONLINE: Usar IA para obtener recomendaciones
                     val aiManager = AIRecommendationManager(
                         sessionManager,
@@ -1587,9 +1550,7 @@ class PlaybackService : MediaSessionService() {
                         addListToQueue(newSongs)
                     }
                 } else {
-                    // La conexión pudo caer entre las comprobaciones. No ampliar
-                    // una lista normal con canciones descargadas al azar.
-                    LocalLogger.log(this@PlaybackService, "Refill: sin conexión; se conserva el final de la lista seleccionada.")
+                    LocalLogger.log(this@PlaybackService, "Refill: el servidor dejó de responder; se conserva el final de la lista seleccionada.")
                 }
             } catch (e: Exception) {
                 LocalLogger.log(this@PlaybackService, "Error rellenando cola: ${e.message}")
