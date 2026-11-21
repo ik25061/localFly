@@ -1173,37 +1173,36 @@ class PlaybackService : MediaSessionService() {
         playedInSessionIds.clear()
         val requestedSong = songsFiltered.getOrNull(startIndexFiltered)
 
-        // MODO DESCARGAS: SOLO cuando se reproduce UNA única canción descargada
-        // (p. ej. desde la pantalla Descargas) la cola ("a continuación") se
-        // arma con canciones descargadas. Si se lanzó una colección completa
-        // (artista/álbum/género/playlist) NO se rearma con descargas: antes,
-        // pulsar play sobre una descarga dentro de la lista de un artista
-        // reemplazaba sus 73 canciones por una mezcla de descargas de otros
-        // artistas.
-        if (songs.size == 1 && requestedSong != null && downloadHelper.isDownloaded(requestedSong.id)) {
-            playingDownloadMix = true
-            val mix = buildDownloadMix(requestedSong, excludeIds = setOf(requestedSong.id), limit = 80)
-            queue = listOf(requestedSong) + mix
-            queueLocalPaths = queue.map { downloadHelper.getLocalFilePath(it.id) }
-            currentIndex = 0
-            playCurrentIndex()
-            return
-        }
+        // Una selección de una sola canción reproduce SOLO esa canción. No se
+        // transforma silenciosamente en una mezcla aleatoria de descargas.
+        // Las mezclas automáticas se reservan para acciones explícitas del usuario.
+
+        // Una cola nueva empieza siempre en orden. El usuario puede activar
+        // aleatorio después con el control Shuffle del reproductor.
+        player?.shuffleModeEnabled = false
 
         if (!ServerReachability.isOnline) {
-            // Offline: la cola solo puede contener lo que ya está en el teléfono.
-            val indexed = songsFiltered.withIndex().filter { (_, s) -> downloadHelper.isDownloaded(s.id) }
-            if (indexed.isEmpty()) {
-                LocalLogger.log(this, "setQueueAndPlay: sin conexión y nada de esta lista está descargado")
+            // Offline: construir la cola únicamente con archivos válidos y
+            // conservar exactamente el orden de la lista que eligió el usuario.
+            val available = songsFiltered.map { song ->
+                val originalIndex = songs.indexOfFirst { it.id == song.id }
+                val storedPath = localPaths?.getOrNull(originalIndex)
+                    ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
+                val path = downloadHelper.getLocalFilePath(song.id) ?: storedPath
+                song to path
+            }.filter { (_, path) -> path != null }
+
+            if (available.isEmpty()) {
+                LocalLogger.log(this, "setQueueAndPlay: sin conexión y ninguna canción de la lista tiene descarga válida")
+                Toast.makeText(this, "Esta lista no tiene canciones descargadas", Toast.LENGTH_SHORT).show()
                 return
             }
-            val filteredSongs = indexed.map { it.value }
-            val filteredPaths = indexed.map { (fi, s) ->
-                val origIdx = songs.indexOfFirst { it.id == s.id }
-                localPaths?.getOrNull(origIdx) ?: downloadHelper.getLocalFilePath(s.id)
-            }
-            val newStartIndex = requestedSong?.let { req -> filteredSongs.indexOfFirst { it.id == req.id } }
-                ?.takeIf { it >= 0 } ?: 0
+
+            val filteredSongs = available.map { it.first }
+            val filteredPaths = available.map { it.second }
+            val newStartIndex = requestedSong?.let { req ->
+                filteredSongs.indexOfFirst { it.id == req.id }
+            }?.takeIf { it >= 0 } ?: 0
 
             queue = filteredSongs
             queueLocalPaths = filteredPaths
@@ -1329,8 +1328,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun playNext(song: Song) {
-        // Una canción eliminada del disco ya no puede entrar en la cola.
+        // Una canción eliminada o no descargada offline no puede entrar en cola.
         if (SongAdminStore.isDeleted(song.id)) return
+        if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
         if (queue.isEmpty()) { playSong(song); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
@@ -1345,6 +1345,7 @@ class PlaybackService : MediaSessionService() {
 
     fun addToQueue(song: Song) {
         if (SongAdminStore.isDeleted(song.id)) return
+        if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
         if (queue.isEmpty()) { playSong(song); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
@@ -1357,7 +1358,10 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun addListToQueue(songs: List<Song>) {
-        val filtered = songs.filter { !SongAdminStore.isDeleted(it.id) }
+        val filtered = songs.filter {
+            !SongAdminStore.isDeleted(it.id) &&
+                (ServerReachability.isOnline || downloadHelper.isDownloaded(it.id))
+        }
         if (filtered.isEmpty()) return
         if (queue.isEmpty()) { setQueueAndPlay(filtered, 0); return }
         val mutableQueue = queue.toMutableList()
@@ -1467,8 +1471,14 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun updateFullQueue(newSongs: List<Song>) {
-        // Nunca meter en la cola una canción eliminada del disco.
-        val alive = newSongs.filter { !SongAdminStore.isDeleted(it.id) }
+        // Nunca meter en la cola canciones eliminadas ni canciones remotas
+        // cuando el servidor no está disponible. Se conserva la actual aunque
+        // haya empezado online y se haya perdido la conexión durante la pista.
+        val currentId = currentSong?.id
+        val alive = newSongs.filter {
+            !SongAdminStore.isDeleted(it.id) &&
+                (ServerReachability.isOnline || it.id == currentId || downloadHelper.isDownloaded(it.id))
+        }
         if (alive.isEmpty()) return
         queue = alive
         queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
@@ -1485,7 +1495,10 @@ class PlaybackService : MediaSessionService() {
      * asíncrona online.
      */
     private fun tryRefillOfflineSync(limit: Int = 15): Boolean {
-        if (!playingDownloadMix && ServerReachability.isOnline) return true
+        // Una lista normal elegida por el usuario nunca se amplía con canciones
+        // ajenas al terminar, ni siquiera cuando estamos offline. Solo un modo
+        // de mezcla iniciado explícitamente puede rellenarse con descargas.
+        if (!playingDownloadMix) return ServerReachability.isOnline
         try {
             val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
             val dislikedIds = SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
@@ -1536,11 +1549,8 @@ class PlaybackService : MediaSessionService() {
 
         serviceScope.launch {
             try {
-                if (playingDownloadMix || !ServerReachability.isOnline) {
-                    // Modo descargas: rellenar SIEMPRE solo con descargas (por
-                    // género), haya o no conexión. Excluir además lo ya
-                    // reproducido en esta sesión (bug: repetían canciones que
-                    // ya habían sonado con el auto-eliminar activo).
+                if (playingDownloadMix) {
+                    // Solo el modo de mezcla explícito puede rellenar con descargas.
                     val existingIds = queue.map { it.id }.toSet() + playedInSessionIds
                     val mix = buildDownloadMix(currentSong, existingIds, limit = 15)
                     if (mix.isNotEmpty()) addListToQueue(mix.filter { !SongAdminStore.isDeleted(it.id) })
@@ -1570,26 +1580,9 @@ class PlaybackService : MediaSessionService() {
                         addListToQueue(newSongs)
                     }
                 } else {
-                    // MODO OFFLINE: Usar canciones descargadas, excluyendo lo
-                    // ya sonado en la sesión y las marcadas como "No me gusta".
-                    val downloads = downloadHelper.getDownloadedSongs()
-                        .filter { d -> SongAdminStore.getDislikedSongs().none { it.songId == d.id } }
-                        .filter { d -> !SongAdminStore.isDeleted(d.id) }
-                    if (downloads.isNotEmpty()) {
-                        val existingIds = (queue.map { it.id }.toSet() + playedInSessionIds)
-                        val candidates = downloads.filter { it.id !in existingIds }
-                        
-                        // SOLO canciones nuevas para la cola: NO volver a añadir
-                        // las que ya están (crear duplicados rompía la
-                        // sincronía índice/player y causaba repeticiones).
-                        val toAdd = candidates.shuffled().take(15).map { d -> toSong(d) }
-                        
-                        if (toAdd.isNotEmpty()) {
-                            addListToQueue(toAdd)
-                        } else {
-                            LocalLogger.log(this@PlaybackService, "Refill offline: no quedan descargas nuevas (todo ya sonado o en cola).")
-                        }
-                    }
+                    // La conexión pudo caer entre las comprobaciones. No ampliar
+                    // una lista normal con canciones descargadas al azar.
+                    LocalLogger.log(this@PlaybackService, "Refill: sin conexión; se conserva el final de la lista seleccionada.")
                 }
             } catch (e: Exception) {
                 LocalLogger.log(this@PlaybackService, "Error rellenando cola: ${e.message}")
@@ -1931,8 +1924,14 @@ class PlaybackService : MediaSessionService() {
         val song = queue.getOrNull(currentIndex) ?: return
         // OFFLINE FIX: re-resolver el archivo local (queueLocalPaths puede traer
         // un null rancio si la descarga se registró después de armar la cola).
-        val resolvedLocalPath = queueLocalPaths.getOrNull(currentIndex)
-            ?: downloadHelper.getLocalFilePath(song.id)
+        val cachedPath = queueLocalPaths.getOrNull(currentIndex)
+            ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
+        val resolvedLocalPath = downloadHelper.getLocalFilePath(song.id) ?: cachedPath
+        if (queueLocalPaths.getOrNull(currentIndex) != resolvedLocalPath) {
+            queueLocalPaths = queueLocalPaths.toMutableList().also {
+                if (currentIndex in it.indices) it[currentIndex] = resolvedLocalPath
+            }
+        }
         if (resolvedLocalPath == null && !ServerReachability.isOnline) {
             // Sin archivo y sin red la URL remota fallaría y "se cortaría":
             // saltar a la siguiente descarga disponible.
