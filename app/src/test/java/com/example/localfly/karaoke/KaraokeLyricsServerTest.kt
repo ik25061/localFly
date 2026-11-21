@@ -204,7 +204,10 @@ class KaraokeLyricsServerTest {
     @Test
     fun `si el upstream del audio falla el proxy contesta 502 y no se queda mudo`() {
         val port = freePort()
-        val deadUrl = "http://127.0.0.1:${freePort()}/audio/s1"
+        // El puerto 0 nunca puede ser un puerto TCP de escucha: evita que otra
+        // prueba paralela reutilice un puerto "libre" y convierta el upstream
+        // supuestamente caído en un servidor válido de forma intermitente.
+        val deadUrl = "http://127.0.0.1:0/audio/s1"
         withServer(port) {
             val (head, body) = requestRaw(
                 port,
