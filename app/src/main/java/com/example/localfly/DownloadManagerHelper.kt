@@ -88,25 +88,36 @@ class DownloadManagerHelper private constructor(context: Context) {
     }
 
     fun getDownloadedSongs(): List<DownloadedSong> {
-        cachedDownloads?.let { return it }
-        
-        val json = prefs.getString("list", null) ?: return emptyList()
-        val type = object : TypeToken<List<DownloadedSong>>() {}.type
-        return try {
-            val list = gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
-            cachedDownloads = list
-            list
-        } catch (e: Exception) {
-            emptyList()
+        val stored = cachedDownloads ?: run {
+            val json = prefs.getString("list", null) ?: return emptyList()
+            val type = object : TypeToken<List<DownloadedSong>>() {}.type
+            try {
+                gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
+            } catch (e: Exception) {
+                emptyList()
+            }
         }
+
+        // El registro de SharedPreferences no garantiza que el audio siga
+        // existiendo: el usuario puede borrar archivos desde Ajustes/USB o una
+        // limpieza externa. No mostrar como descargadas entradas huérfanas.
+        val valid = stored.filter { song ->
+            val file = File(song.filePath)
+            file.isFile && file.length() > 0L
+        }
+        cachedDownloads = valid
+        if (valid.size != stored.size) {
+            prefs.edit().putString("list", gson.toJson(valid)).apply()
+        }
+        return valid
     }
 
-    fun isDownloaded(songId: String): Boolean = getDownloadedSongs().any { it.id == songId }
+    fun isDownloaded(songId: String): Boolean = getLocalFilePath(songId) != null
 
     fun getLocalFilePath(songId: String): String? {
         val song = getDownloadedSongs().find { it.id == songId } ?: return null
         val file = File(song.filePath)
-        return if (file.exists()) file.absolutePath else null
+        return if (file.isFile && file.length() > 0L) file.absolutePath else null
     }
 
     /**
