@@ -87,16 +87,26 @@ class DownloadManagerHelper private constructor(context: Context) {
         return dir
     }
 
-    fun getDownloadedSongs(): List<DownloadedSong> {
-        val stored = cachedDownloads ?: run {
-            val json = prefs.getString("list", null) ?: return emptyList()
-            val type = object : TypeToken<List<DownloadedSong>>() {}.type
-            try {
-                gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
-            } catch (e: Exception) {
-                emptyList()
-            }
+    /**
+     * Carga el índice JSON una sola vez. No valida todos los archivos aquí:
+     * getLocalFilePath() se usa desde el hilo del reproductor y debe consultar
+     * únicamente la canción solicitada, no recorrer cientos de descargas.
+     */
+    private fun loadDownloadIndex(): List<DownloadedSong> {
+        cachedDownloads?.let { return it }
+        val json = prefs.getString("list", null) ?: return emptyList()
+        val type = object : TypeToken<List<DownloadedSong>>() {}.type
+        val loaded = try {
+            gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
         }
+        cachedDownloads = loaded
+        return loaded
+    }
+
+    fun getDownloadedSongs(): List<DownloadedSong> {
+        val stored = loadDownloadIndex()
 
         // El registro de SharedPreferences no garantiza que el audio siga
         // existiendo: el usuario puede borrar archivos desde Ajustes/USB o una
@@ -115,7 +125,11 @@ class DownloadManagerHelper private constructor(context: Context) {
     fun isDownloaded(songId: String): Boolean = getLocalFilePath(songId) != null
 
     fun getLocalFilePath(songId: String): String? {
-        val song = getDownloadedSongs().find { it.id == songId } ?: return null
+        // Búsqueda O(n) en el índice en memoria + una sola comprobación del
+        // archivo solicitado. No llamar a getDownloadedSongs(): esa función
+        // valida todos los archivos y provocaba un recorrido completo por cada
+        // canción al construir una cola offline (O(canciones × descargas)).
+        val song = loadDownloadIndex().firstOrNull { it.id == songId } ?: return null
         val file = File(song.filePath)
         return if (file.isFile && file.length() > 0L) file.absolutePath else null
     }
