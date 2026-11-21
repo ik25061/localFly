@@ -27,6 +27,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.example.localfly.network.ApiService
 import com.example.localfly.network.DislikedSong
+import com.example.localfly.network.DeleteSongRequest
 import com.example.localfly.network.HideRequest
 import com.example.localfly.network.LikeRequest
 import com.example.localfly.network.MetadataSyncManager
@@ -925,19 +926,49 @@ class PlaybackService : MediaSessionService() {
                 val pendingPlaylistAdds = sessionManager.getPendingPlaylistSongAdds()
                 val pendingLyrics = sessionManager.getPendingLyricsUploads()
                 val pendingComments = sessionManager.getPendingComments()
+                val pendingSongDeletions = SongAdminStore.getPendingSongDeletions()
                 val pendingMetadata = SongAdminStore.getPendingSyncIds().isNotEmpty()
 
                 // Los comentarios y los metadatos también deben mantener despierto
                 // el sincronizador cuando son la única operación pendiente.
                 if (pendingLikes.isEmpty() && pendingDislikes.isEmpty() &&
                     pendingPlaylistCreations.isEmpty() && pendingPlaylistAdds.isEmpty() &&
-                    pendingLyrics.isEmpty() && pendingComments.isEmpty() && !pendingMetadata) {
+                    pendingLyrics.isEmpty() && pendingComments.isEmpty() &&
+                    pendingSongDeletions.isEmpty() && !pendingMetadata) {
                     delay(30000)
                     continue
                 }
 
                 var anySuccess = false
-                
+
+                // 0. Eliminaciones solicitadas sin conexión. La cola es local,
+                // persistente e independiente de los dislikes; solo se retira
+                // una entrada cuando el servidor confirma el borrado.
+                pendingSongDeletions.forEach { pending ->
+                    if (sessionManager.getUserId() != syncUserId) return@forEach
+                    try {
+                        val response = RetrofitClient.api.deleteSong(
+                            DeleteSongRequest(id = pending.songId, userId = syncUserId)
+                        )
+                        if (response.isSuccessful) {
+                            SongAdminStore.markSongDeleted(pending.songId)
+                            withContext(Dispatchers.IO) {
+                                downloadHelper.removeLocalArtifacts(pending.songId)
+                            }
+                            withContext(Dispatchers.Main) {
+                                purgeDeletedSong(pending.songId)
+                                onStateChanged?.invoke()
+                            }
+                            anySuccess = true
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: eliminación confirmada (${pending.songId})")
+                        } else {
+                            LocalLogger.log(this@PlaybackService, "syncOfflineActions: eliminación pendiente (${pending.songId}) → HTTP ${response.code()}")
+                        }
+                    } catch (e: Exception) {
+                        LocalLogger.log(this@PlaybackService, "syncOfflineActions: eliminación pendiente (${pending.songId}) → ${e.message}")
+                    }
+                }
+
                 // 1. Likes
                 LocalLogger.log(this@PlaybackService, "syncOfflineActions: sincronizando ${pendingLikes.size} likes y ${pendingDislikes.size} dislikes pendientes...")
                 pendingLikes.forEach { (songId, liked) ->
@@ -1907,7 +1938,8 @@ class PlaybackService : MediaSessionService() {
         // un null rancio si la descarga se registró después de armar la cola).
         val cachedPath = queueLocalPaths.getOrNull(currentIndex)
             ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
-        val resolvedLocalPath = downloadHelper.getLocalFilePath(song.id) ?: cachedPath
+        val resolvedLocalPath = cachedPath
+            ?: if (ServerReachability.isOnline) downloadHelper.getLocalFilePath(song.id) else null
         if (queueLocalPaths.getOrNull(currentIndex) != resolvedLocalPath) {
             queueLocalPaths = queueLocalPaths.toMutableList().also {
                 if (currentIndex in it.indices) it[currentIndex] = resolvedLocalPath
