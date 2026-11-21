@@ -116,33 +116,29 @@ class DislikedSongsAdminFragment : Fragment() {
     private fun refresh() {
         layoutDisliked.removeAllViews()
         val songs = SongAdminStore.getDislikedSongs()
-        // La lista se divide en DOS grupos independientes, cada uno con su
-        // encabezado:
-        //   1. REVISADAS: el admin ya las escuchó y pulsó "Dejar" (kept = true).
-        //   2. SIN REVISAR: siguen pendientes, la "lista de eliminar después"
-        //      (kept = false); son las que forman la cola de revisión.
-        val reviewed = songs.filter { it.kept }
-        val unreviewed = songs.filter { !it.kept }
+        // Separar dos decisiones distintas:
+        // 1) dislike: la canción no gusta, pero NO se ha decidido borrarla.
+        // 2) eliminación: el usuario la ha marcado expresamente para borrarla.
+        val dislikedOnly = songs.filter { !it.markedForDeletion }
+        val markedForDeletion = songs.filter { it.markedForDeletion }
         tvCount.text = buildString {
             append(if (songs.size == 1) "1 canción" else "${songs.size} canciones")
-            append(" · ${reviewed.size} dejadas · ${unreviewed.size} sin revisar")
+            append(" · ${dislikedOnly.size} no me gustan · ${markedForDeletion.size} para eliminar")
         }
         tvNoDisliked.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
 
-        // ---- Grupo 1: revisadas y dejadas (verde) ----
-        if (reviewed.isNotEmpty() && isAdded) {
+        if (dislikedOnly.isNotEmpty() && isAdded) {
             layoutDisliked.addView(
-                buildSectionHeader("Revisadas · ya las dejaste (${reviewed.size})", "#6BCB77")
+                buildSectionHeader("No me gustan · sin marcar para eliminar (${dislikedOnly.size})", "#A8A8AF")
             )
-            for (song in reviewed) layoutDisliked.addView(buildRow(song))
+            for (song in dislikedOnly) layoutDisliked.addView(buildRow(song))
         }
 
-        // ---- Grupo 2: sin revisar, para eliminar después (rojo) ----
-        if (unreviewed.isNotEmpty() && isAdded) {
+        if (markedForDeletion.isNotEmpty() && isAdded) {
             layoutDisliked.addView(
-                buildSectionHeader("Sin revisar · para eliminar después (${unreviewed.size})", "#FF6B6B")
+                buildSectionHeader("Marcadas para eliminar (${markedForDeletion.size})", "#FF6B6B")
             )
-            for (song in unreviewed) layoutDisliked.addView(buildRow(song))
+            for (song in markedForDeletion) layoutDisliked.addView(buildRow(song))
         }
     }
 
@@ -200,41 +196,42 @@ class DislikedSongsAdminFragment : Fragment() {
         val tvStatus = row.findViewById<TextView>(R.id.tvDlStatus)
         val btnKeep = row.findViewById<MaterialButton>(R.id.btnKeepSong)
 
-        if (song.kept) {
-            // Recuadro apagado + aviso: ya la revisó y decidió no borrarla.
-            card.setCardBackgroundColor(Color.parseColor("#16211A"))
-            card.strokeColor = Color.parseColor("#2E5237")
-            tvStatus.visibility = View.VISIBLE
-            tvStatus.text = "✓ Dejada: ya la revisaste y no se eliminará (fuera de la cola de revisión)"
-            tvStatus.setTextColor(Color.parseColor("#6BCB77"))
-            btnKeep.text = "Volver a revisar"
-            btnKeep.setTextColor(Color.parseColor("#A8A8AF"))
-            btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#55555C"))
-        } else {
-            // Recuadro RELLENO EN ROJO OSCURO: pendiente de revisar.
+        if (song.markedForDeletion) {
             card.setCardBackgroundColor(Color.parseColor("#3B0F14"))
             card.strokeColor = Color.parseColor("#C0392B")
             tvStatus.visibility = View.VISIBLE
-            tvStatus.text = "● Pendiente de revisar: ponla en la cola para decidir si la borras o la dejas"
+            tvStatus.text = "● Marcada para eliminar · aún no se ha borrado"
             tvStatus.setTextColor(Color.parseColor("#FF6B6B"))
-            btnKeep.text = "Dejar"
+            btnKeep.text = "Cancelar eliminación"
             btnKeep.setTextColor(Color.parseColor("#6BCB77"))
             btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#6BCB77"))
+        } else {
+            card.setCardBackgroundColor(Color.parseColor("#1F1F23"))
+            card.strokeColor = Color.parseColor("#55555C")
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "● No me gusta · se conserva hasta que decidas eliminarla"
+            tvStatus.setTextColor(Color.parseColor("#A8A8AF"))
+            btnKeep.text = "Marcar para eliminar"
+            btnKeep.setTextColor(Color.parseColor("#FF6B6B"))
+            btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#FF6B6B"))
         }
 
+        val btnDelete = row.findViewById<MaterialButton>(R.id.btnDeleteFromDisk)
+        btnDelete.visibility = if (song.markedForDeletion) View.VISIBLE else View.GONE
+        btnDelete.text = "Eliminar ahora"
+
         btnKeep.setOnClickListener {
-            val nowKept = !song.kept
-            if (nowKept) {
-                SongAdminStore.markDislikedSongKept(song.songId)
-            } else {
+            val markForDeletion = !song.markedForDeletion
+            if (markForDeletion) {
                 SongAdminStore.markDislikedSongPending(song.songId)
+            } else {
+                SongAdminStore.markDislikedSongKept(song.songId)
             }
-            // Si la canción está sonando, rearmar la cola de revisión del servicio.
             (requireActivity() as? MainActivity)?.playbackService?.refreshDislikedReviewQueue()
             refresh()
             Toast.makeText(
                 requireContext(),
-                if (nowKept) "Dejada: ya la revisaste, no se eliminará" else "Vuelta a poner en revisión",
+                if (markForDeletion) "Añadida a la lista para eliminar" else "Eliminación cancelada; sigue en No me gustan",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -293,7 +290,11 @@ class DislikedSongsAdminFragment : Fragment() {
                             }
                             return@launch
                         }
-                        activity.playbackService?.playDislikedReview(fullSong)
+                        if (disliked.markedForDeletion) {
+                            activity.playbackService?.playDislikedReview(fullSong)
+                        } else {
+                            activity.playbackService?.playSong(fullSong)
+                        }
                         Toast.makeText(requireContext(), "Escuchando: ${fullSong.title}", Toast.LENGTH_SHORT).show()
                     } else {
                         // El servidor ya no devuelve la canción (borrada): no
