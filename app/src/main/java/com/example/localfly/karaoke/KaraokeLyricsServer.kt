@@ -638,7 +638,17 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
         origin: String? = null
     ) {
         val bytes = body.toByteArray(Charsets.UTF_8)
-        val status = if (code == 200) "200 OK" else "404 Not Found"
+        val reason = when (code) {
+            200 -> "OK"
+            204 -> "No Content"
+            400 -> "Bad Request"
+            404 -> "Not Found"
+            405 -> "Method Not Allowed"
+            502 -> "Bad Gateway"
+            503 -> "Service Unavailable"
+            else -> "Error"
+        }
+        val status = "$code $reason"
         val header = "HTTP/1.1 $status\r\n" +
             "Content-Type: $contentType\r\n" +
             "Content-Length: ${bytes.size}\r\n" +
