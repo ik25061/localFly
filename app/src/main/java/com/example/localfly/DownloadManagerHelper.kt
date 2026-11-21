@@ -356,17 +356,17 @@ class DownloadManagerHelper private constructor(context: Context) {
 
         _downloadProgress.value = DownloadProgress(true, 0, pending.size, "")
 
-        var count = 0
+        var attempted = 0
+        val normalizedBaseUrl = serverBaseUrl.trimEnd('/')
         for (song in pending) {
+            attempted++
             _downloadProgress.value = _downloadProgress.value.copy(
-                current = count + 1,
+                current = attempted,
                 songTitle = song.title
             )
-            
-            val audioUrl = "$serverBaseUrl/audio/${song.id}"
-            if (download(song, audioUrl)) {
-                count++
-            }
+
+            val audioUrl = "$normalizedBaseUrl/audio/${song.id}"
+            download(song, audioUrl)
         }
 
         _downloadProgress.value = DownloadProgress(false, 0, 0, "")
