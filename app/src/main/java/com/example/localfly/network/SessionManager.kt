@@ -97,7 +97,25 @@ class SessionManager(context: Context) {
     fun getUserId(): String? = prefs.getString("user_id", null)
     fun getRole(): String = prefs.getString("role", "USER") ?: "USER"
     fun clearSession() {
-        prefs.edit().clear().apply()
+        // Cerrar sesión no debe borrar la configuración global del dispositivo
+        // (IP del servidor, tema, fondo, crossfade o preferencias de descarga).
+        // Las colas pendientes sí se limpian para impedir que se sincronicen bajo
+        // una cuenta distinta después de iniciar sesión con otro usuario.
+        prefs.edit()
+            .remove("token")
+            .remove("username")
+            .remove("user_id")
+            .remove("role")
+            .remove("pending_comments")
+            .remove("pending_dislikes")
+            .remove("pending_likes")
+            .remove("pending_lyrics_uploads")
+            .remove("pending_playlist_creations")
+            .remove("pending_playlist_song_adds")
+            .remove("favorite_artists")
+            .remove("played_song_ids")
+            .remove("playlists_cache")
+            .apply()
     }
 
     fun isLoggedIn(): Boolean = getToken() != null
