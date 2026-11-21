@@ -936,6 +936,7 @@ class PlaybackService : MediaSessionService() {
                 // 1. Likes
                 LocalLogger.log(this@PlaybackService, "syncOfflineActions: sincronizando ${pendingLikes.size} likes y ${pendingDislikes.size} dislikes pendientes...")
                 pendingLikes.forEach { (songId, liked) ->
+                    if (sessionManager.getUserId() != syncUserId) return@forEach
                     try {
                         val response = RetrofitClient.api.likeSong(songId, LikeRequest(syncUserId, liked))
                         if (response.isSuccessful) {
@@ -952,6 +953,7 @@ class PlaybackService : MediaSessionService() {
                 
                 // 2. Dislikes
                 pendingDislikes.forEach { songId ->
+                    if (sessionManager.getUserId() != syncUserId) return@forEach
                     try {
                         val response = RetrofitClient.api.hideSong(songId, HideRequest(syncUserId))
                         if (response.isSuccessful) {
