@@ -1163,6 +1163,10 @@ class PlaybackService : MediaSessionService() {
         // una única descarga; el modo revisión, solo cuando lo pide el panel de
         // "No me gusta" (reviewSession = true).
         playingDownloadMix = false
+        shuffleEnabled = false
+        queueBeforeShuffle = null
+        pathsBeforeShuffle = null
+        player?.shuffleModeEnabled = false
         dislikeReviewSession = reviewSession
         // Reindexar: el startIndex original puede apuntar a una eliminada.
         val requestedId = songs.getOrNull(startIndex)?.id?.takeIf { !SongAdminStore.isDeleted(it) }
@@ -1178,9 +1182,8 @@ class PlaybackService : MediaSessionService() {
         // transforma silenciosamente en una mezcla aleatoria de descargas.
         // Las mezclas automáticas se reservan para acciones explícitas del usuario.
 
-        // Una cola nueva empieza siempre en orden. El usuario puede activar
-        // aleatorio después con el control Shuffle del reproductor.
-        player?.shuffleModeEnabled = false
+        // Una cola nueva empieza siempre en orden. El modo aleatorio solo se
+        // activa cuando el usuario pulsa expresamente el control Shuffle.
 
         if (!ServerReachability.isOnline) {
             // Offline: construir la cola únicamente con archivos válidos y
@@ -1367,10 +1370,11 @@ class PlaybackService : MediaSessionService() {
         }
         if (filtered.isEmpty()) return
         if (queue.isEmpty()) { setQueueAndPlay(filtered, 0); return }
+        val itemsToAppend = if (shuffleEnabled) filtered.shuffled() else filtered
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
-        mutableQueue.addAll(filtered)
-        mutablePaths.addAll(filtered.map { downloadHelper.getLocalFilePath(it.id) })
+        mutableQueue.addAll(itemsToAppend)
+        mutablePaths.addAll(itemsToAppend.map { downloadHelper.getLocalFilePath(it.id) })
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         resyncPreloadedNext()
@@ -2035,7 +2039,62 @@ class PlaybackService : MediaSessionService() {
     /** Pausa la reproduccion local (usado al iniciar una sesion de Chromecast). */
     fun pause() { player?.pause() }
 
-    fun toggleShuffle() { player?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled; onStateChanged?.invoke() } }
+    fun toggleShuffle() {
+        if (queue.isEmpty()) return
+
+        if (!shuffleEnabled) {
+            // Guardar el orden original para poder volver a él si el usuario
+            // desactiva Shuffle antes de terminar la lista.
+            queueBeforeShuffle = queue.toList()
+            pathsBeforeShuffle = queueLocalPaths.toList()
+
+            val history = queue.take((currentIndex + 1).coerceIn(0, queue.size))
+            val historyPaths = queueLocalPaths.take(history.size)
+            val upcoming = queue.drop(history.size).mapIndexed { index, song ->
+                song to queueLocalPaths.getOrNull(history.size + index)
+            }.shuffled()
+
+            queue = history + upcoming.map { it.first }
+            queueLocalPaths = historyPaths + upcoming.map { it.second }
+            shuffleEnabled = true
+        } else {
+            // Mantener el historial y la canción actual. Recuperar el orden
+            // original solo para las canciones que aún no han sonado.
+            val history = queue.take((currentIndex + 1).coerceIn(0, queue.size))
+            val historyPaths = queueLocalPaths.take(history.size)
+            val original = queueBeforeShuffle
+            val originalPaths = pathsBeforeShuffle
+
+            if (original != null && originalPaths != null) {
+                val playedIds = playedInSessionIds + history.map { it.id }
+                val originalIds = original.map { it.id }.toSet()
+                val orderedRemaining = original.mapIndexedNotNull { index, song ->
+                    if (song.id !in playedIds && !SongAdminStore.isDeleted(song.id)) {
+                        song to originalPaths.getOrNull(index)
+                    } else null
+                }
+                val addedAfterShuffle = queue.drop(history.size).mapIndexedNotNull { index, song ->
+                    if (song.id !in originalIds && song.id !in playedIds && !SongAdminStore.isDeleted(song.id)) {
+                        song to queueLocalPaths.getOrNull(history.size + index)
+                    } else null
+                }
+                queue = history + (orderedRemaining + addedAfterShuffle).map { it.first }
+                queueLocalPaths = historyPaths + (orderedRemaining + addedAfterShuffle).map { it.second }
+            }
+            shuffleEnabled = false
+            queueBeforeShuffle = null
+            pathsBeforeShuffle = null
+        }
+
+        // ExoPlayer solo contiene la canción actual y una precarga. Desactivamos
+        // su shuffle interno para que no altere ni duplique el orden de la cola
+        // completa que administra LocalFly.
+        player?.shuffleModeEnabled = false
+        resyncPreloadedNext()
+        onStateChanged?.invoke()
+    }
+
+    fun isShuffleEnabled(): Boolean = shuffleEnabled
     fun toggleRepeat() { player?.let { it.repeatMode = when (it.repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onStateChanged?.invoke() } }
 
     // ===== MODO RADIO (emisión en vivo / Radio de canción) =====
