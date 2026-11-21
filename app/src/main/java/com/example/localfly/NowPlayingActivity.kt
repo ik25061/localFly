@@ -525,36 +525,27 @@ class NowPlayingActivity : AppCompatActivity() {
         val service = playbackService ?: return
 
         lifecycleScope.launch {
-            // Garantizar SIEMPRE al menos 10 canciones por delante.
-            // Si la cola está vacía o quedan pocas: recomendaciones de IA si
-            // hay conexión, o solo descargas si no la hay.
+            // La cola elegida por el usuario es la fuente de verdad. Solo se
+            // amplía con recomendaciones cuando el servidor está disponible;
+            // offline no se añaden descargas ajenas ni mezclas aleatorias.
             val pendingCount = service.queue.size - (service.currentIndex + 1)
 
-            // En MODO REVISIÓN ("No me gusta") la lista debe contener SOLO
-            // canciones marcadas: no se añaden recomendaciones ni descargas.
-            if (pendingCount < 10 && !service.isDislikeReviewMode()) {
-                if (!ServerReachability.isOnline || service.isDownloadMixSession()) {
+            // En MODO REVISIÓN solo se mantienen las canciones marcadas para
+            // eliminar. En una lista normal, las recomendaciones son online-only.
+            if (pendingCount < 10 && !service.isDislikeReviewMode() && ServerReachability.isOnline) {
+                try {
+                    val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
+                    val recommendations = aiManager.getRecommendations(
+                        limit = 10,
+                        seedSong = service.currentSong
+                    )
                     val existingIds = service.queue.map { it.id }.toSet()
-                    val offlineFill = service.buildOfflineSmartMix(existingIds, limit = 10 - pendingCount)
-                    if (offlineFill.isNotEmpty()) {
-                        service.addListToQueue(offlineFill)
+                    val filteredRecs = recommendations.filter { it.id !in existingIds }
+                    if (filteredRecs.isNotEmpty()) {
+                        service.addListToQueue(filteredRecs)
                     }
-                } else {
-                    try {
-                        val aiManager = AIRecommendationManager(sessionManager, com.example.localfly.ai.AIWeightsStore(this@NowPlayingActivity))
-                        // Si no hay ninguna canción sonando, seedSong será null, la IA usará gustos generales
-                        val recommendations = aiManager.getRecommendations(
-                            limit = 10,
-                            seedSong = service.currentSong
-                        )
-                        val existingIds = service.queue.map { it.id }.toSet()
-                        val filteredRecs = recommendations.filter { it.id !in existingIds }
-                        if (filteredRecs.isNotEmpty()) {
-                            service.addListToQueue(filteredRecs)
-                        }
-                    } catch (e: Exception) {
-                        LocalLogger.log(this@NowPlayingActivity, "Error auto-generando cola", e)
-                    }
+                } catch (e: Exception) {
+                    LocalLogger.log(this@NowPlayingActivity, "Error auto-generando cola", e)
                 }
             }
 
