@@ -832,7 +832,7 @@ class PlaybackService : MediaSessionService() {
             .setDisplayName("Me gusta")
             .build()
 
-        val dislikeButton = CommandButton.Builder(CommandButton.ICON_BLOCK)
+        val dislikeButton = CommandButton.Builder(CommandButton.ICON_THUMB_DOWN_UNFILLED)
             .setSessionCommand(SessionCommand(COMMAND_DISLIKE, Bundle.EMPTY))
             .setSlots(intArrayOf(CommandButton.SLOT_OVERFLOW))
             .setDisplayName("No me gusta")
