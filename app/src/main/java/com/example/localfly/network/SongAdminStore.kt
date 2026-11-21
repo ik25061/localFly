@@ -48,9 +48,9 @@ data class DislikedSong(
     val year: Int? = null,
     val dislikedAtMs: Long = 0L,
     /**
-     * `true` = el administrador YA la revisó y decidió DEJARLA (no borrarla).
-     * `false` = pendiente: en la lista de "No me gusta" se muestra con el
-     * recuadro en rojo oscuro y entra en la cola de revisión de reproducción.
+     * Compatibilidad con el estado antiguo: true significa que el usuario
+     * decidió conservarla. La decisión actual se representa también mediante
+     * markedForDeletion, que separa dislike de eliminación.
      */
     val kept: Boolean = false,
     val keptAtMs: Long = 0L,
@@ -338,7 +338,7 @@ object SongAdminStore {
         return dislikedCache.any { it.songId == songId }
     }
 
-    /** True si está marcada y AÚN NO se ha revisado (pendiente de borrar/dejar). */
+    /** True solo si el usuario la marcó expresamente para eliminar. */
     fun isPendingDislike(songId: String): Boolean {
         if (context != null) reloadIfChanged()
         if (songId in deletedCache) return false
@@ -346,10 +346,8 @@ object SongAdminStore {
     }
 
     /**
-     * Canciones marcadas PENDIENTES de revisión (el admin aún no decidió si las
-     * borra o las deja). Es la fuente de la "cola de revisión": cuando suena una
-     * de ellas, la lista de reproducción pasa a estar formada solo por estas,
-     * para poder gestionarlas una detrás de otra.
+     * Canciones que el usuario ha marcado expresamente para eliminar. Son la
+     * fuente de la cola de revisión; los dislikes normales no entran aquí.
      */
     fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { it.markedForDeletion }
 
@@ -365,7 +363,7 @@ object SongAdminStore {
         val index = dislikedCache.indexOfFirst { it.songId == songId }
         if (index == -1) return
         val current = dislikedCache[index]
-        if (current.kept == kept) return
+        if (current.kept == kept && current.markedForDeletion == !kept) return
         val updated = current.copy(
             kept = kept,
             keptAtMs = if (kept) System.currentTimeMillis() else 0L,
