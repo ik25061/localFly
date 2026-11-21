@@ -118,29 +118,33 @@ class DislikedSongsAdminFragment : Fragment() {
     private fun refresh() {
         layoutDisliked.removeAllViews()
         val songs = SongAdminStore.getDislikedSongs()
-        // Separar dos decisiones distintas:
-        // 1) dislike: la canción no gusta, pero NO se ha decidido borrarla.
-        // 2) eliminación: el usuario la ha marcado expresamente para borrarla.
-        val dislikedOnly = songs.filter { !it.markedForDeletion }
-        val markedForDeletion = songs.filter { it.markedForDeletion }
+        val pendingDeletions = SongAdminStore.getPendingSongDeletions()
+        val pendingIds = pendingDeletions.map { it.songId }.toSet()
+        // Tres estados sin mezclar: dislike normal, decisión de eliminar y
+        // petición de borrado ya encolada para sincronizar con el servidor.
+        val dislikedOnly = songs.filter { !it.markedForDeletion && it.songId !in pendingIds }
+        val markedForDeletion = songs.filter { it.markedForDeletion && it.songId !in pendingIds }
         tvCount.text = buildString {
-            append(if (songs.size == 1) "1 canción" else "${songs.size} canciones")
-            append(" · ${dislikedOnly.size} no me gustan · ${markedForDeletion.size} para eliminar")
+            append("${songs.size + pendingDeletions.count { queued -> songs.none { it.songId == queued.songId } }} canciones")
+            append(" · ${dislikedOnly.size} no me gustan")
+            append(" · ${markedForDeletion.size} marcadas")
+            append(" · ${pendingDeletions.size} pendientes de borrar")
         }
-        tvNoDisliked.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
+        tvNoDisliked.visibility = if (songs.isEmpty() && pendingDeletions.isEmpty()) View.VISIBLE else View.GONE
 
         if (dislikedOnly.isNotEmpty() && isAdded) {
-            layoutDisliked.addView(
-                buildSectionHeader("No me gustan · sin marcar para eliminar (${dislikedOnly.size})", "#A8A8AF")
-            )
+            layoutDisliked.addView(buildSectionHeader("No me gustan · se conservan (${dislikedOnly.size})", "#A8A8AF"))
             for (song in dislikedOnly) layoutDisliked.addView(buildRow(song))
         }
 
         if (markedForDeletion.isNotEmpty() && isAdded) {
-            layoutDisliked.addView(
-                buildSectionHeader("Marcadas para eliminar (${markedForDeletion.size})", "#FF6B6B")
-            )
+            layoutDisliked.addView(buildSectionHeader("Marcadas para eliminar (${markedForDeletion.size})", "#FF6B6B"))
             for (song in markedForDeletion) layoutDisliked.addView(buildRow(song))
+        }
+
+        if (pendingDeletions.isNotEmpty() && isAdded) {
+            layoutDisliked.addView(buildSectionHeader("Pendientes de eliminar al conectar (${pendingDeletions.size})", "#F5A623"))
+            for (song in pendingDeletions) layoutDisliked.addView(buildRow(song))
         }
     }
 
@@ -198,7 +202,17 @@ class DislikedSongsAdminFragment : Fragment() {
         val tvStatus = row.findViewById<TextView>(R.id.tvDlStatus)
         val btnKeep = row.findViewById<MaterialButton>(R.id.btnKeepSong)
 
-        if (song.markedForDeletion) {
+        val pendingDeletion = SongAdminStore.isPendingSongDeletion(song.songId)
+        if (pendingDeletion) {
+            card.setCardBackgroundColor(Color.parseColor("#3A2B12"))
+            card.strokeColor = Color.parseColor("#F5A623")
+            tvStatus.visibility = View.VISIBLE
+            tvStatus.text = "● Pendiente de eliminar al recuperar conexión"
+            tvStatus.setTextColor(Color.parseColor("#F5A623"))
+            btnKeep.text = "Cancelar eliminación"
+            btnKeep.setTextColor(Color.parseColor("#6BCB77"))
+            btnKeep.strokeColor = android.content.res.ColorStateList.valueOf(Color.parseColor("#6BCB77"))
+        } else if (song.markedForDeletion) {
             card.setCardBackgroundColor(Color.parseColor("#3B0F14"))
             card.strokeColor = Color.parseColor("#C0392B")
             tvStatus.visibility = View.VISIBLE
@@ -219,16 +233,20 @@ class DislikedSongsAdminFragment : Fragment() {
         }
 
         val btnDelete = row.findViewById<MaterialButton>(R.id.btnDeleteFromDisk)
-        btnDelete.visibility = if (song.markedForDeletion) View.VISIBLE else View.GONE
+        btnDelete.visibility = if (song.markedForDeletion && !pendingDeletion) View.VISIBLE else View.GONE
         btnDelete.text = "Eliminar ahora"
         // En la sección de eliminación se muestran solo las dos acciones
         // principales para que los botones no se salgan del ancho del móvil.
         row.findViewById<MaterialButton>(R.id.btnRemoveFromList).visibility =
-            if (song.markedForDeletion) View.GONE else View.VISIBLE
+            if (song.markedForDeletion || pendingDeletion) View.GONE else View.VISIBLE
 
         btnKeep.setOnClickListener {
+            val queued = SongAdminStore.isPendingSongDeletion(song.songId)
             val markForDeletion = !song.markedForDeletion
-            if (markForDeletion) {
+            if (queued) {
+                SongAdminStore.removePendingSongDeletion(song.songId)
+                SongAdminStore.markDislikedSongKept(song.songId)
+            } else if (markForDeletion) {
                 SongAdminStore.markDislikedSongPending(song.songId)
             } else {
                 SongAdminStore.markDislikedSongKept(song.songId)
@@ -237,7 +255,7 @@ class DislikedSongsAdminFragment : Fragment() {
             refresh()
             Toast.makeText(
                 requireContext(),
-                if (markForDeletion) "Añadida a la lista para eliminar" else "Eliminación cancelada; sigue en No me gustan",
+                if (queued) "Eliminación pendiente cancelada" else if (markForDeletion) "Añadida a la lista para eliminar" else "Eliminación cancelada; sigue en No me gustan",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -371,6 +389,13 @@ class DislikedSongsAdminFragment : Fragment() {
     @OptIn(UnstableApi::class)
     private fun deleteFromDisk(song: DislikedSong) {
         val activity = requireActivity() as? MainActivity
+        if (!ServerReachability.isOnline) {
+            SongAdminStore.addPendingSongDeletion(song)
+            if (!song.markedForDeletion) SongAdminStore.markDislikedSongPending(song.songId)
+            refresh()
+            Toast.makeText(requireContext(), "Añadida a Pendientes de eliminar. Se borrará al recuperar conexión.", Toast.LENGTH_LONG).show()
+            return
+        }
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val response = RetrofitClient.api.deleteSong(
@@ -399,8 +424,12 @@ class DislikedSongsAdminFragment : Fragment() {
                     Toast.makeText(requireContext(), "No se pudo eliminar del disco", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                // La conexión puede caer entre la comprobación y la petición.
+                // En ese caso no se pierde la orden: se guarda para el sync.
+                SongAdminStore.addPendingSongDeletion(song)
                 if (isAdded) {
-                    Toast.makeText(requireContext(), "Sin conexión: no se pudo eliminar", Toast.LENGTH_SHORT).show()
+                    refresh()
+                    Toast.makeText(requireContext(), "Sin conexión: eliminación guardada para cuando vuelvas a conectarte", Toast.LENGTH_LONG).show()
                 }
             }
         }
