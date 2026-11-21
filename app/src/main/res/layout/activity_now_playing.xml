@@ -451,11 +451,12 @@
 
         <!-- Shuffle button (Crossed arrows) -->
         <ImageButton
-            android:id="@+id/btnRepeat"
+            android:id="@+id/btnShuffle"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_revert"
+            android:src="@drawable/ic_shuffle"
+            android:contentDescription="Reproducción aleatoria desactivada"
             app:tint="#FFFFFF" />
 
         <ImageButton
