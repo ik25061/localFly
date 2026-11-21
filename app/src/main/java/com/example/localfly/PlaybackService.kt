@@ -784,9 +784,8 @@ class PlaybackService : MediaSessionService() {
 
     private fun updateMediaButtonPreferences() {
         // LocalFly administra una cola propia y ExoPlayer solo mantiene el medio
-        // actual más una precarga. Exponer los comandos SEEK_TO_PREVIOUS/NEXT de
-        // Player hacía que Android ocultara anterior/siguiente cuando esos medios
-        // no estaban en el timeline interno de ExoPlayer.
+        // actual más una precarga. El wrapper de sesión expone los comandos
+        // estándar SEEK_TO_PREVIOUS/NEXT y los deriva a esa cola.
         val previousButton = CommandButton.Builder(CommandButton.ICON_PREVIOUS)
             .setPlayerCommand(Player.COMMAND_SEEK_TO_PREVIOUS)
             .setSlots(intArrayOf(CommandButton.SLOT_BACK))
