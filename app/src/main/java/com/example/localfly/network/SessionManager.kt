@@ -22,7 +22,10 @@ data class PendingPlaylistCreation(
     val name: String,
     val description: String?,
     val songIds: MutableList<String>,
-    val isPublic: Boolean = false
+    val isPublic: Boolean = false,
+    // Se persiste tras crear en el servidor para reintentar canciones sin
+    // crear una segunda playlist si la conexión cae a mitad de la sincronización.
+    val serverId: String? = null
 )
 
 /** Una canción que se intentó añadir, sin conexión, a una lista que ya
