@@ -977,6 +977,7 @@ class PlaybackService : MediaSessionService() {
                 // 4. Letras encontradas offline
                 if (pendingLyrics.isNotEmpty()) {
                     for ((songId, content) in pendingLyrics) {
+                        if (sessionManager.getUserId() != syncUserId) break
                         try {
                             val response = RetrofitClient.api.saveLyricsFile(songId, ApiService.SaveLyricsFileRequest(content))
                             if (response.isSuccessful) {
@@ -990,6 +991,7 @@ class PlaybackService : MediaSessionService() {
                 // 5. Comentarios/Valoraciones offline
                 if (pendingComments.isNotEmpty()) {
                     pendingComments.forEach { (songId, request) ->
+                        if (sessionManager.getUserId() != syncUserId) return@forEach
                         try {
                             val response = RetrofitClient.api.postComment(request)
                             if (response.isSuccessful) {
@@ -1002,7 +1004,7 @@ class PlaybackService : MediaSessionService() {
 
                 // 6. Metadatos pendientes: se sincronizan también cuando hay
                 // otras colas activas, no solo cuando la cola está vacía.
-                if (pendingMetadata) {
+                if (pendingMetadata && sessionManager.getUserId() == syncUserId) {
                     try {
                         if (MetadataSyncManager.syncPendingEdits(sessionManager)) anySuccess = true
                     } catch (_: Exception) {}
