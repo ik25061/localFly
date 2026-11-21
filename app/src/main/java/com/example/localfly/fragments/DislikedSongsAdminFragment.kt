@@ -221,6 +221,10 @@ class DislikedSongsAdminFragment : Fragment() {
         val btnDelete = row.findViewById<MaterialButton>(R.id.btnDeleteFromDisk)
         btnDelete.visibility = if (song.markedForDeletion) View.VISIBLE else View.GONE
         btnDelete.text = "Eliminar ahora"
+        // En la sección de eliminación se muestran solo las dos acciones
+        // principales para que los botones no se salgan del ancho del móvil.
+        row.findViewById<MaterialButton>(R.id.btnRemoveFromList).visibility =
+            if (song.markedForDeletion) View.GONE else View.VISIBLE
 
         btnKeep.setOnClickListener {
             val markForDeletion = !song.markedForDeletion
