@@ -18,6 +18,14 @@ object RetrofitClient {
 
     private val currentBaseUrlLock = Object()
 
+    @Volatile
+    private var tokenProvider: (() -> String?)? = null
+
+    /** Proveedor dinámico: evita reconstruir Retrofit al iniciar/cerrar sesión. */
+    fun setTokenProvider(provider: () -> String?) {
+        tokenProvider = provider
+    }
+
     /**
      * URL base efectiva para construir URLs de audio/portadas/descargas,
      * sin "/" al final. Si el usuario cambió la IP del servidor (pantalla de
@@ -28,6 +36,20 @@ object RetrofitClient {
     private val okHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val token = try {
+                tokenProvider?.invoke()
+            } catch (_: Exception) {
+                null
+            }
+            val request = original.newBuilder().apply {
+                if (!token.isNullOrBlank() && original.header("Authorization") == null) {
+                    header("Authorization", "Bearer $token")
+                }
+            }.build()
+            chain.proceed(request)
+        }
         .build()
 
     /**
