@@ -967,7 +967,8 @@ class PlaybackService : MediaSessionService() {
                 }
                 
                 // 3. Playlists y ediciones
-                if (pendingPlaylistCreations.isNotEmpty() || pendingPlaylistAdds.isNotEmpty()) {
+                if (sessionManager.getUserId() == syncUserId &&
+                    (pendingPlaylistCreations.isNotEmpty() || pendingPlaylistAdds.isNotEmpty())) {
                     try {
                         PlaylistSyncManager.sync(sessionManager)
                         anySuccess = true
