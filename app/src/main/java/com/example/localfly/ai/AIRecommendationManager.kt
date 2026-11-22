@@ -3,6 +3,7 @@ package com.example.localfly.ai
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -90,12 +91,18 @@ class AIRecommendationManager(
                                             )
                                         } ?: emptyList()
                                     } else emptyList()
-                                } catch (_: Exception) { emptyList() }
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    emptyList()
+                                }
                             } }.awaitAll().flatten()
                         }
                     }
                 } else emptyList()
-            } catch (e: Exception) { emptyList() }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                emptyList()
+            }
         } else emptyList()
 
         var allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
