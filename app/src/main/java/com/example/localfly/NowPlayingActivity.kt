@@ -1399,11 +1399,14 @@ class NowPlayingActivity : AppCompatActivity() {
         // Elige el medio segun la preferencia de audio del usuario.
         val audioOnTv = !CastSettings.audioStaysOnPhone(this)
         val mediaUrl = when {
-            // Audio en el telefono: MP3 de silencio, la letra va como subtitulo.
-            !audioOnTv -> castLyricsServer.silenceUrl(song.id, castDurationMs)
-            // Audio en el TV: proxy propio para poder enviar CORS + Range.
-            else -> castLyricsServer.mediaProxyUrl(song.id, realStreamUrl)
-        } ?: realStreamUrl
+            // Audio en el teléfono/Bluetooth: el receptor necesita el MP3 de
+            // silencio para mantener el reloj de la letra. Si el servidor local
+            // no está disponible, abortar en vez de duplicar el audio real en TV.
+            !audioOnTv -> castLyricsServer.silenceUrl(song.id, castDurationMs) ?: return null
+            // Audio en el TV: proxy propio para CORS + Range; si no puede
+            // construirse, intentar la URL original como último recurso.
+            else -> castLyricsServer.mediaProxyUrl(song.id, realStreamUrl) ?: realStreamUrl
+        }
 
         // La letra solo se adjunta si el servidor local está levantado.
         val withLyrics = lyrics != null
@@ -1557,6 +1560,13 @@ class NowPlayingActivity : AppCompatActivity() {
      */
     private fun startCastLyricsMode() {
         runCatching { castLyricsServer.start() }
+        if (!castLyricsServer.isRunning) {
+            Toast.makeText(
+                this,
+                "No se pudo iniciar el servidor local de letras (puerto 8099).",
+                Toast.LENGTH_LONG
+            ).show()
+        }
         castLyricsJob?.cancel()
         castLyricsJob = lifecycleScope.launch {
             var firstEmit = true
