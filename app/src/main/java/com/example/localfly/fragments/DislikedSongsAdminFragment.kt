@@ -118,7 +118,8 @@ class DislikedSongsAdminFragment : Fragment() {
     private fun refresh() {
         layoutDisliked.removeAllViews()
         val songs = SongAdminStore.getDislikedSongs()
-        val pendingDeletions = SongAdminStore.getPendingSongDeletions()
+        val currentUserId = sessionManager.getUserId().orEmpty()
+        val pendingDeletions = SongAdminStore.getPendingSongDeletions(currentUserId)
         val pendingIds = pendingDeletions.map { it.songId }.toSet()
         // Tres estados sin mezclar: dislike normal, decisión de eliminar y
         // petición de borrado ya encolada para sincronizar con el servidor.
@@ -202,7 +203,7 @@ class DislikedSongsAdminFragment : Fragment() {
         val tvStatus = row.findViewById<TextView>(R.id.tvDlStatus)
         val btnKeep = row.findViewById<MaterialButton>(R.id.btnKeepSong)
 
-        val pendingDeletion = SongAdminStore.isPendingSongDeletion(song.songId)
+        val pendingDeletion = SongAdminStore.isPendingSongDeletion(song.songId, sessionManager.getUserId().orEmpty())
         if (pendingDeletion) {
             card.setCardBackgroundColor(Color.parseColor("#3A2B12"))
             card.strokeColor = Color.parseColor("#F5A623")
@@ -244,7 +245,7 @@ class DislikedSongsAdminFragment : Fragment() {
             val queued = SongAdminStore.isPendingSongDeletion(song.songId)
             val markForDeletion = !song.markedForDeletion
             if (queued) {
-                SongAdminStore.removePendingSongDeletion(song.songId)
+                SongAdminStore.removePendingSongDeletion(song.songId, sessionManager.getUserId().orEmpty())
                 SongAdminStore.markDislikedSongKept(song.songId)
             } else if (markForDeletion) {
                 SongAdminStore.markDislikedSongPending(song.songId)
@@ -389,8 +390,13 @@ class DislikedSongsAdminFragment : Fragment() {
     @OptIn(UnstableApi::class)
     private fun deleteFromDisk(song: DislikedSong) {
         val activity = requireActivity() as? MainActivity
+        val ownerUserId = sessionManager.getUserId()?.takeIf { it.isNotBlank() }
+        if (ownerUserId == null) {
+            Toast.makeText(requireContext(), "Inicia sesión para solicitar la eliminación", Toast.LENGTH_LONG).show()
+            return
+        }
         if (!ServerReachability.isOnline) {
-            SongAdminStore.addPendingSongDeletion(song)
+            SongAdminStore.addPendingSongDeletion(song, ownerUserId)
             if (!song.markedForDeletion) SongAdminStore.markDislikedSongPending(song.songId)
             refresh()
             Toast.makeText(requireContext(), "Añadida a Pendientes de eliminar. Se borrará al recuperar conexión.", Toast.LENGTH_LONG).show()
@@ -421,7 +427,7 @@ class DislikedSongsAdminFragment : Fragment() {
                         refresh()
                     }
                 } else if (!ServerReachability.isOnline) {
-                    SongAdminStore.addPendingSongDeletion(song)
+                    SongAdminStore.addPendingSongDeletion(song, ownerUserId)
                     refresh()
                     Toast.makeText(requireContext(), "Conexión perdida: eliminación guardada para sincronizar", Toast.LENGTH_LONG).show()
                 } else if (isAdded) {
@@ -430,7 +436,7 @@ class DislikedSongsAdminFragment : Fragment() {
             } catch (e: Exception) {
                 // La conexión puede caer entre la comprobación y la petición.
                 // En ese caso no se pierde la orden: se guarda para el sync.
-                SongAdminStore.addPendingSongDeletion(song)
+                SongAdminStore.addPendingSongDeletion(song, ownerUserId)
                 if (isAdded) {
                     refresh()
                     Toast.makeText(requireContext(), "Sin conexión: eliminación guardada para cuando vuelvas a conectarte", Toast.LENGTH_LONG).show()
