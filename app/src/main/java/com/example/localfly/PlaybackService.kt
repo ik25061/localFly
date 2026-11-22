@@ -906,8 +906,8 @@ class PlaybackService : MediaSessionService() {
             while (isActive) {
                 // Punto 3: Optimización de Backend. Solo intentar sincronizar si hay 
                 // conexión real confirmada, para no saturar con peticiones fallidas.
-                if (!ServerReachability.isOnline) {
-                    delay(20000)
+                if (!ServerReachability.hasChecked || !ServerReachability.isOnline) {
+                    delay(5000)
                     continue
                 }
 
