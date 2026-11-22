@@ -405,6 +405,7 @@ data class LyricsAdminJob(
     val succeeded: Int = 0,
     val needsReview: Int = 0,
     val notFound: Int = 0,
+    val instrumental: Int = 0,
     val failed: Int = 0,
     val currentSong: Map<String, String?>? = null,
     val error: String? = null
