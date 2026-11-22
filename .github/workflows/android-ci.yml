@@ -49,3 +49,15 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      # Instrumented playback tests run only on a fresh disposable emulator.
+      # The test opts in explicitly because it temporarily owns the download store.
+      - name: Run offline playback regression on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.dedicatedPlaybackTest=true
