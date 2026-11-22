@@ -113,6 +113,7 @@ object SongAdminStore {
     private var deletedCache: Set<String> = emptySet()
     private var deletedJson: String? = null
     private var pendingDeletionsCache: List<DislikedSong> = emptyList()
+    private var pendingDeletionIdsByOwner: Map<String, Set<String>> = emptyMap()
     private var pendingDeletionsJson: String? = null
 
     /**
@@ -194,6 +195,7 @@ object SongAdminStore {
         deletedCache = parseIdSet(deletedJson)
         pendingDeletionsJson = store.getString(KEY_PENDING_DELETIONS, null)
         pendingDeletionsCache = parsePendingDeletions(pendingDeletionsJson)
+        rebuildPendingDeletionIndexes()
     }
 
     /** Índices O(1) para listas grandes de dislikes y revisiones de borrado. */
@@ -204,6 +206,14 @@ object SongAdminStore {
             .filter { it.markedForDeletion }
             .map { it.songId }
             .toSet()
+    }
+
+    /** Índice por cuenta para que una pantalla grande no haga búsquedas O(n²). */
+    private fun rebuildPendingDeletionIndexes() {
+        pendingDeletionIdsByOwner = pendingDeletionsCache
+            .filter { !it.ownerUserId.isNullOrBlank() }
+            .groupBy { it.ownerUserId!! }
+            .mapValues { (_, songs) -> songs.map { it.songId }.toSet() }
     }
 
     private fun parsePendingDeletions(json: String?): List<DislikedSong> {
@@ -266,6 +276,7 @@ object SongAdminStore {
         if (pendingDeletes != pendingDeletionsJson) {
             pendingDeletionsJson = pendingDeletes
             pendingDeletionsCache = parsePendingDeletions(pendingDeletes)
+            rebuildPendingDeletionIndexes()
         }
     }
 
@@ -464,14 +475,14 @@ object SongAdminStore {
     fun isPendingSongDeletion(songId: String, ownerUserId: String): Boolean {
         if (ownerUserId.isBlank()) return false
         if (context != null) reloadIfChanged()
-        return pendingDeletionsCache.any { it.songId == songId && it.ownerUserId == ownerUserId }
+        return pendingDeletionIdsByOwner[ownerUserId]?.contains(songId) == true
     }
 
     /** Añade de forma idempotente una eliminación solicitada sin conexión. */
     fun addPendingSongDeletion(song: DislikedSong, ownerUserId: String) {
         if (ownerUserId.isBlank() || song.songId.isBlank() || isDeleted(song.songId)) return
         if (context != null) reloadIfChanged()
-        if (pendingDeletionsCache.any { it.songId == song.songId && it.ownerUserId == ownerUserId }) return
+        if (isPendingSongDeletion(song.songId, ownerUserId)) return
         pendingDeletionsCache = pendingDeletionsCache +
             song.copy(markedForDeletion = true, kept = false, ownerUserId = ownerUserId)
         persistPendingSongDeletions()
@@ -480,13 +491,14 @@ object SongAdminStore {
     fun removePendingSongDeletion(songId: String, ownerUserId: String) {
         if (ownerUserId.isBlank()) return
         if (context != null) reloadIfChanged()
+        if (!isPendingSongDeletion(songId, ownerUserId)) return
         val updated = pendingDeletionsCache.filterNot { it.songId == songId && it.ownerUserId == ownerUserId }
-        if (updated.size == pendingDeletionsCache.size) return
         pendingDeletionsCache = updated
         persistPendingSongDeletions()
     }
 
     private fun persistPendingSongDeletions() {
+        rebuildPendingDeletionIndexes()
         val json = gson.toJson(pendingDeletionsCache)
         pendingDeletionsJson = json
         prefs()?.edit()?.putString(KEY_PENDING_DELETIONS, json)?.apply()
@@ -578,6 +590,7 @@ object SongAdminStore {
         val jsonDeleted = gson.toJson(deletedCache.toList())
         deletedJson = jsonDeleted
         pendingDeletionsCache = pendingDeletionsCache.filterNot { it.songId == songId }
+        rebuildPendingDeletionIndexes()
         val jsonPendingDeletions = gson.toJson(pendingDeletionsCache)
         pendingDeletionsJson = jsonPendingDeletions
         val store = prefs() ?: return
