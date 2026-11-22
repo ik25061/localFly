@@ -118,9 +118,12 @@ class AIWeightsStore(context: Context) {
      * hace nada. Si el aprendizaje en línea está desactivado, tampoco.
      */
     fun reinforce(songId: String, reward: Float) {
-        if (!isOnlineLearningEnabled()) return
         val attributions = getAttributions().toMutableMap()
         val factors = attributions.remove(songId) ?: return
+        if (!isOnlineLearningEnabled()) {
+            prefs.edit().putString("attributions", gson.toJson(attributions)).apply()
+            return
+        }
 
         val weights = getWeights().toMutableMap()
         val boundedReward = reward.coerceIn(-1f, 1f)
