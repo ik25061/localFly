@@ -24,19 +24,34 @@ object ServerReachability {
     @Volatile
     var isOnline: Boolean = true
 
+    /** La primera comprobación evita asumir que el servidor responde al arrancar offline. */
+    @Volatile
+    var hasChecked: Boolean = false
+        private set
+
+    fun reset() {
+        hasChecked = false
+        isOnline = false
+    }
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(2500, TimeUnit.MILLISECONDS)
         .readTimeout(2500, TimeUnit.MILLISECONDS)
         .build()
 
-    suspend fun isServerReachable(): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val request = Request.Builder()
-                .url("${RetrofitClient.getBaseUrl()}/api/config/ip")
-                .build()
-            client.newCall(request).execute().use { response -> response.isSuccessful }
-        } catch (e: Exception) {
-            false
+    suspend fun isServerReachable(): Boolean {
+        val reachable = withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("${RetrofitClient.getBaseUrl()}/api/config/ip")
+                    .build()
+                client.newCall(request).execute().use { response -> response.isSuccessful }
+            } catch (e: Exception) {
+                false
+            }
         }
+        isOnline = reachable
+        hasChecked = true
+        return reachable
     }
 }
