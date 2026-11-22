@@ -1593,7 +1593,7 @@ class NowPlayingActivity : AppCompatActivity() {
                     val metadataDurationMs = ((song.duration ?: 0.0) * 1000.0).toLong()
                     val durationMs = playerDurationMs.takeIf { it > 0L }
                         ?: metadataDurationMs.takeIf { it > 0L }
-                        ?: 0L
+                        ?: FALLBACK_CAST_DURATION_MS
                     castLyricsServer.setTrack(
                         song.id,
                         song.title,
