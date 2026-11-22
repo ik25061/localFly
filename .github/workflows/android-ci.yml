@@ -1,6 +1,8 @@
 name: Android CI
 
 on:
+  push:
+    branches: [audit-fix-2026-11]
   pull_request:
     branches: [master]
   workflow_dispatch:
