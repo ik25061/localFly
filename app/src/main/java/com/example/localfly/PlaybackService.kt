@@ -1255,7 +1255,6 @@ class PlaybackService : MediaSessionService() {
     ) {
         val requestToken = ++queueRequestToken
         val requestOwner = sessionManager.getUserId()
-        queueOwnerUserId = requestOwner
 
         // Resolver el índice y comprobar los archivos en IO. Hacer cientos de
         // File.exists()/length() y parsear el JSON de descargas desde main era
@@ -1285,6 +1284,7 @@ class PlaybackService : MediaSessionService() {
             return
         }
 
+        queueOwnerUserId = requestOwner
         // Una canción eliminada del disco ya no se puede reproducir.
         val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
         if (aliveSongs.isEmpty()) return
