@@ -127,15 +127,26 @@ class DownloadManagerHelper private constructor(context: Context) {
         synchronized(this@DownloadManagerHelper) { loadDownloadIndex() }
     }
 
-    /** Comprueba y elimina entradas cuyo archivo ya no existe, siempre en IO. */
+    /**
+     * Comprueba y elimina entradas cuyo archivo ya no existe. La exploración
+     * completa se hace fuera del lock: getLocalFilePath() no debe esperar a que
+     * se validen cientos/miles de descargas desde otra corrutina.
+     */
     suspend fun pruneMissingDownloads() = withContext(Dispatchers.IO) {
+        val snapshot = synchronized(this@DownloadManagerHelper) {
+            loadDownloadIndex().toList()
+        }
+        val snapshotIds = snapshot.map { it.id }.toSet()
+        val validIds = snapshot.filter { song ->
+            val file = File(song.filePath)
+            file.isFile && file.length() > 0L
+        }.map { it.id }.toSet()
+
         synchronized(this@DownloadManagerHelper) {
-            val stored = loadDownloadIndex()
-            val valid = stored.filter { song ->
-                val file = File(song.filePath)
-                file.isFile && file.length() > 0L
-            }
-            if (valid.size != stored.size) {
+            val current = loadDownloadIndex()
+            // Mantener descargas añadidas mientras se comprobaba el snapshot.
+            val valid = current.filter { it.id !in snapshotIds || it.id in validIds }
+            if (valid.size != current.size) {
                 cachedDownloads = valid
                 prefs.edit().putString("list", gson.toJson(valid)).apply()
             }
@@ -370,14 +381,18 @@ class DownloadManagerHelper private constructor(context: Context) {
     }
 
     /** Elimina todas las canciones descargadas (archivos y registro). */
-    @Synchronized
     fun removeAllDownloads() {
-        getDownloadedSongs().forEach { song ->
+        val snapshot = synchronized(this) { getDownloadedSongs().toList() }
+        snapshot.forEach { song ->
             runCatching { File(song.filePath).delete() }
             deleteLyricsAndKaraoke(song.id)
         }
-        cachedDownloads = emptyList()
-        prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()
+        synchronized(this) {
+            val removedIds = snapshot.map { it.id }.toSet()
+            val remaining = getDownloadedSongs().filter { it.id !in removedIds }
+            cachedDownloads = remaining
+            prefs.edit().putString("list", gson.toJson(remaining)).apply()
+        }
     }
 
     /** Actualiza el estado "me gusta" guardado de una canción descargada (si existe). */
