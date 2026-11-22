@@ -78,6 +78,9 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     /** Se invoca al finalizar la sesion (para reanudar el audio local). */
     var onCastEnded: (() -> Unit)? = null
 
+    /** Se llama al terminar una pista remota; el sender avanza su cola local. */
+    var onCastTrackFinished: (() -> Unit)? = null
+
     /**
      * Se invoca cuando el receptor NO acepta la carga o pierde el medio (el TV
      * se queda en su pantalla de reposo mostrando solo el icono de Cast). Antes
@@ -102,14 +105,30 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
 
         override fun onStatusUpdated() {
             val status = remoteClient()?.mediaStatus ?: return
+            when (status.playerState) {
+                MediaStatus.PLAYER_STATE_PLAYING,
+                MediaStatus.PLAYER_STATE_BUFFERING -> remoteShouldPlay = true
+                MediaStatus.PLAYER_STATE_PAUSED -> remoteShouldPlay = false
+            }
             if (status.playerState != MediaStatus.PLAYER_STATE_IDLE) return
-            if (status.idleReason != MediaStatus.IDLE_REASON_ERROR) return
-            // Medio perdido en el receptor (fallo de red/decodificación): el TV
-            // vuelve a la pantalla de reposo y hay que dejarlo reintentable.
-            lastSentUrl = null
-            lastSentLyricsUrl = null
-            pendingLoadKey = null
-            reportCastError("El televisor perdió el audio", "idle=error")
+            when (status.idleReason) {
+                MediaStatus.IDLE_REASON_ERROR -> {
+                    // Medio perdido en el receptor (fallo de red/decodificación).
+                    lastSentUrl = null
+                    lastSentLyricsUrl = null
+                    pendingLoadKey = null
+                    remoteShouldPlay = false
+                    reportCastError("El televisor perdió el audio", "idle=error")
+                }
+                MediaStatus.IDLE_REASON_FINISHED -> {
+                    // En salida TV el player del teléfono está pausado. Avanzar
+                    // desde la Activity para no dejar el Chromecast en reposo.
+                    lastSentUrl = null
+                    lastSentLyricsUrl = null
+                    pendingLoadKey = null
+                    onCastTrackFinished?.invoke()
+                }
+            }
         }
     }
 
@@ -154,6 +173,10 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     /** true si el receptor esta reproduciendo (o cargando) contenido. */
     val isRemotePlaying: Boolean
         get() = remoteClient()?.let { remoteIsPlaying(it) } ?: false
+
+    /** Estado que debe heredar la siguiente canción de la cola remota. */
+    val shouldContinuePlayback: Boolean
+        get() = remoteShouldPlay
 
     /** Posicion aproximada de reproduccion en el receptor (ms). */
     val remotePositionMs: Long
@@ -504,6 +527,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         lastSentUrl = null
         lastSentLyricsUrl = null
         pendingLoadKey = null
+        remoteShouldPlay = false
         lastErrorReported = null
         callbackRemote = null
         onCastingChanged?.invoke(false)
