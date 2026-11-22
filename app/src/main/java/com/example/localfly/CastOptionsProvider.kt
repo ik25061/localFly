@@ -23,6 +23,10 @@ class CastOptionsProvider : OptionsProvider {
     override fun getAdditionalSessionProviders(context: Context): List<SessionProvider>? = null
 
     companion object {
-        const val CastReceiverAppId = "CC1AD845"
+        const val DEFAULT_MEDIA_RECEIVER_APP_ID = "CC1AD845"
+        val CastReceiverAppId: String
+            get() = BuildConfig.CAST_RECEIVER_APP_ID
+        val isCustomReceiverEnabled: Boolean
+            get() = CastReceiverAppId != DEFAULT_MEDIA_RECEIVER_APP_ID
     }
 }
