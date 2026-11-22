@@ -184,6 +184,13 @@ class NowPlayingActivity : AppCompatActivity() {
      */
     private val playbackStateChanged: () -> Unit = {
         if (!isDestroyed && !isFinishing) {
+            // En modo audio-TV, el reproductor local debe permanecer pausado.
+            // Los cambios de canción se envían desde startCastLyricsMode después
+            // de publicar la letra, no desde refreshUi().
+            if (::castController.isInitialized && castController.isCasting &&
+                !CastSettings.audioStaysOnPhone(this)) {
+                playbackService?.player?.pause()
+            }
             refreshUi()
             // Verificar si la cola se está vaciando y rellenar si es necesario
             val service = playbackService
@@ -357,9 +364,17 @@ class NowPlayingActivity : AppCompatActivity() {
         }
 
         btnPlayPause.setOnClickListener {
-            val wasPlaying = playbackService?.player?.isPlaying == true
-            playbackService?.togglePlayPause()
-            if (::castController.isInitialized) castController.syncPlayPause(!wasPlaying)
+            if (::castController.isInitialized && castController.isCasting &&
+                !CastSettings.audioStaysOnPhone(this)) {
+                // El audio ya está en el televisor: no iniciar el reproductor
+                // local al pulsar Play/Pausa.
+                castController.toggleRemotePlayback()
+                refreshUi()
+            } else {
+                val wasPlaying = playbackService?.player?.isPlaying == true
+                playbackService?.togglePlayPause()
+                if (::castController.isInitialized) castController.syncPlayPause(!wasPlaying)
+            }
         }
         btnLike.setOnClickListener { playbackService?.toggleLike() }
         btnDislike.setOnClickListener {
@@ -429,8 +444,14 @@ class NowPlayingActivity : AppCompatActivity() {
                 }
                 android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
                     userIsSeeking = false
-                    playbackService?.seekTo(waveformSeekBar.progress.toLong())
-                    if (::castController.isInitialized) castController.seekTo(waveformSeekBar.progress.toLong())
+                    val targetPosition = waveformSeekBar.progress.toLong()
+                    if (::castController.isInitialized && castController.isCasting &&
+                        !CastSettings.audioStaysOnPhone(this)) {
+                        castController.seekTo(targetPosition)
+                    } else {
+                        playbackService?.seekTo(targetPosition)
+                        if (::castController.isInitialized) castController.seekTo(targetPosition)
+                    }
                 }
             }
             view.performClick()
@@ -1709,7 +1730,12 @@ class NowPlayingActivity : AppCompatActivity() {
         if (waveformSongId != song.id) loadWaveform(song)
 
         btnLike.setImageResource(if (song.liked) R.drawable.ic_like_on else R.drawable.ic_like_off)
-        val isPlaying = playbackService?.player?.isPlaying == true
+        val isPlaying = if (::castController.isInitialized && castController.isCasting &&
+            !CastSettings.audioStaysOnPhone(this)) {
+            castController.isRemotePlaying
+        } else {
+            playbackService?.player?.isPlaying == true
+        }
         btnPlayPause.setImageResource(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play)
         btnShuffle.imageTintList = android.content.res.ColorStateList.valueOf(
             if (playbackService?.isShuffleEnabled() == true) android.graphics.Color.parseColor("#1DB954")
@@ -1738,8 +1764,9 @@ class NowPlayingActivity : AppCompatActivity() {
         // Indicador de voz activa
         tvVoiceIndicator.visibility = if (RadioManager.isVoiceActive) View.VISIBLE else View.GONE
 
-        // Mantener al dia el Chromecast si hay una sesion activa
-        if (::castController.isInitialized) castController.autoCast()
+        // El envío Cast se coordina en startCastLyricsMode(): primero se publica
+        // la letra, luego se carga el medio. No emitir aquí porque refreshUi()
+        // puede ejecutarse antes de que termine fetchLyrics().
     }
 
     private fun loadCommentStats(songId: String) {
@@ -1810,8 +1837,10 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun updateProgress() {
         val service = playbackService ?: return
-        val duration = service.getDurationMs()
-        val progress = service.getProgressMs()
+        val castingToTv = ::castController.isInitialized && castController.isCasting &&
+            !CastSettings.audioStaysOnPhone(this)
+        val duration = if (castingToTv) castController.remoteDurationMs else service.getDurationMs()
+        val progress = if (castingToTv) castController.remotePositionMs else service.getProgressMs()
         // maxProgress fuerza relayout/redibujado de toda la onda: solo se toca
         // cuando cambia la duración (antes se hacía cada 500 ms).
         if (duration > 0 && waveformSeekBar.maxProgress.toLong() != duration) {
