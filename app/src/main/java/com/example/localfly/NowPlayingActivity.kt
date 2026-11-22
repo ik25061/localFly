@@ -1418,10 +1418,10 @@ class NowPlayingActivity : AppCompatActivity() {
                 dialog.dismiss()
                 applyCastAudioTarget(target)
             }
+            .setPositiveButton("Diagnóstico") { _, _ -> showCastDiagnostic() }
             .setNeutralButton("Bluetooth / salida del teléfono") { _, _ ->
                 showSystemAudioOutputSwitcher()
             }
-            .setNeutralButton("Diagnóstico") { _, _ -> showCastDiagnostic() }
             .setNegativeButton("Cancelar", null)
             .show()
             .also { castTargetDialog = it }
