@@ -12,8 +12,9 @@ import kotlinx.coroutines.launch
 /**
  * Application de localFly.
  *
- * Su única misión es instalar LO ANTES POSIBLE el capturador global de crashes
- * ([LocalLogger.initCrashHandler]) y dar contexto al almacén local.
+ * Inicializa el capturador global de crashes, el contexto de los almacenes
+ * locales, el servidor compartido de letras para Cast y la precarga del índice
+ * de descargas en segundo plano.
  *
  * Sin esto, cuando PlaybackService (o cualquier otro componente) lanzaba una
  * excepción no controlada, el proceso moría y arrancaba de nuevo EN BUCLE sin
