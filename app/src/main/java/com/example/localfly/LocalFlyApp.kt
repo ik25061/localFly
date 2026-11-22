@@ -3,6 +3,7 @@ package com.example.localfly
 import android.app.Application
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.karaoke.KaraokeLyricsServer
 
 /**
  * Application de localFly.
@@ -21,6 +22,17 @@ import com.example.localfly.utils.LocalLogger
 class LocalFlyApp : Application() {
     lateinit var sessionManager: com.example.localfly.network.SessionManager
         private set
+
+    /**
+     * Un único servidor para las letras durante Cast. No debe vivir en una
+     * Activity: Android puede destruir NowPlayingActivity mientras el receptor
+     * sigue reproduciendo, y eso cortaría el WebVTT/audio local.
+     */
+    val karaokeLyricsServer: KaraokeLyricsServer by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        KaraokeLyricsServer(8099).apply {
+            logger = { message -> LocalLogger.log(this@LocalFlyApp, message) }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
