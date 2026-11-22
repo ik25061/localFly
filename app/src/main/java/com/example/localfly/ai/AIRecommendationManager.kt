@@ -4,6 +4,9 @@ import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -70,21 +73,27 @@ class AIRecommendationManager(
 
         val podcastEpisodes = if (includePodcasts) {
             try {
-                val podcastsResp = RetrofitClient.api.getPodcasts(userId, limit = 100)
+                val podcastsResp = RetrofitClient.api.getPodcasts(userId, limit = 20)
                 if (podcastsResp.isSuccessful) {
-                    podcastsResp.body()?.podcasts?.flatMap { podcast ->
-                        val pResp = RetrofitClient.api.getPodcast(podcast.id, userId)
-                        if (pResp.isSuccessful) {
-                            pResp.body()?.episodes?.map { ep ->
-                                Song(
-                                    id = ep.id, title = ep.title, artist = podcast.author, album = podcast.title,
-                                    year = null, duration = ep.duration, bpm = null, key = null, liked = false,
-                                    hasCover = true, isEpisode = true, lastPositionMs = ep.lastPositionMs,
-                                    subtitleUrl = ep.subtitleUrl
-                                )
-                            } ?: emptyList()
-                        } else emptyList()
-                    } ?: emptyList()
+                    podcastsResp.body()?.podcasts.orEmpty().take(20).chunked(5).flatMap { batch ->
+                        coroutineScope {
+                            batch.map { podcast -> async {
+                                try {
+                                    val pResp = RetrofitClient.api.getPodcast(podcast.id, userId)
+                                    if (pResp.isSuccessful) {
+                                        pResp.body()?.episodes?.map { ep ->
+                                            Song(
+                                                id = ep.id, title = ep.title, artist = podcast.author, album = podcast.title,
+                                                year = null, duration = ep.duration, bpm = null, key = null, liked = false,
+                                                hasCover = true, isEpisode = true, lastPositionMs = ep.lastPositionMs,
+                                                subtitleUrl = ep.subtitleUrl
+                                            )
+                                        } ?: emptyList()
+                                    } else emptyList()
+                                } catch (_: Exception) { emptyList() }
+                            } }.awaitAll().flatten()
+                        }
+                    }
                 } else emptyList()
             } catch (e: Exception) { emptyList() }
         } else emptyList()
