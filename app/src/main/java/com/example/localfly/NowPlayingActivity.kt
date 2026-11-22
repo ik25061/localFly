@@ -212,8 +212,8 @@ class NowPlayingActivity : AppCompatActivity() {
             if (queueIsVisible) updateQueueUI()
             setupQueue() // Asegurar canciones al entrar
             refreshUi()
-            // El audio local NO se pausa con el cast: el Chromecast solo
-            // recibe portada + título + letra (karaoke), la música sigue aquí.
+            // El modo de salida decide si el teléfono continúa sonando o queda
+            // pausado; la sincronización de letra y carga se coordina aparte.
             if (::castController.isInitialized && castController.isCasting) {
                 startCastLyricsMode()
             }
@@ -296,7 +296,7 @@ class NowPlayingActivity : AppCompatActivity() {
         castController.songProvider = { buildCastSongData() }
         castController.playingProvider = {
             playbackService?.player?.isPlaying == true ||
-                (::castController.isInitialized && castController.isRemotePlaying)
+                (::castController.isInitialized && castController.shouldContinuePlayback)
         }
         castController.onCastingChanged = { casting ->
             // Sin fondo de color: el estado de transmisión se marca con la
@@ -321,11 +321,20 @@ class NowPlayingActivity : AppCompatActivity() {
             showCastAudioTargetDialog()
         }
         castController.onCastResumed = {
-            wasPlayingBeforeCast = playbackService?.player?.isPlaying == true
+            wasPlayingBeforeCast = playbackService?.player?.isPlaying == true ||
+                castController.shouldContinuePlayback
             startCastLyricsMode()
             // Reaplicar el estilo de letra: el usuario pudo apagarlo en el mando.
             castController.refreshLyricsStyle()
             showCastAudioTargetDialog()
+        }
+        castController.onCastTrackFinished = {
+            // En modo audio-TV el reproductor local está pausado, por lo que no
+            // avanzará la cola por sí solo cuando termine el audio remoto.
+            if (!CastSettings.audioStaysOnPhone(this) && castController.shouldContinuePlayback) {
+                wasPlayingBeforeCast = true
+                playbackService?.next()
+            }
         }
         castController.onCastEnded = {
             // Si el audio iba al televisor, al cortarse la sesion hay que devolver
@@ -1493,10 +1502,12 @@ class NowPlayingActivity : AppCompatActivity() {
         if (CastSettings.audioTarget(this) == target) return
         CastSettings.setAudioTarget(this, target)
         if (castController.isCasting) {
-            // Capturar si estaba sonando ANTES de tocar el reproductor local:
-            // al pasar el audio al TV hay que silenciar aquí, y si leyésemos
-            // isPlaying después obtendríamos false y el TV cargaría en pausa.
-            val wasPlaying = playbackService?.player?.isPlaying == true
+            // Al cambiar TV -> teléfono, el player local está pausado pero el
+            // Chromecast puede seguir sonando. Usar el estado remoto guardado,
+            // no solo player.isPlaying, para no recargar el silencio en pausa.
+            val wasPlaying = playbackService?.player?.isPlaying == true ||
+                castController.shouldContinuePlayback || castController.isRemotePlaying
+            wasPlayingBeforeCast = wasPlaying
             applyCastAudioTargetToLocalPlayer()
             // Reemitir para que el TV reciba el medio nuevo (silencio o proxy).
             castController.reloadCurrentSong(wasPlaying)
