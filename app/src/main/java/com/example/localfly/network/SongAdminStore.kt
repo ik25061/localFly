@@ -126,7 +126,7 @@ object SongAdminStore {
         } else {
             val suffix = java.security.MessageDigest.getInstance("SHA-256")
                 .digest(owner.toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
             "${PREFS_NAME}_$suffix"
         }
 
