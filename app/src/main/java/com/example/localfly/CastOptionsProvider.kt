@@ -8,10 +8,10 @@ import com.google.android.gms.cast.framework.SessionProvider
 /**
  * Proporciona la configuracion del framework de Chromecast.
  *
- * Usa el "Default Media Player Receiver" de Google (CC1AD845), gratuito y
- * suficiente para reproducir URLs HTTP. Para un despliegue en produccion se
- * recomienda registrar una aplicacion de receptor propia en la Cast Developer
- * Console y reemplazar [CastReceiverAppId].
+ * Usa el receptor personalizado de LocalFly cuando se configura
+ * CAST_RECEIVER_APP_ID. Si no se define, conserva el Default Media Receiver
+ * (CC1AD845) como fallback; ese receptor no puede mostrar la interfaz karaoke
+ * personalizada.
  */
 class CastOptionsProvider : OptionsProvider {
 
