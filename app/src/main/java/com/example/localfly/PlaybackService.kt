@@ -1368,10 +1368,13 @@ class PlaybackService : MediaSessionService() {
             return
         }
 
-        queueOwnerUserId = requestOwner
+        // Si cambió la cuenta, descartar primero la cola anterior aunque la
+        // nueva selección no contenga ninguna canción descargada.
+        ensureQueueAccount()
         // Una canción eliminada del disco ya no se puede reproducir.
         val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
         if (aliveSongs.isEmpty()) return
+        queueOwnerUserId = requestOwner
         // El modo revisión solo se activa cuando lo pide el panel de
         // "Para eliminar" (reviewSession = true). Una canción individual no
         // crea automáticamente una mezcla de descargas.
@@ -1400,9 +1403,11 @@ class PlaybackService : MediaSessionService() {
         if (!ServerReachability.isOnline) {
             // Offline: construir la cola únicamente con archivos válidos y
             // conservar exactamente el orden de la lista que eligió el usuario.
+            // El mapa evita indexOfFirst repetido (O(n²)) en listas extensas.
+            val originalIndexById = songs.withIndex().associate { it.value.id to it.index }
             val available = OfflineQueuePolicy.filterAvailableInOriginalOrder(
                 songsFiltered.map { song ->
-                    val originalIndex = songs.indexOfFirst { it.id == song.id }
+                    val originalIndex = originalIndexById[song.id] ?: -1
                     val storedPath = localPaths?.getOrNull(originalIndex)
                     val path = if (localPathsResolved) {
                         storedPath
@@ -1423,7 +1428,7 @@ class PlaybackService : MediaSessionService() {
             val filteredSongs = available.map { it.first }
             val filteredPaths = available.map { it.second }
             val requestedOriginalIndex = requestedSong?.let { req ->
-                songs.indexOfFirst { it.id == req.id }
+                originalIndexById[req.id]
             } ?: 0
             // Si se pulsa una canción que no está descargada, empezar por la
             // siguiente descarga de la lista (y volver al principio si no hay).
