@@ -926,7 +926,7 @@ class PlaybackService : MediaSessionService() {
                 val pendingPlaylistAdds = sessionManager.getPendingPlaylistSongAdds()
                 val pendingLyrics = sessionManager.getPendingLyricsUploads()
                 val pendingComments = sessionManager.getPendingComments()
-                val pendingSongDeletions = SongAdminStore.getPendingSongDeletions()
+                val pendingSongDeletions = SongAdminStore.getPendingSongDeletions(syncUserId)
                 val pendingMetadata = SongAdminStore.getPendingSyncIds().isNotEmpty()
 
                 // Los comentarios y los metadatos también deben mantener despierto
