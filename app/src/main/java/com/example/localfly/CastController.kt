@@ -232,6 +232,19 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         lastSentUrl = song.streamUrl
         lastSentLyricsUrl = song.lyricsUrl
         pendingLoadKey = null
+        attachRemoteCallback(remote)
+        val status = remote.mediaStatus
+        remoteShouldPlay = remoteIsPlaying(remote) ||
+            (status?.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+                status.idleReason == MediaStatus.IDLE_REASON_FINISHED)
+        if (status?.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+            status.idleReason == MediaStatus.IDLE_REASON_FINISHED &&
+            info.contentId != lastFinishedContentId) {
+            lastFinishedContentId = info.contentId
+            lastSentUrl = null
+            lastSentLyricsUrl = null
+            onCastTrackFinished?.invoke()
+        }
         return true
     }
 
