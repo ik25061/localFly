@@ -26,6 +26,9 @@ object RetrofitClient {
         tokenProvider = provider
     }
 
+    /** Token actual para el proxy local de Cast; nunca se registra en logs. */
+    fun getAuthToken(): String? = runCatching { tokenProvider?.invoke() }.getOrNull()
+
     /**
      * URL base efectiva para construir URLs de audio/portadas/descargas,
      * sin "/" al final. Si el usuario cambió la IP del servidor (pantalla de
