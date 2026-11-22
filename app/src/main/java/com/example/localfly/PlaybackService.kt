@@ -2143,6 +2143,24 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Avanza la cola cuando termina el medio remoto, respetando Repetir. */
+    fun advanceAfterRemoteTrackFinished() {
+        if (queue.isEmpty() || currentIndex !in queue.indices) return
+        when (player?.repeatMode ?: Player.REPEAT_MODE_OFF) {
+            Player.REPEAT_MODE_ONE -> playCurrentIndex()
+            Player.REPEAT_MODE_ALL -> {
+                checkAndRefillQueue()
+                if (currentIndex + 1 < queue.size) {
+                    next()
+                } else {
+                    currentIndex = 0
+                    playCurrentIndex()
+                }
+            }
+            else -> next()
+        }
+    }
+
     fun prev() {
         if (currentIndex > 0) {
             currentIndex--
