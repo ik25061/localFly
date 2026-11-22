@@ -40,6 +40,16 @@ class KaraokeLyricsServerTest {
     }
 
     @Test
+    fun `la url solo se publica para la cancion actual y con letra`() {
+        assertFalse(server.hasTrack("s1"))
+        server.setTrack("s1", "T", null, emptyList(), durationMs = 10000L)
+        assertFalse(server.hasTrack("s1"))
+        server.setTrack("s2", "T", null, listOf(0L to "Letra"), durationMs = 10000L)
+        assertTrue(server.hasTrack("s2"))
+        assertFalse(server.hasTrack("s1"))
+    }
+
+    @Test
     fun `no se incluye bloque STYLE porque el estilo va por TextTrackStyle`() {
         server.setTrack("s1", "T", null, listOf(0L to "Uno"), durationMs = 10000L)
         assertFalse(server.buildVtt().contains("STYLE"))
