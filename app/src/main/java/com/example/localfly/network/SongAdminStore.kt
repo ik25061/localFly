@@ -55,7 +55,9 @@ data class DislikedSong(
     val kept: Boolean = false,
     val keptAtMs: Long = 0L,
     /** true solo cuando el usuario ha decidido explícitamente ponerla para eliminar. */
-    val markedForDeletion: Boolean = false
+    val markedForDeletion: Boolean = false,
+    /** Cuenta que solicitó el borrado diferido; evita ejecutar órdenes con otro usuario. */
+    val ownerUserId: String? = null
 )
 
 data class CustomGenre(
@@ -374,28 +376,32 @@ object SongAdminStore {
     // ===================== COLA DE ELIMINACIÓN DIFERIDA =====================
 
     /** Copia persistente e independiente de la lista de dislikes. */
-    fun getPendingSongDeletions(): List<DislikedSong> {
+    fun getPendingSongDeletions(ownerUserId: String): List<DislikedSong> {
+        if (ownerUserId.isBlank()) return emptyList()
         if (context != null) reloadIfChanged()
-        return pendingDeletionsCache
+        return pendingDeletionsCache.filter { it.ownerUserId == ownerUserId }
     }
 
-    fun isPendingSongDeletion(songId: String): Boolean {
+    fun isPendingSongDeletion(songId: String, ownerUserId: String): Boolean {
+        if (ownerUserId.isBlank()) return false
         if (context != null) reloadIfChanged()
-        return pendingDeletionsCache.any { it.songId == songId }
+        return pendingDeletionsCache.any { it.songId == songId && it.ownerUserId == ownerUserId }
     }
 
     /** Añade de forma idempotente una eliminación solicitada sin conexión. */
-    fun addPendingSongDeletion(song: DislikedSong) {
-        if (song.songId.isBlank() || isDeleted(song.songId)) return
+    fun addPendingSongDeletion(song: DislikedSong, ownerUserId: String) {
+        if (ownerUserId.isBlank() || song.songId.isBlank() || isDeleted(song.songId)) return
         if (context != null) reloadIfChanged()
-        if (pendingDeletionsCache.any { it.songId == song.songId }) return
-        pendingDeletionsCache = pendingDeletionsCache + song.copy(markedForDeletion = true, kept = false)
+        if (pendingDeletionsCache.any { it.songId == song.songId && it.ownerUserId == ownerUserId }) return
+        pendingDeletionsCache = pendingDeletionsCache +
+            song.copy(markedForDeletion = true, kept = false, ownerUserId = ownerUserId)
         persistPendingSongDeletions()
     }
 
-    fun removePendingSongDeletion(songId: String) {
+    fun removePendingSongDeletion(songId: String, ownerUserId: String) {
+        if (ownerUserId.isBlank()) return
         if (context != null) reloadIfChanged()
-        val updated = pendingDeletionsCache.filterNot { it.songId == songId }
+        val updated = pendingDeletionsCache.filterNot { it.songId == songId && it.ownerUserId == ownerUserId }
         if (updated.size == pendingDeletionsCache.size) return
         pendingDeletionsCache = updated
         persistPendingSongDeletions()
