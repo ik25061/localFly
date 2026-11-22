@@ -102,7 +102,7 @@ class OfflinePlaybackInstrumentedTest {
                     }
                 }
             })
-            playback.setQueueAndPlay(songs, 0, files.map { it.absolutePath })
+            playback.setQueueAndPlay(songs, 0, files.map { it.absolutePath }, localPathsResolved = true)
             expected = playback.queue.map { it.id }
             assertEquals(4, expected.size)
         }
