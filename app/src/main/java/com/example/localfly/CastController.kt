@@ -253,8 +253,8 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         lastSentUrl != null && remote.mediaStatus?.mediaInfo != null
 
     /**
-     * Se llama en cada refresh de la UI: si la cancion cambio mientras hay una
-     * sesion activa, la emite al Chromecast.
+     * Se consulta desde el bucle de sincronización Cast: si cambió la canción
+     * o apareció su letra, emite la versión completa al Chromecast.
      */
     fun autoCast() {
         val song = songProvider?.invoke() ?: return
@@ -287,9 +287,10 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
             .setMetadata(metadata)
         if (song.durationMs > 0) builder.setStreamDuration(song.durationMs)
 
-        // Karaoke en el TV: pista de subtítulos (WebVTT) con la letra. El
-        // audio que recibe el receptor es SILENCIOSO, así que el Chromecast
-        // muestra portada + título + letra pero no reproduce música.
+        // Karaoke en el TV: pista de subtítulos WebVTT como fallback del
+        // receptor estándar. Con el receptor LocalFly, la misma URL se dibuja
+        // en una capa karaoke sincronizada con el reloj del reproductor. El
+        // stream puede ser silencio (audio en teléfono/BT) o audio real (TV).
         val withLyrics = !song.lyricsUrl.isNullOrBlank()
         if (withLyrics) {
             builder.setMediaTracks(
