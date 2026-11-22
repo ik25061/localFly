@@ -1130,6 +1130,7 @@ class PlaybackService : MediaSessionService() {
     /** Propietario de la cola que está actualmente en memoria. */
     private var queueOwnerUserId: String? = null
     private var queueRequestToken: Long = 0L
+    private var queueRestoreInProgress: Boolean = false
 
     /**
      * Si cambia la cuenta con el servicio todavía vivo, descartar la cola anterior
@@ -1160,8 +1161,8 @@ class PlaybackService : MediaSessionService() {
         return false
     }
 
-    private fun queuePrefs(): android.content.SharedPreferences {
-        val userId = sessionManager.getUserId()?.takeIf { it.isNotBlank() } ?: "guest"
+    private fun queuePrefs(ownerUserId: String? = sessionManager.getUserId()): android.content.SharedPreferences {
+        val userId = ownerUserId?.takeIf { it.isNotBlank() } ?: "guest"
         val suffix = java.security.MessageDigest.getInstance("SHA-256")
             .digest(userId.toByteArray(Charsets.UTF_8))
             .joinToString("") { "%02x".format(it) }
@@ -1192,56 +1193,93 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
-    /** Restaura la cola persistida si la actual está vacía (renacer tras muerte). */
+    /** Restaura la cola persistida en IO para no bloquear el arranque offline. */
     private fun restoreQueueIfEmpty() {
         try {
-            if (queue.isNotEmpty()) return
-            // downloadHelper/sessionManager pueden no estar listos si el
-            // onStartCommand llega antes que onCreate: no hacer nada entonces.
+            if (queue.isNotEmpty() || queueRestoreInProgress) return
             if (!::downloadHelper.isInitialized || !::sessionManager.isInitialized) return
             if (player == null) return
-            val prefs = queuePrefs()
-            val savedOwner = prefs.getString("owner_user_id", null)
-            if (savedOwner != sessionManager.getUserId()) {
-                // Una cola antigua sin propietario tampoco se importa a una
-                // cuenta autenticada: no se puede demostrar a quién pertenecía.
-                LocalLogger.log(this, "restoreQueue: cola de otra cuenta ignorada")
-                return
+
+            queueRestoreInProgress = true
+            val requestedOwner = sessionManager.getUserId()
+            serviceScope.launch {
+                data class RestoredQueue(
+                    val ownerId: String?,
+                    val songs: List<Song>,
+                    val paths: List<String?>,
+                    val index: Int,
+                    val positionMs: Long,
+                    val shuffleEnabled: Boolean
+                )
+
+                val restored = withContext(Dispatchers.IO) {
+                    val prefs = queuePrefs(requestedOwner)
+                    val savedOwner = prefs.getString("owner_user_id", null)
+                    if (savedOwner != requestedOwner) {
+                        null
+                    } else {
+                        val json = prefs.getString("songs", null)
+                        val savedAt = prefs.getLong("saved_at", 0L)
+                        if (savedAt > 0 && System.currentTimeMillis() - savedAt > 24 * 60 * 60 * 1000L) {
+                            prefs.edit().clear().apply()
+                            null
+                        } else {
+                            val songs = try {
+                                val type = object : com.google.gson.reflect.TypeToken<List<Song>>() {}.type
+                                json?.let { queueGson.fromJson<List<Song>>(it, type) }.orEmpty()
+                            } catch (_: Exception) {
+                                emptyList()
+                            }
+                            val savedId = prefs.getString("current_id", null)
+                            // Offline: solo restaurar archivos realmente descargados.
+                            // No conservar una canción remota no descargada como
+                            // "actual", porque ExoPlayer intentaría abrir la red.
+                            val alive = songs.filter {
+                                !SongAdminStore.isDeleted(it.id) &&
+                                    (ServerReachability.isOnline || downloadHelper.isDownloaded(it.id))
+                            }
+                            if (alive.isEmpty()) {
+                                null
+                            } else {
+                                var index = prefs.getInt("index", 0).coerceIn(0, alive.size - 1)
+                                if (savedId != null && alive.getOrNull(index)?.id != savedId) {
+                                    val byId = alive.indexOfFirst { it.id == savedId }.takeIf { it >= 0 }
+                                    if (byId != null) index = byId
+                                }
+                                RestoredQueue(
+                                    ownerId = savedOwner,
+                                    songs = alive,
+                                    paths = alive.map { downloadHelper.getLocalFilePath(it.id) },
+                                    index = index,
+                                    positionMs = prefs.getLong("position", 0L).coerceAtLeast(0L),
+                                    shuffleEnabled = prefs.getBoolean("shuffle_enabled", false)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    queueRestoreInProgress = false
+                    if (queue.isNotEmpty() || requestedOwner != sessionManager.getUserId()) return@withContext
+                    if (restored == null) return@withContext
+                    queueOwnerUserId = restored.ownerId
+                    queue = restored.songs
+                    queueLocalPaths = restored.paths
+                    shuffleEnabled = restored.shuffleEnabled
+                    queueBeforeShuffle = null
+                    pathsBeforeShuffle = null
+                    player?.shuffleModeEnabled = false
+                    currentIndex = restored.index
+                    LocalLogger.log(
+                        this@PlaybackService,
+                        "restoreQueue: recuperadas ${restored.songs.size} (index=${restored.index}, pos=${restored.positionMs})"
+                    )
+                    playCurrentIndex(resumePositionMs = restored.positionMs)
+                }
             }
-            val json = prefs.getString("songs", null) ?: return
-            val savedAt = prefs.getLong("saved_at", 0L)
-            if (savedAt > 0 && System.currentTimeMillis() - savedAt > 24 * 60 * 60 * 1000L) {
-                prefs.edit().clear().apply()
-                return
-            }
-            val type = object : com.google.gson.reflect.TypeToken<List<Song>>() {}.type
-            val songs: List<Song> = try {
-                queueGson.fromJson(json, type) ?: return
-            } catch (_: Exception) { return }
-            if (songs.isEmpty()) return
-            val savedId = prefs.getString("current_id", null)
-            val alive = songs.filter {
-                !SongAdminStore.isDeleted(it.id) &&
-                    (ServerReachability.isOnline || it.id == savedId || downloadHelper.isDownloaded(it.id))
-            }
-            if (alive.isEmpty()) return
-            var index = prefs.getInt("index", 0).coerceIn(0, alive.size - 1)
-            if (savedId != null && alive.getOrNull(index)?.id != savedId) {
-                val byId = alive.indexOfFirst { it.id == savedId }.takeIf { it >= 0 }
-                if (byId != null) index = byId
-            }
-            val position = prefs.getLong("position", 0L).coerceAtLeast(0L)
-            queueOwnerUserId = savedOwner
-            queue = alive
-            queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
-            shuffleEnabled = prefs.getBoolean("shuffle_enabled", false)
-            queueBeforeShuffle = null
-            pathsBeforeShuffle = null
-            player?.shuffleModeEnabled = false
-            currentIndex = index
-            LocalLogger.log(this, "restoreQueue: recuperadas ${alive.size} (index=$index, pos=$position)")
-            playCurrentIndex(resumePositionMs = position)
         } catch (e: Exception) {
+            queueRestoreInProgress = false
             LocalLogger.log(this, "restoreQueue: fallo", e)
         }
     }
