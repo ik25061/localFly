@@ -367,3 +367,65 @@ data class FavoriteArtistRequest(
 data class HideArtistRequest(
     val userId: String?
 )
+
+// --- Administración y procesamiento masivo de letras ---
+data class LyricsAdminSong(
+    val songId: String,
+    val title: String? = null,
+    val artist: String? = null,
+    val status: String = "new",
+    val reviewed: Boolean = false,
+    val needsReview: Boolean = false,
+    val hasSynced: Boolean = false,
+    val source: String? = null,
+    val lastAttemptAt: String? = null,
+    val error: String? = null
+)
+
+data class LyricsAdminStatusResponse(
+    val success: Boolean = false,
+    val counts: Map<String, Int> = emptyMap(),
+    val totalFiltered: Int = 0,
+    val items: List<LyricsAdminSong> = emptyList()
+)
+
+data class LyricsAdminJobRequest(
+    val mode: String = "new",
+    val songId: String? = null,
+    val songIds: List<String>? = null,
+    val force: Boolean = false
+)
+
+data class LyricsAdminJob(
+    val id: String? = null,
+    val status: String = "idle",
+    val mode: String? = null,
+    val processed: Int = 0,
+    val total: Int = 0,
+    val succeeded: Int = 0,
+    val needsReview: Int = 0,
+    val notFound: Int = 0,
+    val failed: Int = 0,
+    val currentSong: Map<String, String?>? = null,
+    val error: String? = null
+)
+
+data class LyricsAdminJobResponse(
+    val success: Boolean = false,
+    val job: LyricsAdminJob? = null
+)
+
+data class LyricsAdminStartResponse(
+    val success: Boolean = false,
+    val accepted: Boolean = false,
+    val jobId: String? = null,
+    val total: Int = 0,
+    val message: String? = null
+)
+
+data class LyricsAdminReviewRequest(val reviewed: Boolean = true)
+
+data class LyricsAdminReviewResponse(
+    val success: Boolean = false,
+    val state: Map<String, Any?>? = null
+)
