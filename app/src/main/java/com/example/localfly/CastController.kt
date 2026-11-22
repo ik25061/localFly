@@ -123,10 +123,14 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
                 MediaStatus.IDLE_REASON_FINISHED -> {
                     // En salida TV el player del teléfono está pausado. Avanzar
                     // desde la Activity para no dejar el Chromecast en reposo.
-                    lastSentUrl = null
-                    lastSentLyricsUrl = null
-                    pendingLoadKey = null
-                    onCastTrackFinished?.invoke()
+                    val finishedId = status.mediaInfo?.contentId
+                    if (pendingLoadKey == null && finishedId != null &&
+                        finishedId != lastFinishedContentId) {
+                        lastFinishedContentId = finishedId
+                        lastSentUrl = null
+                        lastSentLyricsUrl = null
+                        onCastTrackFinished?.invoke()
+                    }
                 }
             }
         }
@@ -142,6 +146,8 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     private var lastSentLyricsUrl: String? = null
     /** Evita lanzar varias cargas iguales mientras el receptor aún responde. */
     private var pendingLoadKey: String? = null
+    /** Último medio finalizado ya procesado (evita avanzar varias canciones). */
+    private var lastFinishedContentId: String? = null
 
     /** Estado deseado de reproduccion en el receptor (fuente de verdad del cast). */
     private var remoteShouldPlay = false
@@ -308,6 +314,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         lastSentUrl = song.streamUrl
         lastSentLyricsUrl = song.lyricsUrl
         pendingLoadKey = loadKey(song)
+        lastFinishedContentId = null
         remoteShouldPlay = localPlaying
         // El resultado de la carga es la única fuente fiable de por qué el
         // televisor se queda en su pantalla de reposo: si el receptor la
@@ -527,6 +534,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         lastSentUrl = null
         lastSentLyricsUrl = null
         pendingLoadKey = null
+        lastFinishedContentId = null
         remoteShouldPlay = false
         lastErrorReported = null
         callbackRemote = null
