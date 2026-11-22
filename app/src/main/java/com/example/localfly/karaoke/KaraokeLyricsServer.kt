@@ -299,7 +299,7 @@ class KaraokeLyricsServer(
      */
     fun trackUrl(songId: String): String? {
         val ip = localIp() ?: return null
-        if (!hasTrack(songId)) return null
+        if (!running || !hasTrack(songId)) return null
         return "http://$ip:$port/track.vtt?song=$songId"
     }
 
@@ -309,6 +309,7 @@ class KaraokeLyricsServer(
 
     /** URL del audio "silencio" que recibe el Chromecast en lugar de la música. */
     fun silenceUrl(songId: String, durationMs: Long): String? {
+        if (!running) return null
         val ip = localIp() ?: return null
         return "http://$ip:$port/silence?ms=$durationMs&song=$songId"
     }
@@ -321,6 +322,7 @@ class KaraokeLyricsServer(
      * con CORS y reenviando al upstream las peticiones Range del receptor.
      */
     fun mediaProxyUrl(songId: String, sourceUrl: String): String? {
+        if (!running) return null
         val ip = localIp() ?: return null
         if (!isSameOrigin(sourceUrl, allowedAudioOrigin()) ||
             !isAllowedAudioPath(sourceUrl, songId, allowedAudioOrigin())) {
