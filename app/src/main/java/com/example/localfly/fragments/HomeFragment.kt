@@ -697,6 +697,8 @@ class HomeFragment : Fragment() {
         val newLiked = !com.example.localfly.network.LikeStateStore.isLiked(song)
         com.example.localfly.network.LikeStateStore.set(song.id, newLiked)
         val updated = song.copy(liked = newLiked)
+        // El aprendizaje solo actúa si esta canción fue sugerida por el motor.
+        AIWeightsStore(requireContext()).reinforce(song.id, if (newLiked) 1f else -1f)
 
         if (::likedAdapter.isInitialized) {
             val idxLiked = likedAdapter.indexOf(song.id)
@@ -734,6 +736,7 @@ class HomeFragment : Fragment() {
         // Registrar localmente para que el admin pueda revisarla y, si quiere,
         // borrarla por completo del disco.
         SongAdminStore.recordDislikedSong(song)
+        AIWeightsStore(requireContext()).reinforce(song.id, -1f)
         if (::likedAdapter.isInitialized) likedAdapter.removeSongById(song.id)
         if (::recommendationsAdapter.isInitialized) recommendationsAdapter.removeSongById(song.id)
         if (::librarySectionAdapter.isInitialized) librarySectionAdapter.removeSongById(song.id)
