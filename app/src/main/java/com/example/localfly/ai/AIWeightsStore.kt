@@ -23,10 +23,15 @@ class AIWeightsStore(context: Context) {
         const val FACTOR_SEED_ARTIST = "seed_artist"
         const val FACTOR_SEED_DECADE = "seed_decade"
         const val FACTOR_HAS_COVER = "has_cover"
+        const val FACTOR_GENRE_MATCH = "genre_match"
+        const val FACTOR_BPM_MATCH = "bpm_match"
+        const val FACTOR_KEY_MATCH = "key_match"
+        const val FACTOR_MOOD_MATCH = "mood_match"
 
         val ALL_FACTORS = listOf(
             FACTOR_FAV_ARTIST, FACTOR_LIKED_ARTIST, FACTOR_DECADE_MATCH,
-            FACTOR_SEED_ARTIST, FACTOR_SEED_DECADE, FACTOR_HAS_COVER
+            FACTOR_SEED_ARTIST, FACTOR_SEED_DECADE, FACTOR_HAS_COVER,
+            FACTOR_GENRE_MATCH, FACTOR_BPM_MATCH, FACTOR_KEY_MATCH, FACTOR_MOOD_MATCH
         )
 
         private const val MIN_WEIGHT = 0.2f
@@ -114,14 +119,19 @@ class AIWeightsStore(context: Context) {
      */
     fun reinforce(songId: String, reward: Float) {
         if (!isOnlineLearningEnabled()) return
-        val factors = getAttributions()[songId] ?: return
+        val attributions = getAttributions().toMutableMap()
+        val factors = attributions.remove(songId) ?: return
 
         val weights = getWeights().toMutableMap()
+        val boundedReward = reward.coerceIn(-1f, 1f)
         for (factor in factors) {
             val current = weights[factor] ?: 1.0f
-            val updated = (current + LEARNING_RATE * reward).coerceIn(MIN_WEIGHT, MAX_WEIGHT)
+            val updated = (current + LEARNING_RATE * boundedReward).coerceIn(MIN_WEIGHT, MAX_WEIGHT)
             weights[factor] = updated
         }
         saveWeights(weights)
+        // Cada sugerencia solo puede enseñar una vez; evita reforzar repetidamente
+        // el mismo registro por dobles clics o sincronizaciones duplicadas.
+        prefs.edit().putString("attributions", gson.toJson(attributions)).apply()
     }
 }
