@@ -1130,6 +1130,7 @@ class PlaybackService : MediaSessionService() {
     /** Propietario de la cola que está actualmente en memoria. */
     private var queueOwnerUserId: String? = null
     private var queueRequestToken: Long = 0L
+    @Volatile private var queuePersistToken: Long = 0L
     private var queueRestoreInProgress: Boolean = false
 
     /**
@@ -1171,23 +1172,37 @@ class PlaybackService : MediaSessionService() {
 
     private val queueGson: com.google.gson.Gson by lazy { com.google.gson.Gson() }
 
-    /** Guarda la cola actual para sobrevivir a la muerte del proceso. */
+    /**
+     * Guarda la cola para sobrevivir a la muerte del proceso. La serialización
+     * de listas largas se realiza en IO; nunca convertir cientos de canciones a
+     * JSON ni escribir preferencias desde el hilo de reproducción.
+     */
     private fun persistQueue(positionMs: Long = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }) {
+        val token = ++queuePersistToken
         try {
             if (!ensureQueueAccount()) return
-            val songs = queue
+            val songs = queue.toList()
             if (songs.isEmpty()) return
-            val json = queueGson.toJson(songs)
-            if (json.length > 1_500_000) return
-            queuePrefs().edit()
-                .putString("songs", json)
-                .putInt("index", currentIndex)
-                .putLong("position", positionMs)
-                .putString("current_id", currentSong?.id)
-                .putString("owner_user_id", sessionManager.getUserId())
-                .putBoolean("shuffle_enabled", shuffleEnabled)
-                .putLong("saved_at", System.currentTimeMillis())
-                .apply()
+            val index = currentIndex
+            val currentId = currentSong?.id
+            val ownerId = sessionManager.getUserId()
+            val shuffle = shuffleEnabled
+            val savedAt = System.currentTimeMillis()
+
+            serviceScope.launch(Dispatchers.IO) {
+                val json = queueGson.toJson(songs)
+                if (json.length > 1_500_000) return@launch
+                if (token != queuePersistToken || ownerId != sessionManager.getUserId()) return@launch
+                queuePrefs(ownerId).edit()
+                    .putString("songs", json)
+                    .putInt("index", index)
+                    .putLong("position", positionMs)
+                    .putString("current_id", currentId)
+                    .putString("owner_user_id", ownerId)
+                    .putBoolean("shuffle_enabled", shuffle)
+                    .putLong("saved_at", savedAt)
+                    .apply()
+            }
         } catch (e: Exception) {
             LocalLogger.log(this, "persistQueue: fallo (${e.message})")
         }
