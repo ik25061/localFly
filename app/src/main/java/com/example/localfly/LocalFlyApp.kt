@@ -4,6 +4,10 @@ import android.app.Application
 import com.example.localfly.network.SongAdminStore
 import com.example.localfly.utils.LocalLogger
 import com.example.localfly.karaoke.KaraokeLyricsServer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Application de localFly.
@@ -20,6 +24,8 @@ import com.example.localfly.karaoke.KaraokeLyricsServer
  * stack trace en app_debug_log.txt.
  */
 class LocalFlyApp : Application() {
+    private val startupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     lateinit var sessionManager: com.example.localfly.network.SessionManager
         private set
 
@@ -48,6 +54,12 @@ class LocalFlyApp : Application() {
         sessionManager = com.example.localfly.network.SessionManager(this)
         com.example.localfly.network.RetrofitClient.setTokenProvider {
             sessionManager.getToken()
+        }
+
+        // Leer el índice JSON de descargas en segundo plano al arrancar. Así,
+        // la primera reproducción offline no analiza miles de entradas en main.
+        startupScope.launch {
+            DownloadManagerHelper.getInstance(this@LocalFlyApp).warmDownloadIndex()
         }
     }
 }
