@@ -223,28 +223,36 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     private fun loadKey(song: CastSong): String = song.streamUrl + "\n" + (song.lyricsUrl ?: "")
 
     /** Adopta una pista ya activa al recrearse la Activity, sin reiniciar el TV. */
+    /** Adopta una pista activa sin reiniciarla; si terminó, permite cargar la siguiente. */
     private fun adoptRemoteMediaIfMatching(remote: RemoteMediaClient, song: CastSong): Boolean {
-        val info = remote.mediaStatus?.mediaInfo ?: return false
+        val status = remote.mediaStatus
+        val info = status?.mediaInfo ?: return false
         if (info.contentId != song.streamUrl) return false
         val hasExpectedLyrics = song.lyricsUrl.isNullOrBlank() ||
             info.mediaTracks?.any { it.contentId == song.lyricsUrl } == true
         if (!hasExpectedLyrics) return false
+
+        attachRemoteCallback(remote)
+        if (status.playerState == MediaStatus.PLAYER_STATE_IDLE &&
+            status.idleReason == MediaStatus.IDLE_REASON_FINISHED) {
+            // El medio remoto ya terminó. No adoptarlo como activo: el callback
+            // avanza la cola y autoCast cargará el nuevo medio (o repetirá el
+            // actual si el usuario eligió Repetir una).
+            remoteShouldPlay = true
+            if (info.contentId != lastFinishedContentId) {
+                lastFinishedContentId = info.contentId
+                lastSentUrl = null
+                lastSentLyricsUrl = null
+                pendingLoadKey = null
+                onCastTrackFinished?.invoke()
+            }
+            return false
+        }
+
         lastSentUrl = song.streamUrl
         lastSentLyricsUrl = song.lyricsUrl
         pendingLoadKey = null
-        attachRemoteCallback(remote)
-        val status = remote.mediaStatus
-        remoteShouldPlay = remoteIsPlaying(remote) ||
-            (status?.playerState == MediaStatus.PLAYER_STATE_IDLE &&
-                status.idleReason == MediaStatus.IDLE_REASON_FINISHED)
-        if (status?.playerState == MediaStatus.PLAYER_STATE_IDLE &&
-            status.idleReason == MediaStatus.IDLE_REASON_FINISHED &&
-            info.contentId != lastFinishedContentId) {
-            lastFinishedContentId = info.contentId
-            lastSentUrl = null
-            lastSentLyricsUrl = null
-            onCastTrackFinished?.invoke()
-        }
+        remoteShouldPlay = remoteIsPlaying(remote)
         return true
     }
 
@@ -257,14 +265,15 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
      * o apareció su letra, emite la versión completa al Chromecast.
      */
     fun autoCast() {
-        val song = songProvider?.invoke() ?: return
+        var song = songProvider?.invoke() ?: return
         val remote = remoteClient() ?: return
-        val key = loadKey(song)
-        if (pendingLoadKey == key) return
+        if (pendingLoadKey == loadKey(song)) return
         // Si la Activity se recreó, adoptar el medio que ya está sonando en el
-        // TV en vez de reiniciarlo. Si ahora hay letra y el medio remoto no la
-        // tiene, sí hay que recargar aunque la URL de audio sea la misma.
+        // TV en vez de reiniciarlo. Si el medio terminó, el callback puede haber
+        // avanzado la cola: volver a leer currentSong antes de emitir.
         if (adoptRemoteMediaIfMatching(remote, song)) return
+        song = songProvider?.invoke() ?: return
+        if (pendingLoadKey == loadKey(song)) return
         if (lastSentUrl == song.streamUrl &&
             lastSentLyricsUrl == song.lyricsUrl &&
             hasSentMedia(remote)) return
@@ -475,10 +484,12 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
 
     /** Fuerza la reemision de la cancion actual (p. ej. al iniciar sesion de cast). */
     fun castCurrentSong(localPlaying: Boolean) {
-        val song = songProvider?.invoke() ?: return
+        var song = songProvider?.invoke() ?: return
         val remote = remoteClient() ?: return
         if (pendingLoadKey == loadKey(song)) return
         if (adoptRemoteMediaIfMatching(remote, song)) return
+        song = songProvider?.invoke() ?: return
+        if (pendingLoadKey == loadKey(song)) return
         sendSong(remote, song, localPlaying)
     }
 
