@@ -329,7 +329,11 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         val options = MediaLoadOptions.Builder()
             .setAutoplay(localPlaying)
             .setPlayPosition(startMs)
-            .apply { if (withLyrics) setActiveTrackIds(longArrayOf(LYRICS_TRACK_ID)) }
+            .apply {
+                if (withLyrics && !CastOptionsProvider.isCustomReceiverEnabled) {
+                    setActiveTrackIds(longArrayOf(LYRICS_TRACK_ID))
+                }
+            }
             .build()
 
         attachRemoteCallback(remote)
