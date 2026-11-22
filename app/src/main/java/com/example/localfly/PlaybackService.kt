@@ -1129,6 +1129,7 @@ class PlaybackService : MediaSessionService() {
      */
     /** Propietario de la cola que está actualmente en memoria. */
     private var queueOwnerUserId: String? = null
+    private var queueRequestToken: Long = 0L
 
     /**
      * Si cambia la cuenta con el servicio todavía vivo, descartar la cola anterior
@@ -1249,9 +1250,41 @@ class PlaybackService : MediaSessionService() {
         songs: List<Song>,
         startIndex: Int,
         localPaths: List<String?>? = null,
-        reviewSession: Boolean = false
+        reviewSession: Boolean = false,
+        localPathsResolved: Boolean = false
     ) {
-        queueOwnerUserId = sessionManager.getUserId()
+        val requestToken = ++queueRequestToken
+        val requestOwner = sessionManager.getUserId()
+        queueOwnerUserId = requestOwner
+
+        // Resolver el índice y comprobar los archivos en IO. Hacer cientos de
+        // File.exists()/length() y parsear el JSON de descargas desde main era
+        // suficiente para congelar la pantalla en bibliotecas grandes.
+        if (!ServerReachability.isOnline && !localPathsResolved) {
+            serviceScope.launch {
+                val resolvedPaths = withContext(Dispatchers.IO) {
+                    downloadHelper.warmDownloadIndex()
+                    songs.mapIndexed { index, song ->
+                        val supplied = localPaths?.getOrNull(index)
+                            ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
+                        supplied ?: downloadHelper.getLocalFilePath(song.id)
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    if (requestToken != queueRequestToken ||
+                        requestOwner != sessionManager.getUserId()) return@withContext
+                    setQueueAndPlay(
+                        songs,
+                        startIndex,
+                        resolvedPaths,
+                        reviewSession,
+                        localPathsResolved = true
+                    )
+                }
+            }
+            return
+        }
+
         // Una canción eliminada del disco ya no se puede reproducir.
         val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
         if (aliveSongs.isEmpty()) return
@@ -1287,8 +1320,12 @@ class PlaybackService : MediaSessionService() {
                 songsFiltered.map { song ->
                     val originalIndex = songs.indexOfFirst { it.id == song.id }
                     val storedPath = localPaths?.getOrNull(originalIndex)
-                        ?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
-                    val path = downloadHelper.getLocalFilePath(song.id) ?: storedPath
+                    val path = if (localPathsResolved) {
+                        storedPath
+                    } else {
+                        storedPath?.takeIf { path -> File(path).isFile && File(path).length() > 0L }
+                            ?: downloadHelper.getLocalFilePath(song.id)
+                    }
                     Triple(song, path, originalIndex)
                 }
             ) { (_, path, _) -> path != null }
