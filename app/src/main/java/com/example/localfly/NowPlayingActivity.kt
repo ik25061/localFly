@@ -1438,29 +1438,36 @@ class NowPlayingActivity : AppCompatActivity() {
         // El diagnóstico ya NO se usa como texto del diálogo: parecía un error y
         // tapaba las opciones. Se guarda en el log y se consulta con "Diagnóstico".
         LocalLogger.log(this, "Chromecast diagnóstico: ${castLyricsServer.diagnostic()}")
-        val options = CastSettings.AudioTarget.entries.toTypedArray()
-        val current = options.indexOf(CastSettings.audioTarget(this))
+        val current = if (CastSettings.audioTarget(this) == CastSettings.AudioTarget.TV) 0 else 1
+        val options = arrayOf(
+            "En el televisor · audio y karaoke",
+            "En el teléfono · solo karaoke en el TV",
+            "Bluetooth / otro dispositivo de audio"
+        )
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("¿Dónde quieres que suene el audio?")
             .setMessage(
                 if (CastOptionsProvider.isCustomReceiverEnabled) {
-                    "El televisor mostrará la letra sincronizada en modo karaoke."
+                    "El televisor mostrará la letra sincronizada. Puedes cambiar la salida sin desconectar Chromecast."
                 } else {
-                    "El receptor estándar recibe la letra como pista WebVTT. Para la pantalla karaoke completa, configura el receptor LocalFly."
+                    "El receptor actual puede mostrar subtítulos básicos. Para la pantalla karaoke de LocalFly hay que registrar el receptor personalizado."
                 }
             )
-            .setSingleChoiceItems(
-                options.map { it.label }.toTypedArray(),
-                current
-            ) { dialog, which ->
-                val target = options[which]
+            .setSingleChoiceItems(options, current) { dialog, which ->
                 dialog.dismiss()
-                applyCastAudioTarget(target)
+                when (which) {
+                    0 -> applyCastAudioTarget(CastSettings.AudioTarget.TV)
+                    1 -> applyCastAudioTarget(CastSettings.AudioTarget.PHONE)
+                    2 -> {
+                        // Bluetooth es una ruta de audio Android, no un tercer
+                        // reproductor Cast. Mantener el audio real en el móvil
+                        // y abrir el selector del sistema para elegir BT/altavoz.
+                        applyCastAudioTarget(CastSettings.AudioTarget.PHONE)
+                        showSystemAudioOutputSwitcher()
+                    }
+                }
             }
             .setPositiveButton("Diagnóstico") { _, _ -> showCastDiagnostic() }
-            .setNeutralButton("Bluetooth / salida del teléfono") { _, _ ->
-                showSystemAudioOutputSwitcher()
-            }
             .setNegativeButton("Cancelar", null)
             .show()
             .also { castTargetDialog = it }
