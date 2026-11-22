@@ -76,6 +76,7 @@ data class CustomGenre(
 object SongAdminStore {
 
     private const val PREFS_NAME = "localfly_admin_data"
+    private const val KEY_LEGACY_OWNER = "claimed_by_user_id"
     private const val KEY_EDITS = "edits"
     private const val KEY_DISLIKED = "disliked"
     private const val KEY_GENRES = "genres"
@@ -84,6 +85,7 @@ object SongAdminStore {
     private const val KEY_PENDING_DELETIONS = "pending_song_deletions"
 
     private var context: Context? = null
+    private var prefsName: String = "${PREFS_NAME}_guest"
 
     private val gson = Gson()
 
@@ -111,15 +113,69 @@ object SongAdminStore {
     private var pendingDeletionsCache: List<DislikedSong> = emptyList()
     private var pendingDeletionsJson: String? = null
 
-    /** Se llama desde SessionManager (que se crea en cada fragmento). */
-    fun ensureContext(appContext: Context) {
-        context = appContext
-        reload()
+    /**
+     * Separa ediciones, dislikes y colas administrativas por cuenta. La antigua
+     * preferencia global no tenía propietario; se migra una sola vez a la
+     * primera cuenta autenticada que abre esta versión, y después queda aislada.
+     */
+    fun ensureContext(appContext: Context, userId: String? = null) {
+        val applicationContext = appContext.applicationContext
+        val owner = userId?.takeIf { it.isNotBlank() }
+        val newPrefsName = if (owner == null) {
+            "${PREFS_NAME}_guest"
+        } else {
+            val suffix = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(owner.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            "${PREFS_NAME}_$suffix"
+        }
+
+        if (owner != null) migrateLegacyStore(applicationContext, newPrefsName, owner)
+        val contextChanged = context !== applicationContext
+        val prefsChanged = prefsName != newPrefsName
+        context = applicationContext
+        prefsName = newPrefsName
+        if (contextChanged || prefsChanged) reload()
+    }
+
+    private fun migrateLegacyStore(appContext: Context, targetName: String, owner: String) {
+        val legacy = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (legacy.getString(KEY_LEGACY_OWNER, null) != null) return
+
+        val target = appContext.getSharedPreferences(targetName, Context.MODE_PRIVATE)
+        val editor = target.edit()
+        legacy.all.forEach { (key, value) ->
+            if (key == KEY_LEGACY_OWNER || target.contains(key)) return@forEach
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+            }
+        }
+
+        // Las solicitudes antiguas no guardaban propietario. Al migrar el
+        // almacén legacy, se atribuyen a la cuenta que lo ha reclamado.
+        val pendingJson = target.getString(KEY_PENDING_DELETIONS, null)
+            ?: legacy.getString(KEY_PENDING_DELETIONS, null)
+        if (!pendingJson.isNullOrBlank()) {
+            val migrated = parsePendingDeletions(pendingJson).map { pending ->
+                if (pending.ownerUserId.isNullOrBlank()) pending.copy(ownerUserId = owner) else pending
+            }
+            editor.putString(KEY_PENDING_DELETIONS, gson.toJson(migrated))
+        }
+        editor.apply()
+
+        // Retener solo el marcador: los datos ya están en el fichero de la
+        // cuenta y no deben aparecer en el almacén invitado ni en otra cuenta.
+        legacy.edit().clear().putString(KEY_LEGACY_OWNER, owner).apply()
     }
 
     private fun prefs(): SharedPreferences? {
         val appContext = context ?: return null
-        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     }
 
     private fun reload() {
