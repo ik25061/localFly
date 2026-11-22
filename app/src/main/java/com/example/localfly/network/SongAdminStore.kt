@@ -376,10 +376,19 @@ object SongAdminStore {
     // ===================== COLA DE ELIMINACIÓN DIFERIDA =====================
 
     /** Copia persistente e independiente de la lista de dislikes. */
+    internal fun filterPendingDeletionsForUser(
+        pending: List<DislikedSong>,
+        ownerUserId: String
+    ): List<DislikedSong> = if (ownerUserId.isBlank()) {
+        emptyList()
+    } else {
+        pending.filter { it.ownerUserId == ownerUserId }
+    }
+
     fun getPendingSongDeletions(ownerUserId: String): List<DislikedSong> {
         if (ownerUserId.isBlank()) return emptyList()
         if (context != null) reloadIfChanged()
-        return pendingDeletionsCache.filter { it.ownerUserId == ownerUserId }
+        return filterPendingDeletionsForUser(pendingDeletionsCache, ownerUserId)
     }
 
     fun isPendingSongDeletion(songId: String, ownerUserId: String): Boolean {
