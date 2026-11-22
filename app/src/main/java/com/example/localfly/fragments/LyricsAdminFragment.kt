@@ -71,7 +71,7 @@ class LyricsAdminFragment : Fragment() {
                 tvStatus.text = "Biblioteca: ${c["total"] ?: 0} canciones\n" +
                     "Nuevas: ${c["new"] ?: 0} · Pendientes: ${c["pending"] ?: 0}\n" +
                     "Generadas: ${c["generated"] ?: 0} · Revisadas: ${c["reviewed"] ?: 0}\n" +
-                    "Revisión necesaria: ${c["needsReview"] ?: 0} · Errores: ${c["error"] ?: 0}"
+                    "Revisión necesaria: ${c["needsReview"] ?: 0} · Instrumentales: ${c["instrumental"] ?: 0} · Errores: ${c["error"] ?: 0}"
             } catch (e: Exception) {
                 tvStatus.text = "Error de conexión: ${e.message}"
             }
