@@ -233,7 +233,12 @@ class DownloadsFragment : Fragment() {
                 return@launch
             }
             val activity = requireActivity() as? MainActivity
-            activity?.playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
+            activity?.playbackService?.setQueueAndPlay(
+                songs,
+                startIndex,
+                localPaths,
+                localPathsResolved = true
+            )
         }
     }
 
