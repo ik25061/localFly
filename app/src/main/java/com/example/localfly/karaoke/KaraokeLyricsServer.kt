@@ -96,7 +96,8 @@ class KaraokeLyricsServer(
                 "http" -> 80
                 else -> -1
             }
-            return targetUri.scheme?.lowercase() in setOf("http", "https") &&
+            val scheme = targetUri.scheme?.lowercase() ?: return false
+            return (scheme == "http" || scheme == "https") &&
                 targetUri.scheme.equals(baseUri.scheme, ignoreCase = true) &&
                 targetUri.host.equals(baseUri.host, ignoreCase = true) &&
                 effectivePort(targetUri) == effectivePort(baseUri) &&
