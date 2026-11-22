@@ -31,3 +31,27 @@ El teléfono y el Chromecast deben permanecer en la misma red local para que el 
 - **Bluetooth:** el botón de salida de audio abre el selector de Android 14 para elegir altavoz del teléfono o un dispositivo Bluetooth. Si hay Cast activo, primero cambia al modo «Teléfono» y después permite seleccionar Bluetooth.
 
 El receptor personalizado debe servirse por HTTPS. El servidor local del teléfono usa HTTP en la red privada y responde a las peticiones CORS/preflight del receptor.
+
+## Publicar el receptor desde GitHub Pages
+
+El repositorio incluye el workflow `.github/workflows/cast-receiver-pages.yml`, que publica automáticamente la carpeta `receiver/` en GitHub Pages al cambiar esos archivos en la rama `audit-fix-2026-11`.
+
+1. Abre **Settings → Pages** del repositorio y comprueba que la fuente de publicación sea **GitHub Actions**. Si GitHub pide habilitar Pages, actívalo.
+2. Cuando termine el workflow, la dirección prevista del receptor será:
+   `https://ik25061.github.io/localFly/`
+3. Abre esa dirección desde un navegador para comprobar que aparece “LOCALFLY · KARAOKE”.
+4. Entra en Google Cast Developer Console, crea una aplicación **Custom Receiver** y registra exactamente esa URL HTTPS.
+5. Google generará un **Application ID** propio. Ese ID no es el nombre del proyecto ni el ID `CC1AD845`.
+6. En Android Studio, añade a `gradle.properties`:
+   `CAST_RECEIVER_APP_ID=TU_APPLICATION_ID`
+7. Sincroniza Gradle, compila e instala la aplicación de nuevo.
+
+**Importante:** el ID de Google Cast lo debe generar el propietario desde su cuenta de Google Cast Developer Console. Hasta que se registre el receptor y se introduzca ese ID, LocalFly seguirá usando el receptor estándar y no podrá mostrar el diseño karaoke personalizado. El workflow de Pages solo publica la página; no crea ni registra automáticamente la aplicación en Google.
+
+## Comportamiento de las salidas de audio
+
+- **Televisor:** el Chromecast reproduce el audio real y muestra la letra sincronizada.
+- **Teléfono:** el Chromecast reproduce una pista silenciosa para mantener el reloj de vídeo/letra; el audio real continúa en el móvil.
+- **Bluetooth:** se mantiene el modo de audio local y Android permite seleccionar un dispositivo Bluetooth conectado desde el selector de salida. El Chromecast continúa mostrando el karaoke.
+
+El teléfono y el Chromecast deben estar en la misma red local. La app debe permanecer activa como servicio de reproducción durante la sesión Cast para servir la letra y, cuando corresponda, el audio.
