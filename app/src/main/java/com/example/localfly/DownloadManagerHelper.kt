@@ -198,30 +198,32 @@ class DownloadManagerHelper private constructor(context: Context) {
                 downloadLyrics(song)
                 val hasLyricsNow = song.hasLyrics || File(downloadsDir(), "${song.id}.lrc").exists()
 
-                val current = getDownloadedSongs().toMutableList()
-                current.removeAll { it.id == song.id }
-                current.add(
-                    DownloadedSong(
-                        id = song.id,
-                        title = song.title,
-                        artist = song.artist,
-                        filePath = file!!.absolutePath,
-                        duration = song.duration,
-                        bpm = song.bpm,
-                        key = song.key,
-                        hasCover = song.hasCover,
-                        hasLyrics = hasLyricsNow,
-                        hasKaraoke = song.hasKaraoke,
-                        liked = song.liked,
-                        fileSize = file!!.length(),
-                        genre = song.genre ?: emptyList(),
-                        album = song.album,
-                        year = song.year
+                synchronized(this@DownloadManagerHelper) {
+                    val current = getDownloadedSongs().toMutableList()
+                    current.removeAll { it.id == song.id }
+                    current.add(
+                        DownloadedSong(
+                            id = song.id,
+                            title = song.title,
+                            artist = song.artist,
+                            filePath = file!!.absolutePath,
+                            duration = song.duration,
+                            bpm = song.bpm,
+                            key = song.key,
+                            hasCover = song.hasCover,
+                            hasLyrics = hasLyricsNow,
+                            hasKaraoke = song.hasKaraoke,
+                            liked = song.liked,
+                            fileSize = file!!.length(),
+                            genre = song.genre ?: emptyList(),
+                            album = song.album,
+                            year = song.year
+                        )
                     )
-                )
-                val newList = current.toList()
-                cachedDownloads = newList
-                prefs.edit().putString("list", gson.toJson(newList)).apply()
+                    val newList = current.toList()
+                    cachedDownloads = newList
+                    prefs.edit().putString("list", gson.toJson(newList)).apply()
+                }
 
                 true
             }
@@ -311,6 +313,7 @@ class DownloadManagerHelper private constructor(context: Context) {
         }
     }
 
+    @Synchronized
     fun removeDownload(songId: String) {
         val current = getDownloadedSongs().toMutableList()
         val target = current.find { it.id == songId }
@@ -378,6 +381,7 @@ class DownloadManagerHelper private constructor(context: Context) {
     }
 
     /** Actualiza el estado "me gusta" guardado de una canción descargada (si existe). */
+    @Synchronized
     fun updateLiked(songId: String, liked: Boolean) {
         val current = getDownloadedSongs().toMutableList()
         val idx = current.indexOfFirst { it.id == songId }
