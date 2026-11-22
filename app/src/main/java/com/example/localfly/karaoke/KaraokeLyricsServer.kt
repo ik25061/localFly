@@ -150,6 +150,10 @@ class KaraokeLyricsServer(
     @Volatile
     private var running = false
 
+    /** Estado público de escucha para que la actividad pueda informar si arrancó. */
+    val isRunning: Boolean
+        get() = running
+
     private val sseClients = Collections.synchronizedList(mutableListOf<BufferedWriter>())
     @Volatile private var lastPayload: KaraokeLinePayload? = null
 
@@ -401,7 +405,7 @@ class KaraokeLyricsServer(
                     "/audio" -> {
                         // Flujo largo: sin timeout de socket para no cortar la canción.
                         socket.soTimeout = 0
-                        proxyAudio(socket, query["u"], headers["range"], headOnly, origin)
+                        proxyAudio(socket, query["u"], query["song"], headers["range"], headOnly, origin)
                     }
                     else -> writeResponse(socket, 404, "text/plain", "Not found", origin)
                 }
@@ -463,6 +467,7 @@ class KaraokeLyricsServer(
     private fun proxyAudio(
         socket: Socket,
         target: String?,
+        songId: String?,
         range: String?,
         headOnly: Boolean = false,
         origin: String? = null
@@ -472,7 +477,8 @@ class KaraokeLyricsServer(
             writeResponse(socket, 404, "text/plain", "Missing audio url", origin)
             return
         }
-        if (!isSameOrigin(target, allowedAudioOrigin()) ||
+        if (songId.isNullOrBlank() ||
+            !isSameOrigin(target, allowedAudioOrigin()) ||
             !isAllowedAudioPath(target, songId, allowedAudioOrigin())) {
             lastProxyResult = "ruta u origen de audio no permitido"
             log("Karaoke TV: intento de proxy fuera de las rutas de audio permitidas")
