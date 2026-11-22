@@ -1531,6 +1531,12 @@ class NowPlayingActivity : AppCompatActivity() {
 
                 val now = System.currentTimeMillis()
                 val songChanged = castLyricsAttemptSongId != song.id
+                if (songChanged) {
+                    // El servidor solo conserva una letra activa; si volvemos
+                    // a una canción anterior hay que publicarla de nuevo.
+                    castLyricsSongId = null
+                    castLyricsRetryAtMs = 0L
+                }
                 val retryDue = castLyricsAttemptSongId == song.id &&
                     castLyricsSongId != song.id && now >= castLyricsRetryAtMs
 
