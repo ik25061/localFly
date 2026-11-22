@@ -223,4 +223,5 @@ class AIFragment : Fragment() {
                 // La selección local se conserva si no hay conexión.
             }
         }
-    }}
+    }
+}
