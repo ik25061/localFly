@@ -259,9 +259,13 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
      */
     fun trackUrl(songId: String): String? {
         val ip = localIp() ?: return null
-        if (trackSongId != songId || trackLines.isEmpty()) return null
+        if (!hasTrack(songId)) return null
         return "http://$ip:$port/track.vtt?song=$songId"
     }
+
+    /** Evita que una petición retrasada reciba la letra de la canción siguiente. */
+    internal fun hasTrack(songId: String): Boolean =
+        trackSongId == songId && trackLines.isNotEmpty()
 
     /** URL del audio "silencio" que recibe el Chromecast en lugar de la música. */
     fun silenceUrl(songId: String, durationMs: Long): String? {
@@ -327,14 +331,20 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
                     "/track.vtt" -> {
                         val songId = query["song"]?.ifBlank { null }
                         if (songId != null) waitForTrack(songId)
-                        writeBytes(
-                            socket,
-                            "text/vtt; charset=utf-8",
-                            buildVtt().toByteArray(Charsets.UTF_8),
-                            headers["range"],
-                            headOnly,
-                            origin
-                        )
+                        if (songId != null && !hasTrack(songId)) {
+                            // No devolver una letra vieja o la de otra canción
+                            // si el receptor pidió una pista durante un cambio.
+                            writeResponse(socket, 404, "text/plain; charset=utf-8", "Lyrics not ready", origin)
+                        } else {
+                            writeBytes(
+                                socket,
+                                "text/vtt; charset=utf-8",
+                                buildVtt().toByteArray(Charsets.UTF_8),
+                                headers["range"],
+                                headOnly,
+                                origin
+                            )
+                        }
                     }
                     "/silence" -> {
                         val ms = query["ms"]?.toLongOrNull() ?: 0L
