@@ -80,6 +80,7 @@ class SessionManager(context: Context) {
     fun setServerBaseUrl(url: String) {
         prefs.edit().putString("server_base_url", url).apply()
         RetrofitClient.setBaseUrl(url)
+        ServerReachability.reset()
     }
 
     fun getServerBaseUrl(): String =
