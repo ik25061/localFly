@@ -17,6 +17,7 @@ import com.google.android.gms.cast.TextTrackStyle
 import com.google.android.gms.cast.framework.SessionManagerListener
 import com.google.android.gms.cast.framework.media.RemoteMediaClient
 import com.google.android.gms.common.images.WebImage
+import org.json.JSONObject
 
 /**
  * Controlador de Chromecast para la pantalla de reproduccion.
@@ -94,6 +95,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     private val remoteCallback = object : RemoteMediaClient.Callback() {
         override fun onMediaError(mediaError: MediaError) {
             lastSentUrl = null
+            lastSentLyricsUrl = null
             reportCastError(explainCastError(mediaError), mediaErrorDetail(mediaError))
         }
 
@@ -104,6 +106,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
             // Medio perdido en el receptor (fallo de red/decodificación): el TV
             // vuelve a la pantalla de reposo y hay que dejarlo reintentable.
             lastSentUrl = null
+            lastSentLyricsUrl = null
             reportCastError("El televisor perdió el audio", "idle=error")
         }
     }
@@ -114,6 +117,8 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
 
     /** Ultima URL emitida, para evitar reemitir la misma cancion repetidamente. */
     private var lastSentUrl: String? = null
+    /** La letra forma parte de la identidad del medio: puede llegar después del audio. */
+    private var lastSentLyricsUrl: String? = null
 
     /** Estado deseado de reproduccion en el receptor (fuente de verdad del cast). */
     private var remoteShouldPlay = false
@@ -121,6 +126,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     companion object {
         /** Id de la pista de subtítulos (letra) añadida al cargar en el receptor. */
         private const val LYRICS_TRACK_ID = 1L
+        private const val KARAOKE_NAMESPACE = "urn:x-cast:com.example.localfly.karaoke"
 
         /**
          * Escala de fuente de los subtitulos (1.0 = tamaño normal). A 2.2 la
@@ -192,7 +198,20 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     fun autoCast() {
         val song = songProvider?.invoke() ?: return
         val remote = remoteClient() ?: return
-        if (lastSentUrl == song.streamUrl && hasSentMedia(remote)) return
+        val remoteInfo = remote.mediaStatus?.mediaInfo
+        val remoteHasExpectedLyrics = song.lyricsUrl.isNullOrBlank() ||
+            remoteInfo?.mediaTracks?.any { it.contentId == song.lyricsUrl } == true
+        // Si la Activity se recreó, adoptar el medio que ya está sonando en el
+        // TV en vez de reiniciarlo. Si ahora hay letra y el medio remoto no la
+        // tiene, sí hay que recargar aunque la URL de audio sea la misma.
+        if (remoteInfo?.contentId == song.streamUrl && remoteHasExpectedLyrics) {
+            lastSentUrl = song.streamUrl
+            lastSentLyricsUrl = song.lyricsUrl
+            return
+        }
+        if (lastSentUrl == song.streamUrl &&
+            lastSentLyricsUrl == song.lyricsUrl &&
+            hasSentMedia(remote)) return
         val localPlaying = playingProvider?.invoke() ?: false
         sendSong(remote, song, localPlaying)
     }
@@ -250,6 +269,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         attachRemoteCallback(remote)
         lastErrorReported = null
         lastSentUrl = song.streamUrl
+        lastSentLyricsUrl = song.lyricsUrl
         remoteShouldPlay = localPlaying
         // El resultado de la carga es la única fuente fiable de por qué el
         // televisor se queda en su pantalla de reposo: si el receptor la
@@ -258,6 +278,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
             remote.load(builder.build(), options).setResultCallback { result ->
                 if (!result.status.isSuccess) {
                     lastSentUrl = null
+                    lastSentLyricsUrl = null
                     val code = result.status.statusCode
                     val error = result.mediaError
                     if (error != null) {
@@ -266,13 +287,35 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
                         val message = result.status.statusMessage ?: ""
                         reportCastError("El receptor rechazó la carga del audio", "código=$code $message".trim())
                     }
+                } else {
+                    // Receptor propio: la pista VTT se dibuja en una capa de
+                    // karaoke, no depende de que el reproductor estándar de
+                    // Google muestre subtítulos sobre una pista solo de audio.
+                    sendKaraokeMessage(remote, song)
                 }
             }
         }.onFailure { error ->
             lastSentUrl = null
+            lastSentLyricsUrl = null
             reportCastError("No se pudo enviar el audio al televisor", error.message ?: "error local")
         }
         if (withLyrics) applyLyricsStyle(remote)
+    }
+
+    private fun sendKaraokeMessage(remote: RemoteMediaClient, song: CastSong) {
+        if (!CastOptionsProvider.isCustomReceiverEnabled) return
+        val payload = JSONObject().apply {
+            put("type", "track")
+            put("songId", song.id)
+            put("title", song.title)
+            put("artist", song.artist)
+            put("lyricsUrl", song.lyricsUrl ?: JSONObject.NULL)
+        }
+        runCatching {
+            remote.sendMessage(KARAOKE_NAMESPACE, payload.toString())
+        }.onFailure {
+            reportCastError("No se pudo enviar la letra al receptor karaoke", it.message ?: "error de canal")
+        }
     }
 
     /** Registra (una sola vez por sesión) la callback de estado del receptor. */
@@ -410,6 +453,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     fun stopCasting() {
         val remote = remoteClient() ?: return
         lastSentUrl = null
+        lastSentLyricsUrl = null
         runCatching { remote.stop() }
     }
 
@@ -434,6 +478,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
 
     override fun onSessionEnded(session: CastSession, error: Int) {
         lastSentUrl = null
+        lastSentLyricsUrl = null
         lastErrorReported = null
         callbackRemote = null
         onCastingChanged?.invoke(false)
