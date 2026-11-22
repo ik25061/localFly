@@ -1127,6 +1127,38 @@ class PlaybackService : MediaSessionService() {
      * La URL del servidor no se incluye en la clave para que cambiar su IP no
      * haga desaparecer la cola de la misma cuenta.
      */
+    /** Propietario de la cola que está actualmente en memoria. */
+    private var queueOwnerUserId: String? = null
+
+    /**
+     * Si cambia la cuenta con el servicio todavía vivo, descartar la cola anterior
+     * antes de reproducirla o persistirla bajo el nuevo usuario.
+     */
+    private fun ensureQueueAccount(): Boolean {
+        val currentUserId = sessionManager.getUserId()
+        if (queue.isEmpty()) {
+            queueOwnerUserId = currentUserId
+            return true
+        }
+        if (queueOwnerUserId == null) {
+            // Colas temporales creadas por radio/local playback antes de asignar
+            // propietario: quedan vinculadas al usuario actual.
+            queueOwnerUserId = currentUserId
+            return true
+        }
+        if (queueOwnerUserId == currentUserId) return true
+        LocalLogger.log(this, "Cola descartada: cambió la cuenta activa")
+        queue = emptyList()
+        queueLocalPaths = emptyList()
+        queueBeforeShuffle = null
+        pathsBeforeShuffle = null
+        shuffleEnabled = false
+        currentIndex = 0
+        player?.stop()
+        queueOwnerUserId = currentUserId
+        return false
+    }
+
     private fun queuePrefs(): android.content.SharedPreferences {
         val userId = sessionManager.getUserId()?.takeIf { it.isNotBlank() } ?: "guest"
         val suffix = java.security.MessageDigest.getInstance("SHA-256")
@@ -1140,6 +1172,7 @@ class PlaybackService : MediaSessionService() {
     /** Guarda la cola actual para sobrevivir a la muerte del proceso. */
     private fun persistQueue(positionMs: Long = try { player?.currentPosition ?: 0L } catch (_: Exception) { 0L }) {
         try {
+            if (!ensureQueueAccount()) return
             val songs = queue
             if (songs.isEmpty()) return
             val json = queueGson.toJson(songs)
@@ -1197,6 +1230,7 @@ class PlaybackService : MediaSessionService() {
                 if (byId != null) index = byId
             }
             val position = prefs.getLong("position", 0L).coerceAtLeast(0L)
+            queueOwnerUserId = savedOwner
             queue = alive
             queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
             shuffleEnabled = prefs.getBoolean("shuffle_enabled", false)
@@ -1217,6 +1251,7 @@ class PlaybackService : MediaSessionService() {
         localPaths: List<String?>? = null,
         reviewSession: Boolean = false
     ) {
+        queueOwnerUserId = sessionManager.getUserId()
         // Una canción eliminada del disco ya no se puede reproducir.
         val aliveSongs = songs.filter { !SongAdminStore.isDeleted(it.id) }
         if (aliveSongs.isEmpty()) return
@@ -1951,6 +1986,7 @@ class PlaybackService : MediaSessionService() {
     fun seekTo(positionMs: Long) { player?.seekTo(positionMs) }
 
     private fun playCurrentIndex(resumePositionMs: Long = 0L) {
+        if (!ensureQueueAccount()) return
         clearKaraokeState()
         val song = queue.getOrNull(currentIndex) ?: return
         // OFFLINE FIX: re-resolver el archivo local (queueLocalPaths puede traer
