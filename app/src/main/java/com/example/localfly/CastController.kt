@@ -445,11 +445,13 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
     fun toggleRemotePlayback() {
         val remote = remoteClient() ?: return
         if (!hasSentMedia(remote)) {
-            // Aun no se ha emitido nada: emitir la cancion actual en reproduccion
-            castCurrentSong(!remoteShouldPlay)
+            // Aun no se ha emitido nada: emitir la cancion actual en reproduccion.
+            castCurrentSong(true)
             return
         }
-        remoteShouldPlay = !remoteShouldPlay
+        // Consultar el estado real del receptor: puede haberse pausado desde
+        // el mando del televisor o desde otra app de control Cast.
+        remoteShouldPlay = !remoteIsPlaying(remote)
         applyPlayPause(remote, remoteShouldPlay)
     }
 
