@@ -242,7 +242,7 @@ class DislikedSongsAdminFragment : Fragment() {
             if (song.markedForDeletion || pendingDeletion) View.GONE else View.VISIBLE
 
         btnKeep.setOnClickListener {
-            val queued = SongAdminStore.isPendingSongDeletion(song.songId)
+            val queued = SongAdminStore.isPendingSongDeletion(song.songId, sessionManager.getUserId().orEmpty())
             val markForDeletion = !song.markedForDeletion
             if (queued) {
                 SongAdminStore.removePendingSongDeletion(song.songId, sessionManager.getUserId().orEmpty())
