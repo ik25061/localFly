@@ -4,6 +4,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -223,6 +224,39 @@ interface ApiService {
         @Path("id") songId: String,
         @Body request: SaveLyricsFileRequest
     ): Response<Unit>
+
+    // --- Administración de letras (servidor mirepo) ---
+    @GET("api/admin/lyrics/status")
+    suspend fun getAdminLyricsStatus(
+        @Header("Authorization") authorization: String,
+        @Query("q") query: String? = null,
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int = 100,
+        @Query("offset") offset: Int = 0
+    ): Response<LyricsAdminStatusResponse>
+
+    @GET("api/admin/lyrics/job")
+    suspend fun getAdminLyricsJob(
+        @Header("Authorization") authorization: String
+    ): Response<LyricsAdminJobResponse>
+
+    @POST("api/admin/lyrics/jobs")
+    suspend fun startAdminLyricsJob(
+        @Header("Authorization") authorization: String,
+        @Body request: LyricsAdminJobRequest
+    ): Response<LyricsAdminStartResponse>
+
+    @POST("api/admin/lyrics/jobs/cancel")
+    suspend fun cancelAdminLyricsJob(
+        @Header("Authorization") authorization: String
+    ): Response<LyricsAdminStartResponse>
+
+    @POST("api/admin/lyrics/songs/{id}/review")
+    suspend fun markAdminLyricsReviewed(
+        @Header("Authorization") authorization: String,
+        @Path("id") songId: String,
+        @Body request: LyricsAdminReviewRequest
+    ): Response<LyricsAdminReviewResponse>
 
     // --- Favorite Artists ---
 
