@@ -1,6 +1,7 @@
 package com.example.localfly.karaoke
 
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.network.RetrofitClient
 import com.google.gson.Gson
 import java.io.BufferedWriter
 import java.io.IOException
@@ -14,6 +15,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URI
+import java.net.InetSocketAddress
 import java.util.Collections
 
 /**
@@ -43,7 +46,11 @@ import java.util.Collections
  *
  * El TV (Fire TV) solo necesita abrir en su navegador: http://<ip>:8099
  */
-class KaraokeLyricsServer(private val port: Int = 8099) {
+class KaraokeLyricsServer(
+    private val port: Int = 8099,
+    private val bindAddress: InetAddress? = null,
+    private val allowedAudioOrigin: () -> String = { RetrofitClient.getBaseUrl() }
+) {
 
     companion object {
         private const val TAG = "KaraokeTV"
@@ -80,6 +87,23 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
          *  - Los headers pedidos en el preflight se repiten tal cual, asi
          *    cualquier cabecera extra del receptor queda permitida.
          */
+        /** El proxy solo puede consultar el mismo origen configurado en LocalFly. */
+        internal fun isSameOrigin(target: String, base: String): Boolean {
+            val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
+            val baseUri = runCatching { URI(base) }.getOrNull() ?: return false
+            fun effectivePort(uri: URI): Int = if (uri.port >= 0) uri.port else when (uri.scheme?.lowercase()) {
+                "https" -> 443
+                "http" -> 80
+                else -> -1
+            }
+            return targetUri.scheme?.lowercase() in setOf("http", "https") &&
+                targetUri.scheme.equals(baseUri.scheme, ignoreCase = true) &&
+                targetUri.host.equals(baseUri.host, ignoreCase = true) &&
+                effectivePort(targetUri) == effectivePort(baseUri) &&
+                targetUri.userInfo == null &&
+                targetUri.fragment == null
+        }
+
         internal fun corsHeaders(origin: String?, requestedHeaders: String? = null): String {
             val allowOrigin = origin?.takeIf { it.isNotBlank() } ?: "*"
             val allowHeaders = requestedHeaders?.takeIf { it.isNotBlank() } ?: DEFAULT_ALLOW_HEADERS
@@ -160,7 +184,9 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
         val socket = try {
             ServerSocket().apply {
                 reuseAddress = true
-                bind(java.net.InetSocketAddress(port))
+                val address = bindAddress ?: localIp()?.let { InetAddress.getByName(it) }
+                    ?: throw IOException("No hay una interfaz de red local disponible para Chromecast")
+                bind(InetSocketAddress(address, port))
             }
         } catch (e: Exception) {
             log("Karaoke TV: no se pudo abrir el puerto $port (${e.message})")
@@ -282,6 +308,10 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
      */
     fun mediaProxyUrl(songId: String, sourceUrl: String): String? {
         val ip = localIp() ?: return null
+        if (!isSameOrigin(sourceUrl, allowedAudioOrigin())) {
+            log("Karaoke TV: se rechazó URL de audio fuera del servidor configurado")
+            return null
+        }
         return "http://$ip:$port/audio?song=$songId&u=" + java.net.URLEncoder.encode(sourceUrl, "UTF-8")
     }
 
@@ -424,9 +454,17 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
             writeResponse(socket, 404, "text/plain", "Missing audio url", origin)
             return
         }
+        if (!isSameOrigin(target, allowedAudioOrigin())) {
+            lastProxyResult = "origen de audio no permitido"
+            log("Karaoke TV: intento de proxy fuera del origen configurado")
+            writeResponse(socket, 403, "text/plain", "Audio origin not allowed", origin)
+            return
+        }
         val conn = runCatching {
             (URL(target).openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
+                // No seguir redirecciones a dominios arbitrarios: eso convertiría
+                // este servidor local en un proxy SSRF hacia la red privada.
+                instanceFollowRedirects = false
                 connectTimeout = 10000
                 readTimeout = 30000
                 setRequestProperty("User-Agent", "LocalFly-Cast/1.0")
@@ -652,6 +690,7 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
             200 -> "OK"
             204 -> "No Content"
             400 -> "Bad Request"
+            403 -> "Forbidden"
             404 -> "Not Found"
             405 -> "Method Not Allowed"
             502 -> "Bad Gateway"
