@@ -469,6 +469,11 @@ class KaraokeLyricsServer(
                 connectTimeout = 10000
                 readTimeout = 30000
                 setRequestProperty("User-Agent", "LocalFly-Cast/1.0")
+                // El Chromecast accede al servidor local sin conocer el token.
+                // El proxy adjunta la sesión actual al backend autenticado.
+                RetrofitClient.getAuthToken()?.takeIf { it.isNotBlank() }?.let { token ->
+                    setRequestProperty("Authorization", "Bearer $token")
+                }
                 // Sin compresión: si el upstream mandase gzip el receptor
                 // recibiría bytes que no puede decodificar como MP3.
                 setRequestProperty("Accept-Encoding", "identity")
