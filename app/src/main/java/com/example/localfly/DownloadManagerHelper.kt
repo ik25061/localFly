@@ -74,12 +74,12 @@ class DownloadManagerHelper private constructor(context: Context) {
     private val prefs = appContext.getSharedPreferences("localfly_downloads", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    private var cachedDownloads: List<DownloadedSong>? = null
+    @Volatile private var cachedDownloads: List<DownloadedSong>? = null
         set(value) {
             field = value
             cachedDownloadById = value?.associateBy { it.id }
         }
-    private var cachedDownloadById: Map<String, DownloadedSong>? = null
+    @Volatile private var cachedDownloadById: Map<String, DownloadedSong>? = null
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
