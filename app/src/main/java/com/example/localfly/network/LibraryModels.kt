@@ -378,6 +378,7 @@ data class LyricsAdminSong(
     val needsReview: Boolean = false,
     val hasSynced: Boolean = false,
     val source: String? = null,
+    val reviewReason: String? = null,
     val lastAttemptAt: String? = null,
     val error: String? = null
 )
