@@ -137,9 +137,7 @@
         nextNode.textContent = '';
       });
 
-      const options = new cast.framework.CastReceiverOptions();
-      options.maxInactivity = 3600;
-      context.start(options);
+      context.start(new cast.framework.CastReceiverOptions());
     })();
   </script>
 </body>
