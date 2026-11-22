@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>LocalFly Karaoke</title>
+  <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <style>
+    :root { color-scheme: dark; font-family: Arial, Helvetica, sans-serif; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #050505; color: #fff; }
+    cast-media-player { width: 100%; height: 100%; --theme-hue: 145; --progress-color: #1db954; }
+    #karaokeOverlay {
+      position: fixed; z-index: 20; left: 5vw; right: 5vw; bottom: 13vh;
+      min-height: 24vh; display: flex; flex-direction: column; justify-content: center;
+      text-align: center; pointer-events: none;
+      text-shadow: 0 3px 12px #000, 0 0 22px #000;
+    }
+    #songTitle { color: #1db954; font-size: clamp(18px, 2.2vw, 34px); font-weight: 700; margin-bottom: 2vh; }
+    #currentLine {
+      color: #fff; font-size: clamp(30px, 5.4vw, 76px); line-height: 1.2;
+      font-weight: 800; padding: 0.18em 0.3em; border-radius: 14px;
+      background: rgba(0,0,0,.68); overflow-wrap: anywhere;
+    }
+    #nextLine { color: rgba(255,255,255,.72); font-size: clamp(18px, 2.7vw, 38px); margin-top: 2vh; }
+    #status { color: #bbb; font-size: clamp(14px, 1.7vw, 24px); margin-top: 1.5vh; }
+    #brand { position: fixed; top: 3vh; left: 3vw; z-index: 21; color: rgba(255,255,255,.72); font-size: 18px; letter-spacing: .12em; }
+  </style>
+</head>
+<body>
+  <cast-media-player></cast-media-player>
+  <div id="brand">LOCALFLY · KARAOKE</div>
+  <section id="karaokeOverlay" aria-live="polite">
+    <div id="songTitle">Esperando canción…</div>
+    <div id="currentLine">Conecta LocalFly para comenzar</div>
+    <div id="nextLine"></div>
+    <div id="status"></div>
+  </section>
+  <script>
+    (function () {
+      'use strict';
+      const NAMESPACE = 'urn:x-cast:com.example.localfly.karaoke';
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const playerManager = context.getPlayerManager();
+      const titleNode = document.getElementById('songTitle');
+      const currentNode = document.getElementById('currentLine');
+      const nextNode = document.getElementById('nextLine');
+      const statusNode = document.getElementById('status');
+      let cues = [];
+      let lyricsUrl = null;
+      let requestVersion = 0;
+
+      function parseTimestamp(value) {
+        const match = value.trim().match(/^(?:(\d{2}):)?(\d{2}):(\d{2})\.(\d{3})$/);
+        if (!match) return 0;
+        return (((Number(match[1] || 0) * 60 + Number(match[2])) * 60 + Number(match[3])) * 1000) + Number(match[4]);
+      }
+
+      function parseVtt(source) {
+        const result = [];
+        const blocks = source.replace(/\r/g, '').split(/\n\s*\n/);
+        for (const block of blocks) {
+          const lines = block.split('\n').map(line => line.trim()).filter(Boolean);
+          const timingIndex = lines.findIndex(line => line.includes('-->'));
+          if (timingIndex < 0) continue;
+          const timing = lines[timingIndex].split('-->');
+          const start = parseTimestamp(timing[0]);
+          const end = parseTimestamp((timing[1] || '').trim().split(/\s+/)[0]);
+          const text = lines.slice(timingIndex + 1).join(' ').replace(/<[^>]*>/g, '').trim();
+          if (text && end > start) result.push({ start, end, text });
+        }
+        return result.sort((a, b) => a.start - b.start);
+      }
+
+      async function receiveTrack(payload) {
+        const version = ++requestVersion;
+        titleNode.textContent = [payload.title, payload.artist].filter(Boolean).join(' · ') || 'LocalFly Karaoke';
+        currentNode.textContent = 'Preparando letra…';
+        nextNode.textContent = '';
+        statusNode.textContent = '';
+        lyricsUrl = typeof payload.lyricsUrl === 'string' ? payload.lyricsUrl : null;
+        cues = [];
+        if (!lyricsUrl) {
+          currentNode.textContent = 'Esta canción no tiene letra disponible';
+          return;
+        }
+        try {
+          const response = await fetch(lyricsUrl, { cache: 'no-store' });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const text = await response.text();
+          if (version !== requestVersion) return;
+          cues = parseVtt(text);
+          if (!cues.length) throw new Error('La pista WebVTT no contiene líneas');
+          statusNode.textContent = '';
+          renderLyrics();
+        } catch (error) {
+          if (version !== requestVersion) return;
+          currentNode.textContent = 'No se pudo cargar la letra';
+          statusNode.textContent = String(error && error.message ? error.message : error);
+        }
+      }
+
+      function renderLyrics() {
+        if (!cues.length) return;
+        const time = Math.max(0, playerManager.getCurrentTimeSec() * 1000);
+        let active = -1;
+        for (let i = 0; i < cues.length; i++) {
+          if (time >= cues[i].start && time < cues[i].end) active = i;
+          if (cues[i].start > time) break;
+        }
+        if (active >= 0) {
+          currentNode.textContent = cues[active].text;
+          nextNode.textContent = cues[active + 1] ? cues[active + 1].text : '';
+        } else {
+          const upcoming = cues.find(cue => cue.start > time);
+          currentNode.textContent = upcoming ? upcoming.text : '♪';
+          nextNode.textContent = '';
+        }
+      }
+
+      context.addCustomMessageListener(NAMESPACE, event => {
+        let payload = event.data;
+        if (typeof payload === 'string') {
+          try { payload = JSON.parse(payload); } catch (_) { return; }
+        }
+        if (payload && payload.type === 'track') receiveTrack(payload);
+      });
+
+      playerManager.addEventListener(cast.framework.events.EventType.TIME_UPDATE, renderLyrics);
+      playerManager.addEventListener(cast.framework.events.EventType.SEEKED, renderLyrics);
+      playerManager.addEventListener(cast.framework.events.EventType.PLAY, renderLyrics);
+      playerManager.addEventListener(cast.framework.events.EventType.PAUSE, renderLyrics);
+      playerManager.addEventListener(cast.framework.events.EventType.PLAYER_LOAD_COMPLETE, () => {
+        renderLyrics();
+      });
+      playerManager.addEventListener(cast.framework.events.EventType.MEDIA_FINISHED, () => {
+        currentNode.textContent = 'Canción finalizada';
+        nextNode.textContent = '';
+      });
+
+      const options = new cast.framework.CastReceiverOptions();
+      options.maxInactivity = 3600;
+      context.start(options);
+    })();
+  </script>
+</body>
+</html>
