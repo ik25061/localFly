@@ -1490,19 +1490,24 @@ class PlaybackService : MediaSessionService() {
         // completa (que leen `currentSong`) mostraban otro. Por eso protegemos
         // ese slot y solo podamos desde dos canciones por delante en adelante.
         val protectedUpcomingIndex = currentIndex + 1
-        // OFFLINE FIX: solo se protege el siguiente si está descargado. Antes
-        // se protegía incluso sin descarga y se precargaba con URL remota, que
-        // offline falla y cortaba la reproducción al terminar la actual.
-        val protectsNext = queue.getOrNull(protectedUpcomingIndex)?.let { downloadHelper.isDownloaded(it.id) } == true
+        // queueLocalPaths ya se resolvió en IO al crear/restaurar la cola.
+        // No volver a hacer cientos de File.exists()/length() en cada avance.
+        val protectsNext = queue.getOrNull(protectedUpcomingIndex) != null &&
+            queueLocalPaths.getOrNull(protectedUpcomingIndex) != null
         val keepThrough = if (protectsNext) protectedUpcomingIndex else currentIndex
-        val history = queue.take((keepThrough + 1).coerceIn(0, queue.size))
-        val prunablePortion = queue.drop((keepThrough + 1).coerceIn(0, queue.size))
-        val prunedPortion = prunablePortion.filter { downloadHelper.isDownloaded(it.id) }
-        if (prunedPortion.size == prunablePortion.size && protectsNext) return
+        val keepCount = (keepThrough + 1).coerceIn(0, queue.size)
+        val history = queue.take(keepCount)
+        val historyPaths = queueLocalPaths.take(keepCount)
+        val prunablePairs = queue.drop(keepCount).mapIndexed { offset, song ->
+            song to queueLocalPaths.getOrNull(keepCount + offset)
+        }
+        val prunedPairs = prunablePairs.filter { it.second != null }
+        if (prunedPairs.size == prunablePairs.size && protectsNext) return
 
-        val newQueue = history + prunedPortion
+        val newQueue = history + prunedPairs.map { it.first }
+        val newPaths = historyPaths + prunedPairs.map { it.second }
         queue = newQueue
-        queueLocalPaths = newQueue.map { downloadHelper.getLocalFilePath(it.id) }
+        queueLocalPaths = newPaths
         // Mantener la lista interna del player alineada: si se quitó el
         // siguiente precargado (no descargado), sacarlo también del player.
         resyncPreloadedNext()
@@ -1556,13 +1561,14 @@ class PlaybackService : MediaSessionService() {
         invalidateShuffleSnapshot()
         // Una canción eliminada o no descargada offline no puede entrar en cola.
         if (SongAdminStore.isDeleted(song.id)) return
-        if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
-        if (queue.isEmpty()) { playSong(song); return }
+        val localPath = downloadHelper.getLocalFilePath(song.id)
+        if (!ServerReachability.isOnline && localPath == null) return
+        if (queue.isEmpty()) { playSong(song, localPath); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
         val insertIndex = currentIndex + 1
         mutableQueue.add(insertIndex, song)
-        mutablePaths.add(insertIndex, null)
+        mutablePaths.add(insertIndex, localPath)
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         resyncPreloadedNext()
@@ -1572,12 +1578,13 @@ class PlaybackService : MediaSessionService() {
     fun addToQueue(song: Song) {
         invalidateShuffleSnapshot()
         if (SongAdminStore.isDeleted(song.id)) return
-        if (!ServerReachability.isOnline && !downloadHelper.isDownloaded(song.id)) return
-        if (queue.isEmpty()) { playSong(song); return }
+        val localPath = downloadHelper.getLocalFilePath(song.id)
+        if (!ServerReachability.isOnline && localPath == null) return
+        if (queue.isEmpty()) { playSong(song, localPath); return }
         val mutableQueue = queue.toMutableList()
         val mutablePaths = queueLocalPaths.toMutableList()
         mutableQueue.add(song)
-        mutablePaths.add(null)
+        mutablePaths.add(localPath)
         queue = mutableQueue
         queueLocalPaths = mutablePaths
         resyncPreloadedNext()
