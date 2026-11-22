@@ -142,7 +142,6 @@ class DownloadsFragment : Fragment() {
         loadDownloads()
     }
 
-    /** Pide confirmación antes de borrar todas las descargas. */
     /** Pide confirmación después de consultar el índice fuera del hilo UI. */
     private fun confirmDeleteAll() {
         viewLifecycleOwner.lifecycleScope.launch {
