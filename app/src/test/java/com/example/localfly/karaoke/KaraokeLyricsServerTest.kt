@@ -164,6 +164,26 @@ class KaraokeLyricsServerTest {
             "http://user@192.168.1.20:3000/audio/42",
             "http://192.168.1.20:3000/"
         ))
+        assertTrue(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/audio/song-1",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertTrue(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/podcast-audio/episode-2",
+            "episode-2",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/admin/users",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/audio/song-2",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
     }
 
     @Test
