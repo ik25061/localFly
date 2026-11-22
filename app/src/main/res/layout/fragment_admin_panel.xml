@@ -143,5 +143,26 @@
             android:textColor="#888888"
             android:textSize="11sp" />
 
+
+        <!-- Gestión de letras y karaoke -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsAdmin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Gestión y generación de letras"
+            android:textAllCaps="false"
+            android:textColor="#000000"
+            app:backgroundTint="#26C6DA"
+            app:cornerRadius="10dp"
+            app:icon="@drawable/ic_music_placeholder"
+            app:iconTint="#000000" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Procesa toda la biblioteca, detecta canciones nuevas, reintenta errores y revisa letras individuales para el modo karaoke."
+            android:textColor="#888888"
+            android:textSize="11sp"
+            android:layout_marginBottom="12dp" />
     </LinearLayout>
 </ScrollView>
