@@ -1121,8 +1121,19 @@ class PlaybackService : MediaSessionService() {
         return START_STICKY
     }
 
-    private fun queuePrefs() =
-        getSharedPreferences("localfly_queue", android.content.Context.MODE_PRIVATE)
+    /**
+     * Una cola persistida pertenece a una cuenta concreta. No restaurar la cola
+     * de otra persona si se cambia de usuario en el mismo dispositivo.
+     * La URL del servidor no se incluye en la clave para que cambiar su IP no
+     * haga desaparecer la cola de la misma cuenta.
+     */
+    private fun queuePrefs(): android.content.SharedPreferences {
+        val userId = sessionManager.getUserId()?.takeIf { it.isNotBlank() } ?: "guest"
+        val suffix = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(userId.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+        return getSharedPreferences("localfly_queue_$suffix", android.content.Context.MODE_PRIVATE)
+    }
 
     private val queueGson: com.google.gson.Gson by lazy { com.google.gson.Gson() }
 
@@ -1138,6 +1149,7 @@ class PlaybackService : MediaSessionService() {
                 .putInt("index", currentIndex)
                 .putLong("position", positionMs)
                 .putString("current_id", currentSong?.id)
+                .putString("owner_user_id", sessionManager.getUserId())
                 .putBoolean("shuffle_enabled", shuffleEnabled)
                 .putLong("saved_at", System.currentTimeMillis())
                 .apply()
@@ -1155,6 +1167,13 @@ class PlaybackService : MediaSessionService() {
             if (!::downloadHelper.isInitialized || !::sessionManager.isInitialized) return
             if (player == null) return
             val prefs = queuePrefs()
+            val savedOwner = prefs.getString("owner_user_id", null)
+            if (savedOwner != sessionManager.getUserId()) {
+                // Una cola antigua sin propietario tampoco se importa a una
+                // cuenta autenticada: no se puede demostrar a quién pertenecía.
+                LocalLogger.log(this, "restoreQueue: cola de otra cuenta ignorada")
+                return
+            }
             val json = prefs.getString("songs", null) ?: return
             val savedAt = prefs.getLong("saved_at", 0L)
             if (savedAt > 0 && System.currentTimeMillis() - savedAt > 24 * 60 * 60 * 1000L) {
