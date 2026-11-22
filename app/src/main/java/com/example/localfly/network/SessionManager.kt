@@ -37,10 +37,11 @@ data class PendingPlaylistSongAdd(
 
 class SessionManager(context: Context) {
 
+    private val applicationContext: Context = context.applicationContext
     private val prefs: SharedPreferences
 
     init {
-        val appContext = context.applicationContext
+        val appContext = applicationContext
         // Crear las prefs cifradas de forma segura. En algunos dispositivos/emuladores
         // el Keystore de Android falla al generar la clave (GeneralSecurityException /
         // IOException), lo que provocaba un crash al arrancar la app. Si eso ocurre,
@@ -65,7 +66,7 @@ class SessionManager(context: Context) {
         // Cargar el almacén local del Administrador (ediciones de metadatos,
         // canciones "no me gusta" y géneros personalizados). Es un complemento
         // local que no modifica el comportamiento existente.
-        SongAdminStore.ensureContext(context)
+        SongAdminStore.ensureContext(applicationContext, getUserId())
 
         // Aplicar la URL base del servidor guardada por el usuario (si existe),
         // para que toda la app (Retrofit, reproducción, portadas) use la misma.
@@ -93,6 +94,7 @@ class SessionManager(context: Context) {
             .putString("username", username)
             .putString("role", role ?: "USER")
             .apply()
+        SongAdminStore.ensureContext(applicationContext, userId)
     }
 
     fun getToken(): String? = prefs.getString("token", null)
@@ -120,6 +122,7 @@ class SessionManager(context: Context) {
             .remove("played_song_ids")
             .remove("playlists_cache")
             .apply()
+        SongAdminStore.ensureContext(applicationContext, null)
     }
 
     fun isLoggedIn(): Boolean = getToken() != null
