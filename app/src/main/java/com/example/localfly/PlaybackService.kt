@@ -473,6 +473,7 @@ class PlaybackService : MediaSessionService() {
 
     /** Evita restaurar una instantánea antigua tras editar manualmente la cola. */
     private fun invalidateShuffleSnapshot() {
+        queueMutationToken++
         queueBeforeShuffle = null
         pathsBeforeShuffle = null
     }
@@ -1131,6 +1132,7 @@ class PlaybackService : MediaSessionService() {
     private var queueOwnerUserId: String? = null
     private var queueRequestToken: Long = 0L
     @Volatile private var queuePersistToken: Long = 0L
+    @Volatile private var queueMutationToken: Long = 0L
     private var queueRestoreInProgress: Boolean = false
 
     /**
@@ -1317,6 +1319,7 @@ class PlaybackService : MediaSessionService() {
         localPathsResolved: Boolean = false
     ) {
         val requestToken = ++queueRequestToken
+        queueMutationToken++
         val requestOwner = sessionManager.getUserId()
 
         // El estado inicial es optimista hasta que termina el primer ping. Si
@@ -1582,21 +1585,47 @@ class PlaybackService : MediaSessionService() {
     }
 
     fun addListToQueue(songs: List<Song>) {
-        val filtered = songs.filter {
-            !SongAdminStore.isDeleted(it.id) &&
-                (ServerReachability.isOnline || downloadHelper.isDownloaded(it.id))
+        invalidateShuffleSnapshot()
+        val mutationToken = queueMutationToken
+        val ownerUserId = sessionManager.getUserId()
+        serviceScope.launch {
+            val prepared = withContext(Dispatchers.IO) {
+                val online = if (ServerReachability.hasChecked) {
+                    ServerReachability.isOnline
+                } else {
+                    ServerReachability.isServerReachable()
+                }
+                if (!online) downloadHelper.warmDownloadIndex()
+                val filtered = songs.filter {
+                    !SongAdminStore.isDeleted(it.id) &&
+                        (online || downloadHelper.isDownloaded(it.id))
+                }
+                val paths = filtered.map { downloadHelper.getLocalFilePath(it.id) }
+                Triple(filtered, paths, online)
+            }
+            withContext(Dispatchers.Main) {
+                if (mutationToken != queueMutationToken ||
+                    ownerUserId != sessionManager.getUserId()) return@withContext
+                if (!ensureQueueAccount()) return@withContext
+                val filtered = prepared.first
+                val paths = prepared.second
+                if (filtered.isEmpty()) return@withContext
+                if (queue.isEmpty()) {
+                    setQueueAndPlay(filtered, 0, paths, localPathsResolved = true)
+                    return@withContext
+                }
+                val itemsToAppend = if (shuffleEnabled) filtered.shuffled() else filtered
+                val pathById = filtered.mapIndexed { index, song -> song.id to paths.getOrNull(index) }.toMap()
+                val mutableQueue = queue.toMutableList()
+                val mutablePaths = queueLocalPaths.toMutableList()
+                mutableQueue.addAll(itemsToAppend)
+                mutablePaths.addAll(itemsToAppend.map { pathById[it.id] })
+                queue = mutableQueue
+                queueLocalPaths = mutablePaths
+                resyncPreloadedNext()
+                onStateChanged?.invoke()
+            }
         }
-        if (filtered.isEmpty()) return
-        if (queue.isEmpty()) { setQueueAndPlay(filtered, 0); return }
-        val itemsToAppend = if (shuffleEnabled) filtered.shuffled() else filtered
-        val mutableQueue = queue.toMutableList()
-        val mutablePaths = queueLocalPaths.toMutableList()
-        mutableQueue.addAll(itemsToAppend)
-        mutablePaths.addAll(itemsToAppend.map { downloadHelper.getLocalFilePath(it.id) })
-        queue = mutableQueue
-        queueLocalPaths = mutablePaths
-        resyncPreloadedNext()
-        onStateChanged?.invoke()
     }
 
     fun moveQueueItem(fromIndex: Int, toIndex: Int) {
@@ -1700,21 +1729,37 @@ class PlaybackService : MediaSessionService() {
 
     fun updateFullQueue(newSongs: List<Song>) {
         invalidateShuffleSnapshot()
-        // Nunca meter en la cola canciones eliminadas ni canciones remotas
-        // cuando el servidor no está disponible. Se conserva la actual aunque
-        // haya empezado online y se haya perdido la conexión durante la pista.
+        val mutationToken = queueMutationToken
+        val ownerUserId = sessionManager.getUserId()
         val currentId = currentSong?.id
-        val alive = newSongs.filter {
-            !SongAdminStore.isDeleted(it.id) &&
-                (ServerReachability.isOnline || it.id == currentId || downloadHelper.isDownloaded(it.id))
+        serviceScope.launch {
+            val prepared = withContext(Dispatchers.IO) {
+                val online = if (ServerReachability.hasChecked) {
+                    ServerReachability.isOnline
+                } else {
+                    ServerReachability.isServerReachable()
+                }
+                if (!online) downloadHelper.warmDownloadIndex()
+                val alive = newSongs.filter {
+                    !SongAdminStore.isDeleted(it.id) &&
+                        (online || it.id == currentId || downloadHelper.isDownloaded(it.id))
+                }
+                alive to alive.map { downloadHelper.getLocalFilePath(it.id) }
+            }
+            withContext(Dispatchers.Main) {
+                if (mutationToken != queueMutationToken ||
+                    ownerUserId != sessionManager.getUserId() ||
+                    currentSong?.id != currentId) return@withContext
+                if (!ensureQueueAccount()) return@withContext
+                if (prepared.first.isEmpty()) return@withContext
+                queue = prepared.first
+                queueLocalPaths = prepared.second
+                syncIndexById()
+                // Reemplazar SOLO lo precargado, sin reiniciar la canción ni perder posición.
+                resyncPreloadedNext()
+                onStateChanged?.invoke()
+            }
         }
-        if (alive.isEmpty()) return
-        queue = alive
-        queueLocalPaths = alive.map { downloadHelper.getLocalFilePath(it.id) }
-        syncIndexById()
-        // Reemplazar SOLO lo precargado, sin reiniciar la canción ni perder posición.
-        resyncPreloadedNext()
-        onStateChanged?.invoke()
     }
 
     /**
