@@ -303,8 +303,10 @@ class DislikedSongsAdminFragment : Fragment() {
                 // del servidor. Esto también permite revisar offline las que
                 // están marcadas expresamente para eliminar.
                 val helper = DownloadManagerHelper.getInstance(requireContext())
-                val downloaded = helper.getDownloadedSongs().firstOrNull { it.id == disliked.songId }
-                val localPath = helper.getLocalFilePath(disliked.songId)
+                val (downloaded, localPath) = withContext(Dispatchers.IO) {
+                    helper.getDownloadedSongs().firstOrNull { it.id == disliked.songId } to
+                        helper.getLocalFilePath(disliked.songId)
+                }
                 if (downloaded != null && localPath != null) {
                     val localSong = Song(
                         id = downloaded.id,
