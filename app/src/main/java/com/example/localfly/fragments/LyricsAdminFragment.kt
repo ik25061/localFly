@@ -173,7 +173,7 @@ class LyricsAdminFragment : Fragment() {
                         val song = items[index]
                         AlertDialog.Builder(requireContext())
                             .setTitle(song.title ?: "Canción")
-                            .setMessage("Estado: ${song.status}\nFuente: ${song.source ?: "No disponible"}\n¿Quieres volver a generar su letra?")
+                            .setMessage("Estado: ${song.status}\nFuente: ${song.source ?: "No disponible"}\nMotivo: ${song.reviewReason ?: "Sin observaciones"}\n¿Quieres volver a generar su letra?")
                             .setPositiveButton("Regenerar") { _, _ -> startJob("selected", songId = song.songId, force = true) }
                             .setNeutralButton(if (song.reviewed) "Quitar revisión" else "Marcar revisada") { _, _ ->
                                 viewLifecycleOwner.lifecycleScope.launch {
