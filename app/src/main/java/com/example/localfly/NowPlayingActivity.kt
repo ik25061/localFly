@@ -1874,24 +1874,33 @@ class NowPlayingActivity : AppCompatActivity() {
 
     private fun loadWaveform(song: Song) {
         waveformSongId = song.id
-        val localPath = downloadHelper.getLocalFilePath(song.id)
-        if (localPath != null) {
-            amplituda.processAudio(localPath).get(
-                { result ->
-                    runOnUiThread {
-                        waveformSeekBar.setSampleFrom(result.amplitudesAsList().toIntArray())
+        lifecycleScope.launch {
+            val localPath = withContext(Dispatchers.IO) {
+                downloadHelper.getLocalFilePath(song.id)
+            }
+            if (isDestroyed || waveformSongId != song.id) return@launch
+            if (localPath != null) {
+                amplituda.processAudio(localPath).get(
+                    { result ->
+                        runOnUiThread {
+                            if (!isDestroyed && waveformSongId == song.id) {
+                                waveformSeekBar.setSampleFrom(result.amplitudesAsList().toIntArray())
+                            }
+                        }
+                    },
+                    { _ ->
+                        runOnUiThread {
+                            if (!isDestroyed && waveformSongId == song.id) {
+                                val randomAmplitudes = IntArray(100) { (10..100).random() }
+                                waveformSeekBar.setSampleFrom(randomAmplitudes)
+                            }
+                        }
                     }
-                },
-                { error ->
-                    runOnUiThread {
-                        val randomAmplitudes = IntArray(100) { (10..100).random() }
-                        waveformSeekBar.setSampleFrom(randomAmplitudes)
-                    }
-                }
-            )
-        } else {
-            val randomAmplitudes = IntArray(100) { (10..100).random() }
-            waveformSeekBar.setSampleFrom(randomAmplitudes)
+                )
+            } else {
+                val randomAmplitudes = IntArray(100) { (10..100).random() }
+                waveformSeekBar.setSampleFrom(randomAmplitudes)
+            }
         }
     }
 
