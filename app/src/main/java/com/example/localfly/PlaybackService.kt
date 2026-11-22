@@ -1497,7 +1497,7 @@ class PlaybackService : MediaSessionService() {
         val keepThrough = if (protectsNext) protectedUpcomingIndex else currentIndex
         val keepCount = (keepThrough + 1).coerceIn(0, queue.size)
         val history = queue.take(keepCount)
-        val historyPaths = queueLocalPaths.take(keepCount)
+        val historyPaths = (0 until keepCount).map { queueLocalPaths.getOrNull(it) }
         val prunablePairs = queue.drop(keepCount).mapIndexed { offset, song ->
             song to queueLocalPaths.getOrNull(keepCount + offset)
         }
