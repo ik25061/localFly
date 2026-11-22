@@ -87,6 +87,19 @@ class KaraokeLyricsServer(
          *  - Los headers pedidos en el preflight se repiten tal cual, asi
          *    cualquier cabecera extra del receptor queda permitida.
          */
+        /** Restringe el proxy a las dos rutas de audio que usa el reproductor. */
+        internal fun isAllowedAudioPath(target: String, songId: String, base: String): Boolean {
+            if (songId.isBlank()) return false
+            val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
+            val baseUri = runCatching { URI(base) }.getOrNull() ?: return false
+            val prefix = baseUri.path.orEmpty().trimEnd('/')
+            val allowed = setOf(
+                "$prefix/audio/$songId",
+                "$prefix/podcast-audio/$songId"
+            )
+            return targetUri.path in allowed
+        }
+
         /** El proxy solo puede consultar el mismo origen configurado en LocalFly. */
         internal fun isSameOrigin(target: String, base: String): Boolean {
             val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
@@ -309,8 +322,9 @@ class KaraokeLyricsServer(
      */
     fun mediaProxyUrl(songId: String, sourceUrl: String): String? {
         val ip = localIp() ?: return null
-        if (!isSameOrigin(sourceUrl, allowedAudioOrigin())) {
-            log("Karaoke TV: se rechazó URL de audio fuera del servidor configurado")
+        if (!isSameOrigin(sourceUrl, allowedAudioOrigin()) ||
+            !isAllowedAudioPath(sourceUrl, songId, allowedAudioOrigin())) {
+            log("Karaoke TV: se rechazó URL de audio fuera de las rutas permitidas")
             return null
         }
         return "http://$ip:$port/audio?song=$songId&u=" + java.net.URLEncoder.encode(sourceUrl, "UTF-8")
@@ -455,10 +469,11 @@ class KaraokeLyricsServer(
             writeResponse(socket, 404, "text/plain", "Missing audio url", origin)
             return
         }
-        if (!isSameOrigin(target, allowedAudioOrigin())) {
-            lastProxyResult = "origen de audio no permitido"
-            log("Karaoke TV: intento de proxy fuera del origen configurado")
-            writeResponse(socket, 403, "text/plain", "Audio origin not allowed", origin)
+        if (!isSameOrigin(target, allowedAudioOrigin()) ||
+            !isAllowedAudioPath(target, songId, allowedAudioOrigin())) {
+            lastProxyResult = "ruta u origen de audio no permitido"
+            log("Karaoke TV: intento de proxy fuera de las rutas de audio permitidas")
+            writeResponse(socket, 403, "text/plain", "Audio target not allowed", origin)
             return
         }
         val conn = runCatching {
