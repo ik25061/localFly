@@ -143,6 +143,30 @@ class KaraokeLyricsServerTest {
     }
 
     @Test
+    fun `el proxy solo admite el mismo origen y rechaza destinos SSRF`() {
+        assertTrue(KaraokeLyricsServer.isSameOrigin(
+            "http://192.168.1.20:3000/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+        assertTrue(KaraokeLyricsServer.isSameOrigin(
+            "https://media.localfly.example/audio/42",
+            "https://media.localfly.example/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://127.0.0.1:3000/admin",
+            "http://192.168.1.20:3000/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://192.168.1.20:3001/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://user@192.168.1.20:3000/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+    }
+
+    @Test
     fun `cabeceras invalidas o ausentes devuelven null`() {
         assertNull(server.parseRange(null, 1000))
         assertNull(server.parseRange("", 1000))
@@ -218,7 +242,7 @@ class KaraokeLyricsServerTest {
         // prueba paralela reutilice un puerto "libre" y convierta el upstream
         // supuestamente caído en un servidor válido de forma intermitente.
         val deadUrl = "http://127.0.0.1:0/audio/s1"
-        withServer(port) {
+        withServer(port, deadUrl) {
             val (head, body) = requestRaw(
                 port,
                 "/audio?song=s1&u=" + java.net.URLEncoder.encode(deadUrl, "UTF-8"),
@@ -237,7 +261,7 @@ class KaraokeLyricsServerTest {
         val port = freePort()
         val url = "http://127.0.0.1:${upstream.address.port}/audio/s1"
         try {
-            withServer(port) {
+            withServer(port, url) {
                 val (head, body) = requestRaw(
                     port,
                     "/audio?song=s1&u=" + java.net.URLEncoder.encode(url, "UTF-8"),
@@ -292,8 +316,16 @@ class KaraokeLyricsServerTest {
 
     // ===== Utilidades de las pruebas HTTP =====
 
-    private fun withServer(port: Int, block: (KaraokeLyricsServer) -> Unit) {
-        val instance = KaraokeLyricsServer(port)
+    private fun withServer(
+        port: Int,
+        allowedAudioOrigin: String = "http://127.0.0.1:3000/",
+        block: (KaraokeLyricsServer) -> Unit
+    ) {
+        val instance = KaraokeLyricsServer(
+            port,
+            java.net.InetAddress.getByName("127.0.0.1"),
+            { allowedAudioOrigin }
+        )
         instance.start()
         try {
             block(instance)
