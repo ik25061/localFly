@@ -1218,6 +1218,7 @@ class PlaybackService : MediaSessionService() {
             queueRestoreInProgress = true
             val requestedOwner = sessionManager.getUserId()
             serviceScope.launch {
+                try {
                 data class RestoredQueue(
                     val ownerId: String?,
                     val songs: List<Song>,
@@ -1280,7 +1281,6 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 withContext(Dispatchers.Main) {
-                    queueRestoreInProgress = false
                     if (queue.isNotEmpty() || requestedOwner != sessionManager.getUserId()) return@withContext
                     if (restored == null) return@withContext
                     queueOwnerUserId = restored.ownerId
@@ -1296,6 +1296,11 @@ class PlaybackService : MediaSessionService() {
                         "restoreQueue: recuperadas ${restored.songs.size} (index=${restored.index}, pos=${restored.positionMs})"
                     )
                     playCurrentIndex(resumePositionMs = restored.positionMs)
+                }
+                } catch (e: Exception) {
+                    LocalLogger.log(this@PlaybackService, "restoreQueue: error asíncrono", e)
+                } finally {
+                    withContext(Dispatchers.Main) { queueRestoreInProgress = false }
                 }
             }
         } catch (e: Exception) {
