@@ -11,6 +11,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.media3.common.util.UnstableApi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -43,6 +47,7 @@ class DownloadsFragment : Fragment() {
     private lateinit var downloadHelper: DownloadManagerHelper
     private lateinit var sessionManager: SessionManager
     private lateinit var adapter: DownloadedSongAdapter
+    private var downloadsLoadJob: Job? = null
 
     /**
      * Refresco en vivo: el servicio avisa (auto-eliminar al terminar una
@@ -138,69 +143,98 @@ class DownloadsFragment : Fragment() {
     }
 
     /** Pide confirmación antes de borrar todas las descargas. */
+    /** Pide confirmación después de consultar el índice fuera del hilo UI. */
     private fun confirmDeleteAll() {
-        if (downloadHelper.getDownloadedSongs().isEmpty()) {
-            Toast.makeText(requireContext(), "No hay descargas para eliminar", Toast.LENGTH_SHORT).show()
-            return
-        }
-        AlertDialog.Builder(requireContext())
-            .setTitle("Eliminar todas las descargas")
-            .setMessage("¿Seguro que quieres borrar todas las canciones descargadas de tu dispositivo?")
-            .setPositiveButton("Eliminar") { _, _ ->
-                downloadHelper.removeAllDownloads()
-                loadDownloads()
-                Toast.makeText(requireContext(), "Descargas eliminadas", Toast.LENGTH_SHORT).show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val hasDownloads = withContext(Dispatchers.IO) {
+                downloadHelper.pruneMissingDownloads()
+                downloadHelper.getDownloadedSongs().isNotEmpty()
             }
-            .setNegativeButton("Cancelar", null)
-            .show()
+            if (!isAdded) return@launch
+            if (!hasDownloads) {
+                Toast.makeText(requireContext(), "No hay descargas para eliminar", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            AlertDialog.Builder(requireContext())
+                .setTitle("Eliminar todas las descargas")
+                .setMessage("¿Seguro que quieres borrar todas las canciones descargadas de tu dispositivo?")
+                .setPositiveButton("Eliminar") { _, _ ->
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        withContext(Dispatchers.IO) { downloadHelper.removeAllDownloads() }
+                        loadDownloads()
+                        if (isAdded) Toast.makeText(requireContext(), "Descargas eliminadas", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
     }
 
+    /**
+     * La verificación de cientos de archivos se hace en Dispatchers.IO.
+     * No validar rutas de disco desde getDownloadedSongs() en el hilo UI.
+     */
     private fun loadDownloads() {
-        val items = downloadHelper.getDownloadedSongs()
-        adapter.updateItems(items)
-        
-        val totalSongs = items.size
-        val totalSizeMb = items.sumOf { it.fileSize } / (1024 * 1024)
-        
-        tvDownloadCountHeader.text = getString(R.string.download_count_header, totalSongs)
-        tvStorageInfo.text = getString(R.string.storage_info, totalSizeMb, totalSongs)
-        
-        tvEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-        rvDownloads.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        if (!isAdded || !::downloadHelper.isInitialized) return
+        downloadsLoadJob?.cancel()
+        downloadsLoadJob = viewLifecycleOwner.lifecycleScope.launch {
+            val items = withContext(Dispatchers.IO) {
+                downloadHelper.pruneMissingDownloads()
+                downloadHelper.getDownloadedSongs()
+            }
+            if (!isAdded || view == null) return@launch
+            adapter.updateItems(items)
+
+            val totalSongs = items.size
+            val totalSizeMb = items.sumOf { it.fileSize } / (1024 * 1024)
+
+            tvDownloadCountHeader.text = getString(R.string.download_count_header, totalSongs)
+            tvStorageInfo.text = getString(R.string.storage_info, totalSizeMb, totalSongs)
+
+            tvEmpty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+            rvDownloads.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        }
     }
 
     private fun playDownloaded(downloaded: DownloadedSong) {
-        // En Descargas, tocar una pista inicia la cola completa de descargas
-        // en el mismo orden que muestra esta pantalla y desde la pista elegida.
-        // No se genera una mezcla aleatoria automática.
-        val downloads = downloadHelper.getDownloadedSongs()
-        val songs = downloads.map { item ->
-            Song(
-                id = item.id,
-                title = item.title,
-                artist = item.artist,
-                album = item.album,
-                year = item.year,
-                duration = item.duration,
-                bpm = item.bpm,
-                key = item.key,
-                liked = item.liked,
-                hasCover = item.hasCover,
-                hasLyrics = item.hasLyrics,
-                hasKaraoke = item.hasKaraoke,
-                isEpisode = item.isEpisode,
-                genre = item.genre
-            )
+        // La lectura del índice y la resolución de rutas se realizan en IO.
+        // Con bibliotecas grandes no debe bloquear el hilo de la interfaz.
+        viewLifecycleOwner.lifecycleScope.launch {
+            val prepared = withContext(Dispatchers.IO) {
+                downloadHelper.pruneMissingDownloads()
+                val downloads = downloadHelper.getDownloadedSongs()
+                val songs = downloads.map { item ->
+                    Song(
+                        id = item.id,
+                        title = item.title,
+                        artist = item.artist,
+                        album = item.album,
+                        year = item.year,
+                        duration = item.duration,
+                        bpm = item.bpm,
+                        key = item.key,
+                        liked = item.liked,
+                        hasCover = item.hasCover,
+                        hasLyrics = item.hasLyrics,
+                        hasKaraoke = item.hasKaraoke,
+                        isEpisode = item.isEpisode,
+                        genre = item.genre
+                    )
+                }
+                val startIndex = songs.indexOfFirst { it.id == downloaded.id }
+                val localPaths = downloads.map { downloadHelper.getLocalFilePath(it.id) }
+                Triple(songs, startIndex, localPaths)
+            }
+            if (!isAdded) return@launch
+            val (songs, startIndex, localPaths) = prepared
+            if (startIndex < 0) {
+                Toast.makeText(requireContext(), "La descarga ya no está disponible", Toast.LENGTH_SHORT).show()
+                loadDownloads()
+                return@launch
+            }
+            val activity = requireActivity() as? MainActivity
+            activity?.playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
         }
-        val startIndex = songs.indexOfFirst { it.id == downloaded.id }
-        if (startIndex < 0) {
-            Toast.makeText(requireContext(), "La descarga ya no está disponible", Toast.LENGTH_SHORT).show()
-            loadDownloads()
-            return
-        }
-        val localPaths = downloads.map { downloadHelper.getLocalFilePath(it.id) }
-        val activity = requireActivity() as? MainActivity
-        activity?.playbackService?.setQueueAndPlay(songs, startIndex, localPaths)
     }
 
     override fun onResume() {
