@@ -333,7 +333,7 @@ class NowPlayingActivity : AppCompatActivity() {
             // avanzará la cola por sí solo cuando termine el audio remoto.
             if (!CastSettings.audioStaysOnPhone(this) && castController.shouldContinuePlayback) {
                 wasPlayingBeforeCast = true
-                playbackService?.next()
+                playbackService?.advanceAfterRemoteTrackFinished()
             }
         }
         castController.onCastEnded = {
