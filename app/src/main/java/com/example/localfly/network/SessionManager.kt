@@ -22,7 +22,10 @@ data class PendingPlaylistCreation(
     val name: String,
     val description: String?,
     val songIds: MutableList<String>,
-    val isPublic: Boolean = false
+    val isPublic: Boolean = false,
+    // Se persiste tras crear en el servidor para reintentar canciones sin
+    // crear una segunda playlist si la conexión cae a mitad de la sincronización.
+    val serverId: String? = null
 )
 
 /** Una canción que se intentó añadir, sin conexión, a una lista que ya
@@ -34,10 +37,11 @@ data class PendingPlaylistSongAdd(
 
 class SessionManager(context: Context) {
 
+    private val applicationContext: Context = context.applicationContext
     private val prefs: SharedPreferences
 
     init {
-        val appContext = context.applicationContext
+        val appContext = applicationContext
         // Crear las prefs cifradas de forma segura. En algunos dispositivos/emuladores
         // el Keystore de Android falla al generar la clave (GeneralSecurityException /
         // IOException), lo que provocaba un crash al arrancar la app. Si eso ocurre,
@@ -62,7 +66,7 @@ class SessionManager(context: Context) {
         // Cargar el almacén local del Administrador (ediciones de metadatos,
         // canciones "no me gusta" y géneros personalizados). Es un complemento
         // local que no modifica el comportamiento existente.
-        SongAdminStore.ensureContext(context)
+        SongAdminStore.ensureContext(applicationContext, getUserId())
 
         // Aplicar la URL base del servidor guardada por el usuario (si existe),
         // para que toda la app (Retrofit, reproducción, portadas) use la misma.
@@ -77,6 +81,7 @@ class SessionManager(context: Context) {
     fun setServerBaseUrl(url: String) {
         prefs.edit().putString("server_base_url", url).apply()
         RetrofitClient.setBaseUrl(url)
+        ServerReachability.reset()
     }
 
     fun getServerBaseUrl(): String =
@@ -89,6 +94,7 @@ class SessionManager(context: Context) {
             .putString("username", username)
             .putString("role", role ?: "USER")
             .apply()
+        SongAdminStore.ensureContext(applicationContext, userId)
     }
 
     fun getToken(): String? = prefs.getString("token", null)
@@ -97,7 +103,26 @@ class SessionManager(context: Context) {
     fun getUserId(): String? = prefs.getString("user_id", null)
     fun getRole(): String = prefs.getString("role", "USER") ?: "USER"
     fun clearSession() {
-        prefs.edit().clear().apply()
+        // Cerrar sesión no debe borrar la configuración global del dispositivo
+        // (IP del servidor, tema, fondo, crossfade o preferencias de descarga).
+        // Las colas pendientes sí se limpian para impedir que se sincronicen bajo
+        // una cuenta distinta después de iniciar sesión con otro usuario.
+        prefs.edit()
+            .remove("token")
+            .remove("username")
+            .remove("user_id")
+            .remove("role")
+            .remove("pending_comments")
+            .remove("pending_dislikes")
+            .remove("pending_likes")
+            .remove("pending_lyrics_uploads")
+            .remove("pending_playlist_creations")
+            .remove("pending_playlist_song_adds")
+            .remove("favorite_artists")
+            .remove("played_song_ids")
+            .remove("playlists_cache")
+            .apply()
+        SongAdminStore.ensureContext(applicationContext, null)
     }
 
     fun isLoggedIn(): Boolean = getToken() != null

@@ -7,7 +7,6 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
@@ -19,6 +18,17 @@ object RetrofitClient {
 
     private val currentBaseUrlLock = Object()
 
+    @Volatile
+    private var tokenProvider: (() -> String?)? = null
+
+    /** Proveedor dinámico: evita reconstruir Retrofit al iniciar/cerrar sesión. */
+    fun setTokenProvider(provider: () -> String?) {
+        tokenProvider = provider
+    }
+
+    /** Token actual para el proxy local de Cast; nunca se registra en logs. */
+    fun getAuthToken(): String? = runCatching { tokenProvider?.invoke() }.getOrNull()
+
     /**
      * URL base efectiva para construir URLs de audio/portadas/descargas,
      * sin "/" al final. Si el usuario cambió la IP del servidor (pantalla de
@@ -26,14 +36,23 @@ object RetrofitClient {
      */
     fun getBaseUrl(): String = currentBaseUrl.trimEnd('/')
 
-    private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
-    }
-
     private val okHttpClient = OkHttpClient.Builder()
-        .addInterceptor(loggingInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val token = try {
+                tokenProvider?.invoke()
+            } catch (_: Exception) {
+                null
+            }
+            val request = original.newBuilder().apply {
+                if (!token.isNullOrBlank() && original.header("Authorization") == null) {
+                    header("Authorization", "Bearer $token")
+                }
+            }.build()
+            chain.proceed(request)
+        }
         .build()
 
     /**

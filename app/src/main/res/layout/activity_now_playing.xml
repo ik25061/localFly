@@ -213,6 +213,18 @@
             android:src="@drawable/ic_karaoke_mic"
             app:tint="#FFFFFF" />
 
+        <ImageButton
+            android:id="@+id/btnAudioOutput"
+            android:layout_width="36dp"
+            android:layout_height="40dp"
+            android:layout_marginHorizontal="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Elegir salida de audio: teléfono o Bluetooth"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_audio_output"
+            app:tint="#FFFFFF" />
+
         <androidx.mediarouter.app.MediaRouteButton
             android:id="@+id/btnCast"
             android:layout_width="40dp"
@@ -451,16 +463,26 @@
 
         <!-- Shuffle button (Crossed arrows) -->
         <ImageButton
-            android:id="@+id/btnRepeat"
-            android:layout_width="48dp"
+            android:id="@+id/btnShuffle"
+            android:layout_width="40dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_menu_revert"
+            android:src="@drawable/ic_shuffle"
+            android:contentDescription="Reproducción aleatoria desactivada"
+            app:tint="#FFFFFF" />
+
+        <ImageButton
+            android:id="@+id/btnRepeat"
+            android:layout_width="40dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_repeat"
+            android:contentDescription="Repetición de reproducción"
             app:tint="#FFFFFF" />
 
         <ImageButton
             android:id="@+id/btnFullPrev"
-            android:layout_width="64dp"
+            android:layout_width="56dp"
             android:layout_height="64dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_previous"
@@ -469,14 +491,14 @@
         <FrameLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="18dp">
+            android:layout_marginHorizontal="10dp">
             <ImageButton
                 android:id="@+id/btnFullPlayPause"
-                android:layout_width="72dp"
-                android:layout_height="72dp"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:elevation="6dp"
-                android:padding="22dp"
+                android:padding="20dp"
                 android:scaleType="centerInside"
                 android:src="@android:drawable/ic_media_play"
                 app:tint="#FFFFFF" />
@@ -484,7 +506,7 @@
 
         <ImageButton
             android:id="@+id/btnFullNext"
-            android:layout_width="64dp"
+            android:layout_width="56dp"
             android:layout_height="64dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_next"
@@ -493,7 +515,7 @@
         <!-- Queue button (List) -->
         <ImageButton
             android:id="@+id/btnShowQueueTop"
-            android:layout_width="48dp"
+            android:layout_width="40dp"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_sort_by_size"

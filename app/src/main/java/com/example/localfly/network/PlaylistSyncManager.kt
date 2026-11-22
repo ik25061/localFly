@@ -25,54 +25,83 @@ object PlaylistSyncManager {
 
     private suspend fun performSync(sessionManager: SessionManager) {
         val userId = sessionManager.getUserId()
+        if (userId.isNullOrBlank() || sessionManager.getToken().isNullOrBlank()) return
 
-        // 1) Listas creadas sin conexión: crearlas en el servidor y subirles sus canciones.
+        // 1) Listas creadas sin conexión. Si ya se creó en el servidor en un
+        // ciclo anterior, reutilizar serverId y continuar con sus canciones.
         for (creation in sessionManager.getPendingPlaylistCreations()) {
             try {
-                val createResp = RetrofitClient.api.createPlayList(
-                    CreatePlaylistRequest(creation.name, creation.description, userId, creation.isPublic)
-                )
-                val realPlaylist = createResp.body()?.playlist
-                if (!createResp.isSuccessful || realPlaylist == null) continue
+                var realPlaylist = if (!creation.serverId.isNullOrBlank()) {
+                    val existingResp = RetrofitClient.api.getPlayList(creation.serverId)
+                    when {
+                        existingResp.isSuccessful -> existingResp.body()?.playlist
+                        existingResp.code() == 404 -> null
+                        else -> continue
+                    }
+                } else {
+                    null
+                }
 
+                if (realPlaylist == null) {
+                    val createResp = RetrofitClient.api.createPlayList(
+                        CreatePlaylistRequest(creation.name, creation.description, userId, creation.isPublic)
+                    )
+                    if (!createResp.isSuccessful) continue
+                    val createdPlaylist = createResp.body()?.playlist ?: continue
+                    realPlaylist = createdPlaylist
+
+                    // Guardar el id antes de subir canciones. Si se pierde la
+                    // conexión después, el próximo ciclo no crea otra lista.
+                    sessionManager.updatePendingPlaylistCreation(
+                        creation.localId,
+                        creation.copy(serverId = createdPlaylist.id)
+                    )
+                }
+
+                val targetPlaylist = realPlaylist ?: continue
                 var allAdded = true
-                // Subir todas las canciones de una vez con el endpoint masivo
-                // (el servidor ya lo soporta; evita N peticiones HTTP por lista).
                 if (creation.songIds.isNotEmpty()) {
                     try {
                         val bulkResp = RetrofitClient.api.addSongsToPlayListBulk(
-                            realPlaylist.id,
+                            targetPlaylist.id,
                             PlaylistSongsBulkRequest(creation.songIds)
                         )
                         if (!bulkResp.isSuccessful) {
-                            // Fallback: intentar canción a canción (servidor antiguo).
+                            // Fallback para servidores que aún no soportan bulk.
                             for (songId in creation.songIds) {
-                                val addResp = RetrofitClient.api.addSongToPlayList(realPlaylist.id, PlaylistSongRequest(songId))
+                                val addResp = RetrofitClient.api.addSongToPlayList(
+                                    targetPlaylist.id,
+                                    PlaylistSongRequest(songId)
+                                )
                                 if (!addResp.isSuccessful) allAdded = false
                             }
                         }
                     } catch (e: Exception) {
-                        allAdded = false
+                        // Reintentar elemento a elemento; INSERT OR IGNORE en el
+                        // servidor hace que repetir los ya añadidos sea seguro.
+                        for (songId in creation.songIds) {
+                            try {
+                                val addResp = RetrofitClient.api.addSongToPlayList(
+                                    targetPlaylist.id,
+                                    PlaylistSongRequest(songId)
+                                )
+                                if (!addResp.isSuccessful) allAdded = false
+                            } catch (_: Exception) {
+                                allAdded = false
+                            }
+                        }
                     }
                 }
 
                 if (allAdded) {
                     sessionManager.removePendingPlaylistCreation(creation.localId)
-
-                    // Sustituir el id local por el id real en la caché para que la
-                    // próxima vez que se abra "Listas" ya apunte al servidor.
                     val cache = sessionManager.getPlaylistsCache().toMutableList()
                     val idx = cache.indexOfFirst { it.id == creation.localId }
-                    if (idx >= 0) cache[idx] = realPlaylist else cache.add(realPlaylist)
+                    if (idx >= 0) cache[idx] = targetPlaylist else cache.add(targetPlaylist)
                     sessionManager.savePlaylistsCache(cache)
                 }
-                // Si alguna canción falló, se deja la creación pendiente tal cual:
-                // en el próximo ciclo se reintenta desde cero (createPlayList es
-                // idempotente en la práctica: como mucho crea una lista vacía
-                // duplicada si el nombre se repite, aceptable frente a la
-                // complejidad de trackear una creación "a medias").
             } catch (e: Exception) {
-                // Sin conexión de nuevo a mitad de sync: se reintenta en el próximo ciclo.
+                // Sin conexión a mitad del proceso: conservar serverId y reintentar.
             }
         }
 

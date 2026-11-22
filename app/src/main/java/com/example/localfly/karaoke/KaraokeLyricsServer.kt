@@ -1,6 +1,7 @@
 package com.example.localfly.karaoke
 
 import com.example.localfly.utils.LocalLogger
+import com.example.localfly.network.RetrofitClient
 import com.google.gson.Gson
 import java.io.BufferedWriter
 import java.io.IOException
@@ -14,6 +15,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URL
 import java.net.URLDecoder
+import java.net.URI
+import java.net.InetSocketAddress
 import java.util.Collections
 
 /**
@@ -43,7 +46,11 @@ import java.util.Collections
  *
  * El TV (Fire TV) solo necesita abrir en su navegador: http://<ip>:8099
  */
-class KaraokeLyricsServer(private val port: Int = 8099) {
+class KaraokeLyricsServer(
+    private val port: Int = 8099,
+    private val bindAddress: InetAddress? = null,
+    private val allowedAudioOrigin: () -> String = { RetrofitClient.getBaseUrl() }
+) {
 
     companion object {
         private const val TAG = "KaraokeTV"
@@ -80,6 +87,38 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
          *  - Los headers pedidos en el preflight se repiten tal cual, asi
          *    cualquier cabecera extra del receptor queda permitida.
          */
+        /** Restringe el proxy a las dos rutas de audio que usa el reproductor. */
+        internal fun isAllowedAudioPath(target: String, songId: String, base: String): Boolean {
+            if (songId.isBlank()) return false
+            val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
+            val baseUri = runCatching { URI(base) }.getOrNull() ?: return false
+            val prefix = baseUri.path.orEmpty().trimEnd('/')
+            val targetPath = targetUri.path ?: return false
+            val allowed = setOf(
+                "$prefix/audio/$songId",
+                "$prefix/podcast-audio/$songId"
+            )
+            return targetPath in allowed
+        }
+
+        /** El proxy solo puede consultar el mismo origen configurado en LocalFly. */
+        internal fun isSameOrigin(target: String, base: String): Boolean {
+            val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
+            val baseUri = runCatching { URI(base) }.getOrNull() ?: return false
+            fun effectivePort(uri: URI): Int = if (uri.port >= 0) uri.port else when (uri.scheme?.lowercase()) {
+                "https" -> 443
+                "http" -> 80
+                else -> -1
+            }
+            val scheme = targetUri.scheme?.lowercase() ?: return false
+            return (scheme == "http" || scheme == "https") &&
+                targetUri.scheme.equals(baseUri.scheme, ignoreCase = true) &&
+                targetUri.host.equals(baseUri.host, ignoreCase = true) &&
+                effectivePort(targetUri) == effectivePort(baseUri) &&
+                targetUri.userInfo == null &&
+                targetUri.fragment == null
+        }
+
         internal fun corsHeaders(origin: String?, requestedHeaders: String? = null): String {
             val allowOrigin = origin?.takeIf { it.isNotBlank() } ?: "*"
             val allowHeaders = requestedHeaders?.takeIf { it.isNotBlank() } ?: DEFAULT_ALLOW_HEADERS
@@ -110,6 +149,10 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
 
     @Volatile
     private var running = false
+
+    /** Estado público de escucha para que la actividad pueda informar si arrancó. */
+    val isRunning: Boolean
+        get() = running
 
     private val sseClients = Collections.synchronizedList(mutableListOf<BufferedWriter>())
     @Volatile private var lastPayload: KaraokeLinePayload? = null
@@ -160,7 +203,9 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
         val socket = try {
             ServerSocket().apply {
                 reuseAddress = true
-                bind(java.net.InetSocketAddress(port))
+                val address = bindAddress ?: localIp()?.let { InetAddress.getByName(it) }
+                    ?: throw IOException("No hay una interfaz de red local disponible para Chromecast")
+                bind(InetSocketAddress(address, port))
             }
         } catch (e: Exception) {
             log("Karaoke TV: no se pudo abrir el puerto $port (${e.message})")
@@ -259,12 +304,17 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
      */
     fun trackUrl(songId: String): String? {
         val ip = localIp() ?: return null
-        if (trackSongId != songId || trackLines.isEmpty()) return null
+        if (!running || !hasTrack(songId)) return null
         return "http://$ip:$port/track.vtt?song=$songId"
     }
 
+    /** Evita que una petición retrasada reciba la letra de la canción siguiente. */
+    internal fun hasTrack(songId: String): Boolean =
+        trackSongId == songId && trackLines.isNotEmpty()
+
     /** URL del audio "silencio" que recibe el Chromecast en lugar de la música. */
     fun silenceUrl(songId: String, durationMs: Long): String? {
+        if (!running) return null
         val ip = localIp() ?: return null
         return "http://$ip:$port/silence?ms=$durationMs&song=$songId"
     }
@@ -277,7 +327,13 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
      * con CORS y reenviando al upstream las peticiones Range del receptor.
      */
     fun mediaProxyUrl(songId: String, sourceUrl: String): String? {
+        if (!running) return null
         val ip = localIp() ?: return null
+        if (!isSameOrigin(sourceUrl, allowedAudioOrigin()) ||
+            !isAllowedAudioPath(sourceUrl, songId, allowedAudioOrigin())) {
+            log("Karaoke TV: se rechazó URL de audio fuera de las rutas permitidas")
+            return null
+        }
         return "http://$ip:$port/audio?song=$songId&u=" + java.net.URLEncoder.encode(sourceUrl, "UTF-8")
     }
 
@@ -327,14 +383,20 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
                     "/track.vtt" -> {
                         val songId = query["song"]?.ifBlank { null }
                         if (songId != null) waitForTrack(songId)
-                        writeBytes(
-                            socket,
-                            "text/vtt; charset=utf-8",
-                            buildVtt().toByteArray(Charsets.UTF_8),
-                            headers["range"],
-                            headOnly,
-                            origin
-                        )
+                        if (songId != null && !hasTrack(songId)) {
+                            // No devolver una letra vieja o la de otra canción
+                            // si el receptor pidió una pista durante un cambio.
+                            writeResponse(socket, 404, "text/plain; charset=utf-8", "Lyrics not ready", origin)
+                        } else {
+                            writeBytes(
+                                socket,
+                                "text/vtt; charset=utf-8",
+                                buildVtt().toByteArray(Charsets.UTF_8),
+                                headers["range"],
+                                headOnly,
+                                origin
+                            )
+                        }
                     }
                     "/silence" -> {
                         val ms = query["ms"]?.toLongOrNull() ?: 0L
@@ -343,7 +405,7 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
                     "/audio" -> {
                         // Flujo largo: sin timeout de socket para no cortar la canción.
                         socket.soTimeout = 0
-                        proxyAudio(socket, query["u"], headers["range"], headOnly, origin)
+                        proxyAudio(socket, query["u"], query["song"], headers["range"], headOnly, origin)
                     }
                     else -> writeResponse(socket, 404, "text/plain", "Not found", origin)
                 }
@@ -405,6 +467,7 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
     private fun proxyAudio(
         socket: Socket,
         target: String?,
+        songId: String?,
         range: String?,
         headOnly: Boolean = false,
         origin: String? = null
@@ -414,12 +477,27 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
             writeResponse(socket, 404, "text/plain", "Missing audio url", origin)
             return
         }
+        if (songId.isNullOrBlank() ||
+            !isSameOrigin(target, allowedAudioOrigin()) ||
+            !isAllowedAudioPath(target, songId, allowedAudioOrigin())) {
+            lastProxyResult = "ruta u origen de audio no permitido"
+            log("Karaoke TV: intento de proxy fuera de las rutas de audio permitidas")
+            writeResponse(socket, 403, "text/plain", "Audio target not allowed", origin)
+            return
+        }
         val conn = runCatching {
             (URL(target).openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
+                // No seguir redirecciones a dominios arbitrarios: eso convertiría
+                // este servidor local en un proxy SSRF hacia la red privada.
+                instanceFollowRedirects = false
                 connectTimeout = 10000
                 readTimeout = 30000
                 setRequestProperty("User-Agent", "LocalFly-Cast/1.0")
+                // El Chromecast accede al servidor local sin conocer el token.
+                // El proxy adjunta la sesión actual al backend autenticado.
+                RetrofitClient.getAuthToken()?.takeIf { it.isNotBlank() }?.let { token ->
+                    setRequestProperty("Authorization", "Bearer $token")
+                }
                 // Sin compresión: si el upstream mandase gzip el receptor
                 // recibiría bytes que no puede decodificar como MP3.
                 setRequestProperty("Accept-Encoding", "identity")
@@ -638,7 +716,18 @@ class KaraokeLyricsServer(private val port: Int = 8099) {
         origin: String? = null
     ) {
         val bytes = body.toByteArray(Charsets.UTF_8)
-        val status = if (code == 200) "200 OK" else "404 Not Found"
+        val reason = when (code) {
+            200 -> "OK"
+            204 -> "No Content"
+            400 -> "Bad Request"
+            403 -> "Forbidden"
+            404 -> "Not Found"
+            405 -> "Method Not Allowed"
+            502 -> "Bad Gateway"
+            503 -> "Service Unavailable"
+            else -> "Error"
+        }
+        val status = "$code $reason"
         val header = "HTTP/1.1 $status\r\n" +
             "Content-Type: $contentType\r\n" +
             "Content-Length: ${bytes.size}\r\n" +

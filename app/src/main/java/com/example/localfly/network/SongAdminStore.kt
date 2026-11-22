@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 
 /**
@@ -47,12 +48,16 @@ data class DislikedSong(
     val year: Int? = null,
     val dislikedAtMs: Long = 0L,
     /**
-     * `true` = el administrador YA la revisó y decidió DEJARLA (no borrarla).
-     * `false` = pendiente: en la lista de "No me gusta" se muestra con el
-     * recuadro en rojo oscuro y entra en la cola de revisión de reproducción.
+     * Compatibilidad con el estado antiguo: true significa que el usuario
+     * decidió conservarla. La decisión actual se representa también mediante
+     * markedForDeletion, que separa dislike de eliminación.
      */
     val kept: Boolean = false,
-    val keptAtMs: Long = 0L
+    val keptAtMs: Long = 0L,
+    /** true solo cuando el usuario ha decidido explícitamente ponerla para eliminar. */
+    val markedForDeletion: Boolean = false,
+    /** Cuenta que solicitó el borrado diferido; evita ejecutar órdenes con otro usuario. */
+    val ownerUserId: String? = null
 )
 
 data class CustomGenre(
@@ -71,13 +76,16 @@ data class CustomGenre(
 object SongAdminStore {
 
     private const val PREFS_NAME = "localfly_admin_data"
+    private const val KEY_LEGACY_OWNER = "claimed_by_user_id"
     private const val KEY_EDITS = "edits"
     private const val KEY_DISLIKED = "disliked"
     private const val KEY_GENRES = "genres"
     private const val KEY_PENDING_SYNC = "pending_sync_ids"
     private const val KEY_DELETED = "deleted_song_ids"
+    private const val KEY_PENDING_DELETIONS = "pending_song_deletions"
 
     private var context: Context? = null
+    private var prefsName: String = "${PREFS_NAME}_guest"
 
     private val gson = Gson()
 
@@ -86,6 +94,8 @@ object SongAdminStore {
     // estado conocido). ensureContext() recarga desde disco.
     private var editsCache: Map<String, SongEdit> = emptyMap()
     private var dislikedCache: List<DislikedSong> = emptyList()
+    private var dislikedIdsCache: Set<String> = emptySet()
+    private var pendingDislikeIdsCache: Set<String> = emptySet()
     private var genresCache: List<CustomGenre> = emptyList()
 
     // JSON del que venían las cachés anteriores (comparación por CONTENIDO
@@ -102,16 +112,73 @@ object SongAdminStore {
      *  los siga devolviendo un tiempo en /hidden-songs o /by-ids. */
     private var deletedCache: Set<String> = emptySet()
     private var deletedJson: String? = null
+    private var pendingDeletionsCache: List<DislikedSong> = emptyList()
+    private var pendingDeletionIdsByOwner: Map<String, Set<String>> = emptyMap()
+    private var pendingDeletionsJson: String? = null
 
-    /** Se llama desde SessionManager (que se crea en cada fragmento). */
-    fun ensureContext(appContext: Context) {
-        context = appContext
-        reload()
+    /**
+     * Separa ediciones, dislikes y colas administrativas por cuenta. La antigua
+     * preferencia global no tenía propietario; se migra una sola vez a la
+     * primera cuenta autenticada que abre esta versión, y después queda aislada.
+     */
+    fun ensureContext(appContext: Context, userId: String? = null) {
+        val applicationContext = appContext.applicationContext
+        val owner = userId?.takeIf { it.isNotBlank() }
+        val newPrefsName = if (owner == null) {
+            "${PREFS_NAME}_guest"
+        } else {
+            val suffix = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(owner.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            "${PREFS_NAME}_$suffix"
+        }
+
+        if (owner != null) migrateLegacyStore(applicationContext, newPrefsName, owner)
+        val contextChanged = context !== applicationContext
+        val prefsChanged = prefsName != newPrefsName
+        context = applicationContext
+        prefsName = newPrefsName
+        if (contextChanged || prefsChanged) reload()
+    }
+
+    private fun migrateLegacyStore(appContext: Context, targetName: String, owner: String) {
+        val legacy = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (legacy.getString(KEY_LEGACY_OWNER, null) != null) return
+
+        val target = appContext.getSharedPreferences(targetName, Context.MODE_PRIVATE)
+        val editor = target.edit()
+        legacy.all.forEach { (key, value) ->
+            if (key == KEY_LEGACY_OWNER || target.contains(key)) return@forEach
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toMutableSet())
+            }
+        }
+
+        // Las solicitudes antiguas no guardaban propietario. Al migrar el
+        // almacén legacy, se atribuyen a la cuenta que lo ha reclamado.
+        val pendingJson = target.getString(KEY_PENDING_DELETIONS, null)
+            ?: legacy.getString(KEY_PENDING_DELETIONS, null)
+        if (!pendingJson.isNullOrBlank()) {
+            val migrated = parsePendingDeletions(pendingJson).map { pending ->
+                if (pending.ownerUserId.isNullOrBlank()) pending.copy(ownerUserId = owner) else pending
+            }
+            editor.putString(KEY_PENDING_DELETIONS, gson.toJson(migrated))
+        }
+        editor.apply()
+
+        // Retener solo el marcador: los datos ya están en el fichero de la
+        // cuenta y no deben aparecer en el almacén invitado ni en otra cuenta.
+        legacy.edit().clear().putString(KEY_LEGACY_OWNER, owner).apply()
     }
 
     private fun prefs(): SharedPreferences? {
         val appContext = context ?: return null
-        return appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return appContext.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     }
 
     private fun reload() {
@@ -121,10 +188,42 @@ object SongAdminStore {
         genresJson = store.getString(KEY_GENRES, null)
         editsCache = parseEdits(editsJson)
         dislikedCache = parseDisliked(dislikedJson)
+        rebuildDislikedIndexes()
         genresCache = parseGenres(genresJson)
         pendingSyncIds = parseIdSet(store.getString(KEY_PENDING_SYNC, null))
         deletedJson = store.getString(KEY_DELETED, null)
         deletedCache = parseIdSet(deletedJson)
+        pendingDeletionsJson = store.getString(KEY_PENDING_DELETIONS, null)
+        pendingDeletionsCache = parsePendingDeletions(pendingDeletionsJson)
+        rebuildPendingDeletionIndexes()
+    }
+
+    /** Índices O(1) para listas grandes de dislikes y revisiones de borrado. */
+    private fun rebuildDislikedIndexes() {
+        dislikedIdsCache = dislikedCache.map { it.songId }.toSet()
+        pendingDislikeIdsCache = dislikedCache
+            .asSequence()
+            .filter { it.markedForDeletion }
+            .map { it.songId }
+            .toSet()
+    }
+
+    /** Índice por cuenta para que una pantalla grande no haga búsquedas O(n²). */
+    private fun rebuildPendingDeletionIndexes() {
+        pendingDeletionIdsByOwner = pendingDeletionsCache
+            .filter { !it.ownerUserId.isNullOrBlank() }
+            .groupBy { it.ownerUserId!! }
+            .mapValues { (_, songs) -> songs.map { it.songId }.toSet() }
+    }
+
+    private fun parsePendingDeletions(json: String?): List<DislikedSong> {
+        if (json.isNullOrBlank()) return emptyList()
+        return try {
+            val type = object : TypeToken<List<DislikedSong>>() {}.type
+            gson.fromJson<List<DislikedSong>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private fun parseIdSet(json: String?): Set<String> {
@@ -161,6 +260,7 @@ object SongAdminStore {
         if (d != dislikedJson) {
             dislikedJson = d
             dislikedCache = parseDisliked(d)
+            rebuildDislikedIndexes()
         }
         val g = store.getString(KEY_GENRES, null)
         if (g != genresJson) {
@@ -171,6 +271,12 @@ object SongAdminStore {
         if (del != deletedJson) {
             deletedJson = del
             deletedCache = parseIdSet(del)
+        }
+        val pendingDeletes = store.getString(KEY_PENDING_DELETIONS, null)
+        if (pendingDeletes != pendingDeletionsJson) {
+            pendingDeletionsJson = pendingDeletes
+            pendingDeletionsCache = parsePendingDeletions(pendingDeletes)
+            rebuildPendingDeletionIndexes()
         }
     }
 
@@ -188,8 +294,18 @@ object SongAdminStore {
     private fun parseDisliked(json: String?): List<DislikedSong> {
         if (json.isNullOrBlank()) return emptyList()
         return try {
-            val type = object : TypeToken<List<DislikedSong>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
+            // Migración compatible: antes kept=false significaba "pendiente de
+            // decidir si borrar". Se conserva esa intención en las instalaciones
+            // existentes; los nuevos dislikes se guardan como solo-dislike.
+            JsonParser.parseString(json).asJsonArray.map { element ->
+                val item = element.asJsonObject
+                val song = gson.fromJson(item, DislikedSong::class.java)
+                if (!item.has("markedForDeletion")) {
+                    song.copy(markedForDeletion = !song.kept)
+                } else {
+                    song
+                }
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -322,28 +438,76 @@ object SongAdminStore {
     fun isDisliked(songId: String): Boolean {
         if (context != null) reloadIfChanged()
         if (songId in deletedCache) return false
-        return dislikedCache.any { it.songId == songId }
+        return songId in dislikedIdsCache
     }
 
-    /** True si está marcada y AÚN NO se ha revisado (pendiente de borrar/dejar). */
+    /** True solo si el usuario la marcó expresamente para eliminar. */
     fun isPendingDislike(songId: String): Boolean {
         if (context != null) reloadIfChanged()
         if (songId in deletedCache) return false
-        return dislikedCache.any { it.songId == songId && !it.kept }
+        return songId in pendingDislikeIdsCache
     }
 
     /**
-     * Canciones marcadas PENDIENTES de revisión (el admin aún no decidió si las
-     * borra o las deja). Es la fuente de la "cola de revisión": cuando suena una
-     * de ellas, la lista de reproducción pasa a estar formada solo por estas,
-     * para poder gestionarlas una detrás de otra.
+     * Canciones que el usuario ha marcado expresamente para eliminar. Son la
+     * fuente de la cola de revisión; los dislikes normales no entran aquí.
      */
-    fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { !it.kept }
+    fun getPendingDislikedSongs(): List<DislikedSong> = getDislikedSongs().filter { it.markedForDeletion }
+
+    // ===================== COLA DE ELIMINACIÓN DIFERIDA =====================
+
+    /** Copia persistente e independiente de la lista de dislikes. */
+    internal fun filterPendingDeletionsForUser(
+        pending: List<DislikedSong>,
+        ownerUserId: String
+    ): List<DislikedSong> = if (ownerUserId.isBlank()) {
+        emptyList()
+    } else {
+        pending.filter { it.ownerUserId == ownerUserId }
+    }
+
+    fun getPendingSongDeletions(ownerUserId: String): List<DislikedSong> {
+        if (ownerUserId.isBlank()) return emptyList()
+        if (context != null) reloadIfChanged()
+        return filterPendingDeletionsForUser(pendingDeletionsCache, ownerUserId)
+    }
+
+    fun isPendingSongDeletion(songId: String, ownerUserId: String): Boolean {
+        if (ownerUserId.isBlank()) return false
+        if (context != null) reloadIfChanged()
+        return pendingDeletionIdsByOwner[ownerUserId]?.contains(songId) == true
+    }
+
+    /** Añade de forma idempotente una eliminación solicitada sin conexión. */
+    fun addPendingSongDeletion(song: DislikedSong, ownerUserId: String) {
+        if (ownerUserId.isBlank() || song.songId.isBlank() || isDeleted(song.songId)) return
+        if (context != null) reloadIfChanged()
+        if (isPendingSongDeletion(song.songId, ownerUserId)) return
+        pendingDeletionsCache = pendingDeletionsCache +
+            song.copy(markedForDeletion = true, kept = false, ownerUserId = ownerUserId)
+        persistPendingSongDeletions()
+    }
+
+    fun removePendingSongDeletion(songId: String, ownerUserId: String) {
+        if (ownerUserId.isBlank()) return
+        if (context != null) reloadIfChanged()
+        if (!isPendingSongDeletion(songId, ownerUserId)) return
+        val updated = pendingDeletionsCache.filterNot { it.songId == songId && it.ownerUserId == ownerUserId }
+        pendingDeletionsCache = updated
+        persistPendingSongDeletions()
+    }
+
+    private fun persistPendingSongDeletions() {
+        rebuildPendingDeletionIndexes()
+        val json = gson.toJson(pendingDeletionsCache)
+        pendingDeletionsJson = json
+        prefs()?.edit()?.putString(KEY_PENDING_DELETIONS, json)?.apply()
+    }
 
     /** El admin decide DEJAR la canción: ya la revisó y no la borrará. */
     fun markDislikedSongKept(songId: String) = setDislikedKept(songId, kept = true)
 
-    /** Devuelve la canción al estado pendiente (volver a decidir sobre ella). */
+    /** Marca expresamente la canción para eliminarla; entra en la cola de revisión. */
     fun markDislikedSongPending(songId: String) = setDislikedKept(songId, kept = false)
 
     private fun setDislikedKept(songId: String, kept: Boolean) {
@@ -352,10 +516,11 @@ object SongAdminStore {
         val index = dislikedCache.indexOfFirst { it.songId == songId }
         if (index == -1) return
         val current = dislikedCache[index]
-        if (current.kept == kept) return
+        if (current.kept == kept && current.markedForDeletion == !kept) return
         val updated = current.copy(
             kept = kept,
-            keptAtMs = if (kept) System.currentTimeMillis() else 0L
+            keptAtMs = if (kept) System.currentTimeMillis() else 0L,
+            markedForDeletion = !kept
         )
         dislikedCache = dislikedCache.toMutableList().also { it[index] = updated }
         persistDisliked()
@@ -371,23 +536,10 @@ object SongAdminStore {
 
         Log.d("SongAdminStore", "Recording dislike for: ${song.title} (${song.id})")
 
-        // Si ya estaba marcada: un nuevo dislike la devuelve a PENDIENTE (si el
-        // admin la había "dejado", vuelve a la lista roja y a la cola de revisión).
-        val existingIndex = dislikedCache.indexOfFirst { it.songId == song.id }
-        if (existingIndex != -1) {
-            val existing = dislikedCache[existingIndex]
-            if (existing.kept) {
-                dislikedCache = dislikedCache.toMutableList().also {
-                    it[existingIndex] = existing.copy(
-                        kept = false,
-                        keptAtMs = 0L,
-                        dislikedAtMs = System.currentTimeMillis()
-                    )
-                }
-                persistDisliked()
-            }
-            return
-        }
+        // Un dislike no significa que el usuario quiera borrar el archivo.
+        // Si ya existe, respetar la decisión explícita de conservarlo o
+        // marcarlo para eliminar; repetir la acción no cambia esa decisión.
+        if (song.id in dislikedIdsCache) return
         
         dislikedCache = dislikedCache + DislikedSong(
             songId = song.id,
@@ -395,14 +547,16 @@ object SongAdminStore {
             artist = song.artist,
             album = song.album,
             year = song.year,
-            dislikedAtMs = System.currentTimeMillis()
+            dislikedAtMs = System.currentTimeMillis(),
+            kept = true,
+            markedForDeletion = false
         )
         persistDisliked()
     }
 
     fun removeDislikedSong(songId: String) {
         if (context != null) reloadIfChanged()
-        if (dislikedCache.none { it.songId == songId }) return
+        if (songId !in dislikedIdsCache) return
         dislikedCache = dislikedCache.filter { it.songId != songId }
         persistDisliked()
     }
@@ -416,6 +570,7 @@ object SongAdminStore {
 
     private fun persistDisliked() {
         val store = prefs() ?: return
+        rebuildDislikedIndexes()
         val json = gson.toJson(dislikedCache)
         dislikedJson = json
         store.edit().putString(KEY_DISLIKED, json).apply()
@@ -428,15 +583,21 @@ object SongAdminStore {
         if (songId.isBlank()) return
         if (context != null) reloadIfChanged()
         dislikedCache = dislikedCache.filter { it.songId != songId }
+        rebuildDislikedIndexes()
         val jsonDisliked = gson.toJson(dislikedCache)
         dislikedJson = jsonDisliked
         deletedCache = deletedCache + songId
         val jsonDeleted = gson.toJson(deletedCache.toList())
         deletedJson = jsonDeleted
+        pendingDeletionsCache = pendingDeletionsCache.filterNot { it.songId == songId }
+        rebuildPendingDeletionIndexes()
+        val jsonPendingDeletions = gson.toJson(pendingDeletionsCache)
+        pendingDeletionsJson = jsonPendingDeletions
         val store = prefs() ?: return
         store.edit()
             .putString(KEY_DISLIKED, jsonDisliked)
             .putString(KEY_DELETED, jsonDeleted)
+            .putString(KEY_PENDING_DELETIONS, jsonPendingDeletions)
             .apply()
         // Las ediciones/pendientes de una canción que ya no existe estorban.
         removeEdit(songId)

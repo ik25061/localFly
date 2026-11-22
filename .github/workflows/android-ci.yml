@@ -1,0 +1,63 @@
+name: Android CI
+
+on:
+  push:
+    branches: [audit-fix-2026-11]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # The runner image already contains Android cmdline-tools, but the
+      # SDK manager binary is not on PATH by default.
+      - name: Configure Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          CMDLINE_TOOLS="$(find "$SDK_ROOT/cmdline-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$CMDLINE_TOOLS/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Install Android 36 SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build and run unit tests
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon testDebugUnitTest assembleDebug
+
+      # Instrumented playback tests run only on a fresh disposable emulator.
+      # The test opts in explicitly because it temporarily owns the download store.
+      - name: Run offline playback regression on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.dedicatedPlaybackTest=true

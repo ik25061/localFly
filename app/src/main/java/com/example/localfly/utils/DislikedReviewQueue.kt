@@ -1,12 +1,11 @@
 package com.example.localfly.utils
 
 /**
- * Arma la "cola de revisión" de canciones marcadas como "No me gusta".
+ * Arma la cola de canciones marcadas expresamente para eliminar.
  *
- * Regla pedida por el usuario: cuando está sonando una canción marcada, la
- * lista de reproducción ("a continuación") debe contener SOLO las demás
- * canciones marcadas pendientes de revisión, para poder eliminarlas o dejarlas
- * una detrás de otra.
+ * Cuando está sonando una canción marcada para eliminar, la lista
+ * ("a continuación") contiene SOLO las demás canciones de esa sección.
+ * Los dislikes normales no entran en esta cola.
  *
  * Es lógica pura (sin Android) para poder probarla con tests unitarios: solo
  * recibe la lista de pendientes, sus ids y qué está disponible para sonar.
@@ -14,7 +13,7 @@ package com.example.localfly.utils
 object DislikedReviewQueue {
 
     /**
-     * Devuelve el orden en el que deben sonar las canciones marcadas.
+     * Devuelve el orden en el que deben sonar las canciones marcadas para eliminar.
      *
      * - Nunca incluye [currentId] (es la que ya está sonando).
      * - Solo incluye lo que [isAvailable] acepte (por ejemplo, sin conexión:

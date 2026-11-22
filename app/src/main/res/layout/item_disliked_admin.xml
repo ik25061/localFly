@@ -61,8 +61,7 @@
                     android:maxLines="1"
                     android:ellipsize="end" />
 
-                <!-- Estado de revisión: pendiente (rojo) o dejada (verde). Es la
-                     señal de que la canción ya fue revisada y NO se borrará. -->
+                <!-- Estado independiente: dislike o marcada expresamente para eliminar. -->
                 <TextView
                     android:id="@+id/tvDlStatus"
                     android:layout_width="match_parent"
@@ -83,14 +82,13 @@
             android:layout_marginTop="12dp"
             android:gravity="end">
 
-            <!-- Boton "Dejar": marca la cancion como revisada (no se borrara).
-                 Para las ya revisadas el mismo boton la devuelve a revision. -->
+            <!-- Alterna entre conservar en No me gustan y marcar para eliminar. -->
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnKeepSong"
                 style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Dejar"
+                android:text="Marcar para eliminar"
                 android:textAllCaps="false"
                 android:textColor="#6BCB77"
                 android:textSize="12sp"
@@ -116,7 +114,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
-                android:text="Borrar del Servidor"
+                android:text="Eliminar ahora"
                 android:textAllCaps="false"
                 android:textColor="#FFFFFF"
                 app:backgroundTint="#FF4444"

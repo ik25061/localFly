@@ -40,6 +40,16 @@ class KaraokeLyricsServerTest {
     }
 
     @Test
+    fun `la url solo se publica para la cancion actual y con letra`() {
+        assertFalse(server.hasTrack("s1"))
+        server.setTrack("s1", "T", null, emptyList(), durationMs = 10000L)
+        assertFalse(server.hasTrack("s1"))
+        server.setTrack("s2", "T", null, listOf(0L to "Letra"), durationMs = 10000L)
+        assertTrue(server.hasTrack("s2"))
+        assertFalse(server.hasTrack("s1"))
+    }
+
+    @Test
     fun `no se incluye bloque STYLE porque el estilo va por TextTrackStyle`() {
         server.setTrack("s1", "T", null, listOf(0L to "Uno"), durationMs = 10000L)
         assertFalse(server.buildVtt().contains("STYLE"))
@@ -133,6 +143,50 @@ class KaraokeLyricsServerTest {
     }
 
     @Test
+    fun `el proxy solo admite el mismo origen y rechaza destinos SSRF`() {
+        assertTrue(KaraokeLyricsServer.isSameOrigin(
+            "http://192.168.1.20:3000/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+        assertTrue(KaraokeLyricsServer.isSameOrigin(
+            "https://media.localfly.example/audio/42",
+            "https://media.localfly.example/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://127.0.0.1:3000/admin",
+            "http://192.168.1.20:3000/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://192.168.1.20:3001/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+        assertFalse(KaraokeLyricsServer.isSameOrigin(
+            "http://user@192.168.1.20:3000/audio/42",
+            "http://192.168.1.20:3000/"
+        ))
+        assertTrue(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/audio/song-1",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertTrue(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/podcast-audio/episode-2",
+            "episode-2",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/admin/users",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
+        assertFalse(KaraokeLyricsServer.isAllowedAudioPath(
+            "http://192.168.1.20:3000/api/audio/song-2",
+            "song-1",
+            "http://192.168.1.20:3000/api/"
+        ))
+    }
+
+    @Test
     fun `cabeceras invalidas o ausentes devuelven null`() {
         assertNull(server.parseRange(null, 1000))
         assertNull(server.parseRange("", 1000))
@@ -204,8 +258,11 @@ class KaraokeLyricsServerTest {
     @Test
     fun `si el upstream del audio falla el proxy contesta 502 y no se queda mudo`() {
         val port = freePort()
-        val deadUrl = "http://127.0.0.1:${freePort()}/audio/s1"
-        withServer(port) {
+        // El puerto 0 nunca puede ser un puerto TCP de escucha: evita que otra
+        // prueba paralela reutilice un puerto "libre" y convierta el upstream
+        // supuestamente caído en un servidor válido de forma intermitente.
+        val deadUrl = "http://127.0.0.1:0/audio/s1"
+        withServer(port, deadUrl) {
             val (head, body) = requestRaw(
                 port,
                 "/audio?song=s1&u=" + java.net.URLEncoder.encode(deadUrl, "UTF-8"),
@@ -224,7 +281,7 @@ class KaraokeLyricsServerTest {
         val port = freePort()
         val url = "http://127.0.0.1:${upstream.address.port}/audio/s1"
         try {
-            withServer(port) {
+            withServer(port, url) {
                 val (head, body) = requestRaw(
                     port,
                     "/audio?song=s1&u=" + java.net.URLEncoder.encode(url, "UTF-8"),
@@ -279,8 +336,16 @@ class KaraokeLyricsServerTest {
 
     // ===== Utilidades de las pruebas HTTP =====
 
-    private fun withServer(port: Int, block: (KaraokeLyricsServer) -> Unit) {
-        val instance = KaraokeLyricsServer(port)
+    private fun withServer(
+        port: Int,
+        allowedAudioOrigin: String = "http://127.0.0.1:3000/",
+        block: (KaraokeLyricsServer) -> Unit
+    ) {
+        val instance = KaraokeLyricsServer(
+            port,
+            java.net.InetAddress.getByName("127.0.0.1"),
+            { allowedAudioOrigin }
+        )
         instance.start()
         try {
             block(instance)

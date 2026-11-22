@@ -3,7 +3,11 @@ package com.example.localfly.ai
 import com.example.localfly.network.RetrofitClient
 import com.example.localfly.network.SessionManager
 import com.example.localfly.network.Song
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -35,7 +39,7 @@ class AIRecommendationManager(
         val favArtistIds = sessionManager.getFavoriteArtists()
         val mixingEnabled = sessionManager.isPodcastMixingEnabled()
 
-        // ... resto de la lógica inicial ...
+        // Los podcasts se mezclan solo según la preferencia del usuario o el tipo de canción semilla.
         val includeMusic: Boolean
         val includePodcasts: Boolean
 
@@ -58,7 +62,7 @@ class AIRecommendationManager(
             .mapNotNull { it.songId }.toSet()
 
         // 1. Canciones que le gustan
-        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
+        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 500)
         val likedSongs = (if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList())
             .filter { it.id !in dislikedIds }
 
@@ -70,38 +74,43 @@ class AIRecommendationManager(
 
         val podcastEpisodes = if (includePodcasts) {
             try {
-                val podcastsResp = RetrofitClient.api.getPodcasts(userId, limit = 100)
+                val podcastsResp = RetrofitClient.api.getPodcasts(userId, limit = 20)
                 if (podcastsResp.isSuccessful) {
-                    podcastsResp.body()?.podcasts?.flatMap { podcast ->
-                        val pResp = RetrofitClient.api.getPodcast(podcast.id, userId)
-                        if (pResp.isSuccessful) {
-                            pResp.body()?.episodes?.map { ep ->
-                                Song(
-                                    id = ep.id, title = ep.title, artist = podcast.author, album = podcast.title,
-                                    year = null, duration = ep.duration, bpm = null, key = null, liked = false,
-                                    hasCover = true, isEpisode = true, lastPositionMs = ep.lastPositionMs,
-                                    subtitleUrl = ep.subtitleUrl
-                                )
-                            } ?: emptyList()
-                        } else emptyList()
-                    } ?: emptyList()
+                    podcastsResp.body()?.podcasts.orEmpty().take(20).chunked(5).flatMap { batch ->
+                        coroutineScope {
+                            batch.map { podcast -> async {
+                                try {
+                                    val pResp = RetrofitClient.api.getPodcast(podcast.id, userId)
+                                    if (pResp.isSuccessful) {
+                                        pResp.body()?.episodes?.map { ep ->
+                                            Song(
+                                                id = ep.id, title = ep.title, artist = podcast.author, album = podcast.title,
+                                                year = null, duration = ep.duration, bpm = null, key = null, liked = false,
+                                                hasCover = true, isEpisode = true, lastPositionMs = ep.lastPositionMs,
+                                                subtitleUrl = ep.subtitleUrl
+                                            )
+                                        } ?: emptyList()
+                                    } else emptyList()
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    emptyList()
+                                }
+                            } }.awaitAll().flatten()
+                        }
+                    }
                 } else emptyList()
-            } catch (e: Exception) { emptyList() }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                emptyList()
+            }
         } else emptyList()
 
-        var allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
-
-        // PUNTO DE VINCULACIÓN: Filtrar por estado de ánimo si se solicita
-        if (!mood.isNullOrBlank()) {
-            allSongs = allSongs.filter { s -> 
-                s.moods?.any { it.name.equals(mood, ignoreCase = true) } == true
-            }
-        }
+        val allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
 
         if (allSongs.isEmpty()) return@withContext emptyList()
 
         // Mapear IDs de artistas favoritos a nombres
-        val favArtistNames = resolveFavoriteArtistNames(userId, favArtistIds).toSet()
+        val favArtistNames = resolveFavoriteArtistNames(userId, favArtistIds).map { it.trim().lowercase() }.toSet()
         val likedIds = likedSongs.mapNotNull { it.id }.toSet()
 
         // Análisis de gustos por década de las canciones con "Like"
@@ -117,10 +126,33 @@ class AIRecommendationManager(
         val topDecades = preferredDecades.entries.sortedByDescending { it.value }.take(2).map { it.key }.toSet()
 
         // Análisis específico: ¿Qué géneros/estilos le gustan de sus artistas favoritos?
-        val likedArtists = likedSongs.mapNotNull { it.artist }.toSet()
+        val likedArtists = likedSongs.mapNotNull { it.artist }.map { it.trim().lowercase() }.toSet()
+
+        // Perfil musical aprendido a partir de los likes.
+        val genreWeights = mutableMapOf<String, Float>()
+        val moodWeights = mutableMapOf<String, Float>()
+        val likedBpms = mutableListOf<Double>()
+        val likedKeys = mutableListOf<String>()
+        likedSongs.forEach { liked ->
+            liked.genre.orEmpty().forEach { genre ->
+                val key = genre.trim().lowercase()
+                if (key.isNotBlank()) genreWeights[key] = (genreWeights[key] ?: 0f) + 1f
+            }
+            liked.moods.orEmpty().forEach { item ->
+                val key = item.name.trim().lowercase()
+                if (key.isNotBlank()) moodWeights[key] = (moodWeights[key] ?: 0f) + 1f
+            }
+            liked.bpm?.takeIf { it > 0 }?.let(likedBpms::add)
+            liked.key?.takeIf { it.isNotBlank() }?.let(likedKeys::add)
+        }
+        val targetBpm = seedSong?.bpm?.takeIf { it > 0 }
+            ?: likedBpms.takeIf { it.isNotEmpty() }?.average()
+        val targetKey = seedSong?.key ?: likedKeys.groupingBy { it.trim().lowercase() }.eachCount().maxByOrNull { it.value }?.key
+        val playedIds = sessionManager.getPlayedSongIds()
+        val requestedMood = mood?.trim()?.lowercase().orEmpty()
 
         // Candidatos: canciones que aún no le gustan
-        val candidates = allSongs.filter { it.id !in likedIds }
+        val candidates = allSongs.filter { it.id !in likedIds && it.id != seedSong?.id }
 
         val w = weightsStore?.getWeights() ?: emptyMap()
         fun weight(factor: String): Float = w[factor] ?: 1.0f
@@ -131,8 +163,9 @@ class AIRecommendationManager(
         fun scoreWithFactors(song: Song): Pair<Int, List<String>> {
             var sc = 0f
             val firedFactors = mutableListOf<String>()
-            val isFavArtist = song.artist in favArtistNames
-            val hasLikedOtherSongsFromThisArtist = song.artist in likedArtists
+            val normalizedArtist = song.artist?.trim()?.lowercase()
+            val isFavArtist = normalizedArtist != null && normalizedArtist in favArtistNames
+            val hasLikedOtherSongsFromThisArtist = normalizedArtist != null && normalizedArtist in likedArtists
 
             if (isFavArtist) {
                 sc += 25 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_FAV_ARTIST)
@@ -145,7 +178,7 @@ class AIRecommendationManager(
             }
 
             if (seedSong != null) {
-                if (song.artist != null && song.artist == seedSong.artist) {
+                if (song.artist != null && song.artist.equals(seedSong.artist, ignoreCase = true)) {
                     sc += 40 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST)
                     firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST
                 }
@@ -164,12 +197,61 @@ class AIRecommendationManager(
                 firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_DECADE_MATCH
             }
 
-            if (song.hasCover) {
-                sc += 5 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_HAS_COVER)
-                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_HAS_COVER
+            // Coincidencia de géneros aprendidos (no depende solo del artista).
+            val matchingGenres = song.genre.orEmpty().map { it.trim().lowercase() }
+                .filter { (genreWeights[it] ?: 0f) > 0f }
+            if (matchingGenres.isNotEmpty()) {
+                val points = (matchingGenres.sumOf { (genreWeights[it] ?: 0f).toDouble() } * 5.0).toFloat().coerceAtMost(25f)
+                sc += points * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_GENRE_MATCH)
+                firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_GENRE_MATCH
             }
 
-            sc += (Math.random() * 5).toFloat()
+            // BPM: admite tempos dobles/mitad, habituales en análisis musical.
+            val bpm = song.bpm?.takeIf { it > 0 }
+            if (targetBpm != null && bpm != null) {
+                val raw = kotlin.math.abs(bpm - targetBpm)
+                val distance = minOf(raw, kotlin.math.abs(bpm * 2 - targetBpm), kotlin.math.abs(bpm - targetBpm * 2))
+                val points = when {
+                    distance <= 4 -> 14f
+                    distance <= 8 -> 10f
+                    distance <= 15 -> 6f
+                    distance <= 24 -> 2f
+                    else -> 0f
+                }
+                if (points > 0) {
+                    sc += points * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_BPM_MATCH)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_BPM_MATCH
+                }
+            }
+
+            // Compatibilidad básica de tonalidad: exacta o misma raíz musical.
+            if (!targetKey.isNullOrBlank() && !song.key.isNullOrBlank()) {
+                val targetRoot = targetKey.trim().lowercase().substringBefore(" ")
+                val songRoot = song.key.trim().lowercase().substringBefore(" ")
+                if (targetRoot == songRoot) {
+                    sc += 9f * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_KEY_MATCH)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_KEY_MATCH
+                }
+            }
+
+            // El estado de ánimo suma puntos, pero no elimina canciones si faltan etiquetas.
+            if (requestedMood.isNotBlank()) {
+                val matchesMood = song.moods.orEmpty().any { it.name.trim().lowercase() == requestedMood }
+                if (matchesMood) {
+                    sc += 18f * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_MOOD_MATCH)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_MOOD_MATCH
+                } else if (!song.moods.isNullOrEmpty()) sc -= 4f
+            } else {
+                val moodPoints = song.moods.orEmpty().sumOf { (moodWeights[it.name.trim().lowercase()] ?: 0f).toDouble() }.toFloat()
+                if (moodPoints > 0) {
+                    sc += minOf(8f, moodPoints * 2f) * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_MOOD_MATCH)
+                    firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_MOOD_MATCH
+                }
+            }
+
+            if (song.id in playedIds) sc -= 7f
+            if (song.hasCover) sc += 1f
+            if (song.hasLyrics && !song.isEpisode) sc += 1f
 
             return sc.toInt() to firedFactors
         }
@@ -177,7 +259,7 @@ class AIRecommendationManager(
         val scoredWithFactors = candidates.map { song ->
             val (sc, factors) = scoreWithFactors(song)
             Triple(song, sc, factors)
-        }.sortedByDescending { it.second }
+        }.sortedWith(compareByDescending<Triple<Song, Int, List<String>>> { it.second }.thenBy { it.first.id })
 
         val scored = scoredWithFactors.map { it.first to it.second }
         val factorsBySongId = scoredWithFactors.associate { it.first.id to it.third }

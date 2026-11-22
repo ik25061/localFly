@@ -58,7 +58,7 @@ object LyricsTranslator {
             downloadModelIfNeeded(translator)
 
             return lines.map { line ->
-                if (line.content.isBlank()) {
+                if (line.content.isBlank() || !line.translation.isNullOrBlank()) {
                     line
                 } else {
                     val translated = translateSingleLine(translator, line.content)

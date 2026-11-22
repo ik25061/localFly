@@ -21,7 +21,11 @@ class AISettingsFragment : Fragment() {
         AIWeightsStore.FACTOR_DECADE_MATCH to "Década que sueles escuchar",
         AIWeightsStore.FACTOR_SEED_ARTIST to "Mismo artista que la canción actual",
         AIWeightsStore.FACTOR_SEED_DECADE to "Años cercanos a la canción actual",
-        AIWeightsStore.FACTOR_HAS_COVER to "Tiene portada"
+        AIWeightsStore.FACTOR_HAS_COVER to "Tiene portada",
+        AIWeightsStore.FACTOR_GENRE_MATCH to "Coincidencia de géneros",
+        AIWeightsStore.FACTOR_BPM_MATCH to "Ritmo / BPM parecido",
+        AIWeightsStore.FACTOR_KEY_MATCH to "Compatibilidad de tonalidad",
+        AIWeightsStore.FACTOR_MOOD_MATCH to "Estado de ánimo"
     )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {

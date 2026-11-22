@@ -74,7 +74,12 @@ class DownloadManagerHelper private constructor(context: Context) {
     private val prefs = appContext.getSharedPreferences("localfly_downloads", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    private var cachedDownloads: List<DownloadedSong>? = null
+    @Volatile private var cachedDownloads: List<DownloadedSong>? = null
+        set(value) {
+            field = value
+            cachedDownloadById = value?.associateBy { it.id }
+        }
+    @Volatile private var cachedDownloadById: Map<String, DownloadedSong>? = null
 
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -87,26 +92,79 @@ class DownloadManagerHelper private constructor(context: Context) {
         return dir
     }
 
-    fun getDownloadedSongs(): List<DownloadedSong> {
+    /**
+     * Carga el índice JSON una sola vez. No valida todos los archivos aquí:
+     * getLocalFilePath() se usa desde el hilo del reproductor y debe consultar
+     * únicamente la canción solicitada, no recorrer cientos de descargas.
+     */
+    @Synchronized
+    private fun loadDownloadIndex(): List<DownloadedSong> {
         cachedDownloads?.let { return it }
-        
         val json = prefs.getString("list", null) ?: return emptyList()
         val type = object : TypeToken<List<DownloadedSong>>() {}.type
-        return try {
-            val list = gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
-            cachedDownloads = list
-            list
+        val loaded = try {
+            gson.fromJson<List<DownloadedSong>>(json, type) ?: emptyList()
         } catch (e: Exception) {
             emptyList()
         }
+        cachedDownloads = loaded
+        return loaded
     }
 
-    fun isDownloaded(songId: String): Boolean = getDownloadedSongs().any { it.id == songId }
+    /**
+     * Devuelve el índice sin recorrer todos los archivos. Esta función se usa
+     * desde listas y pantallas; validar cientos de rutas aquí en el hilo UI
+     * provocaba bloqueos al abrir Descargas o iniciar una cola offline.
+     */
+    @Synchronized
+    fun getDownloadedSongs(): List<DownloadedSong> = loadDownloadIndex()
 
+    /** Indica si el índice ya está cargado en memoria. */
+    fun isDownloadIndexLoaded(): Boolean = cachedDownloadById != null
+
+    /** Carga el JSON del índice en IO antes de resolver una cola offline. */
+    suspend fun warmDownloadIndex() = withContext(Dispatchers.IO) {
+        synchronized(this@DownloadManagerHelper) { loadDownloadIndex() }
+    }
+
+    /**
+     * Comprueba y elimina entradas cuyo archivo ya no existe. La exploración
+     * completa se hace fuera del lock: getLocalFilePath() no debe esperar a que
+     * se validen cientos/miles de descargas desde otra corrutina.
+     */
+    suspend fun pruneMissingDownloads() = withContext(Dispatchers.IO) {
+        val snapshot = synchronized(this@DownloadManagerHelper) {
+            loadDownloadIndex().toList()
+        }
+        val snapshotIds = snapshot.map { it.id }.toSet()
+        val validIds = snapshot.filter { song ->
+            val file = File(song.filePath)
+            file.isFile && file.length() > 0L
+        }.map { it.id }.toSet()
+
+        synchronized(this@DownloadManagerHelper) {
+            val current = loadDownloadIndex()
+            // Mantener descargas añadidas mientras se comprobaba el snapshot.
+            val valid = current.filter { it.id !in snapshotIds || it.id in validIds }
+            if (valid.size != current.size) {
+                cachedDownloads = valid
+                prefs.edit().putString("list", gson.toJson(valid)).apply()
+            }
+        }
+    }
+
+    fun isDownloaded(songId: String): Boolean = getLocalFilePath(songId) != null
+
+    @Synchronized
     fun getLocalFilePath(songId: String): String? {
-        val song = getDownloadedSongs().find { it.id == songId } ?: return null
+        // Búsqueda O(1) en el índice en memoria + una sola comprobación del
+        // archivo solicitado. No llamar a getDownloadedSongs(): esa función
+        // valida todos los archivos y provocaba un recorrido completo por cada
+        // canción al construir una cola offline (O(canciones × descargas)).
+        loadDownloadIndex()
+        val song = cachedDownloadById?.get(songId) ?: return null
         val file = File(song.filePath)
-        return if (file.exists()) file.absolutePath else null
+        return if (file.isFile && file.length() > 0L) file.absolutePath else null
     }
 
     /**
@@ -151,30 +209,32 @@ class DownloadManagerHelper private constructor(context: Context) {
                 downloadLyrics(song)
                 val hasLyricsNow = song.hasLyrics || File(downloadsDir(), "${song.id}.lrc").exists()
 
-                val current = getDownloadedSongs().toMutableList()
-                current.removeAll { it.id == song.id }
-                current.add(
-                    DownloadedSong(
-                        id = song.id,
-                        title = song.title,
-                        artist = song.artist,
-                        filePath = file!!.absolutePath,
-                        duration = song.duration,
-                        bpm = song.bpm,
-                        key = song.key,
-                        hasCover = song.hasCover,
-                        hasLyrics = hasLyricsNow,
-                        hasKaraoke = song.hasKaraoke,
-                        liked = song.liked,
-                        fileSize = file!!.length(),
-                        genre = song.genre ?: emptyList(),
-                        album = song.album,
-                        year = song.year
+                synchronized(this@DownloadManagerHelper) {
+                    val current = getDownloadedSongs().toMutableList()
+                    current.removeAll { it.id == song.id }
+                    current.add(
+                        DownloadedSong(
+                            id = song.id,
+                            title = song.title,
+                            artist = song.artist,
+                            filePath = file!!.absolutePath,
+                            duration = song.duration,
+                            bpm = song.bpm,
+                            key = song.key,
+                            hasCover = song.hasCover,
+                            hasLyrics = hasLyricsNow,
+                            hasKaraoke = song.hasKaraoke,
+                            liked = song.liked,
+                            fileSize = file!!.length(),
+                            genre = song.genre ?: emptyList(),
+                            album = song.album,
+                            year = song.year
+                        )
                     )
-                )
-                val newList = current.toList()
-                cachedDownloads = newList
-                prefs.edit().putString("list", gson.toJson(newList)).apply()
+                    val newList = current.toList()
+                    cachedDownloads = newList
+                    prefs.edit().putString("list", gson.toJson(newList)).apply()
+                }
 
                 true
             }
@@ -264,6 +324,7 @@ class DownloadManagerHelper private constructor(context: Context) {
         }
     }
 
+    @Synchronized
     fun removeDownload(songId: String) {
         val current = getDownloadedSongs().toMutableList()
         val target = current.find { it.id == songId }
@@ -289,6 +350,7 @@ class DownloadManagerHelper private constructor(context: Context) {
      * cacheado y subida de letra pendiente (ya no tiene destino).
      * Usar al eliminar la canción del servidor para no dejar huérfanos.
      */
+    @Synchronized
     fun removeLocalArtifacts(songId: String) {
         val current = getDownloadedSongs().toMutableList()
         current.find { it.id == songId }?.let {
@@ -320,15 +382,21 @@ class DownloadManagerHelper private constructor(context: Context) {
 
     /** Elimina todas las canciones descargadas (archivos y registro). */
     fun removeAllDownloads() {
-        getDownloadedSongs().forEach { song ->
+        val snapshot = synchronized(this) { getDownloadedSongs().toList() }
+        snapshot.forEach { song ->
             runCatching { File(song.filePath).delete() }
             deleteLyricsAndKaraoke(song.id)
         }
-        cachedDownloads = emptyList()
-        prefs.edit().putString("list", gson.toJson(emptyList<DownloadedSong>())).apply()
+        synchronized(this) {
+            val removedIds = snapshot.map { it.id }.toSet()
+            val remaining = getDownloadedSongs().filter { it.id !in removedIds }
+            cachedDownloads = remaining
+            prefs.edit().putString("list", gson.toJson(remaining)).apply()
+        }
     }
 
     /** Actualiza el estado "me gusta" guardado de una canción descargada (si existe). */
+    @Synchronized
     fun updateLiked(songId: String, liked: Boolean) {
         val current = getDownloadedSongs().toMutableList()
         val idx = current.indexOfFirst { it.id == songId }
@@ -345,17 +413,17 @@ class DownloadManagerHelper private constructor(context: Context) {
 
         _downloadProgress.value = DownloadProgress(true, 0, pending.size, "")
 
-        var count = 0
+        var attempted = 0
+        val normalizedBaseUrl = serverBaseUrl.trimEnd('/')
         for (song in pending) {
+            attempted++
             _downloadProgress.value = _downloadProgress.value.copy(
-                current = count + 1,
+                current = attempted,
                 songTitle = song.title
             )
-            
-            val audioUrl = "$serverBaseUrl/audio/${song.id}"
-            if (download(song, audioUrl)) {
-                count++
-            }
+
+            val audioUrl = "$normalizedBaseUrl/audio/${song.id}"
+            download(song, audioUrl)
         }
 
         _downloadProgress.value = DownloadProgress(false, 0, 0, "")

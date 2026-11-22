@@ -184,7 +184,7 @@ class AIFragment : Fragment() {
         tvAIResult.text = "🤖 IA local analizando tus gustos..."
 
         // Sincronizar con el servidor en segundo plano
-        syncFavoritesWithServer()
+        syncFavoritesWithServer(selectedArtistIds.toSet())
 
         // Ejecutar la IA local (en el dispositivo) con una pequeña demora para UX
         viewLifecycleOwner.lifecycleScope.launch {
@@ -203,16 +203,24 @@ class AIFragment : Fragment() {
         }
     }
 
-    private fun syncFavoritesWithServer() {
+    private fun syncFavoritesWithServer(targetIds: Set<String>) {
         viewLifecycleOwner.lifecycleScope.launch {
             val userId = sessionManager.getUserId()
-            // Optimizamos: si hay muchos, lanzamos en bloques o secuencial para no saturar
-            selectedArtistIds.forEach { artistId ->
-                try {
-                    RetrofitClient.api.toggleFavoriteArtist(
-                        FavoriteArtistRequest(userId, artistId, true)
-                    )
-                } catch (e: Exception) { }
+            try {
+                val response = RetrofitClient.api.getFavoriteArtists(userId)
+                if (!response.isSuccessful) return@launch
+                val serverIds = response.body()?.items.orEmpty().map { it.id }.toSet()
+                // Sincroniza tanto altas como bajas; no deja artistas desmarcados en el servidor.
+                val changedIds = serverIds union targetIds
+                changedIds.filter { (it in serverIds) != (it in targetIds) }.forEach { artistId ->
+                    try {
+                        RetrofitClient.api.toggleFavoriteArtist(
+                            FavoriteArtistRequest(userId, artistId, artistId in targetIds)
+                        )
+                    } catch (_: Exception) { }
+                }
+            } catch (_: Exception) {
+                // La selección local se conserva si no hay conexión.
             }
         }
     }

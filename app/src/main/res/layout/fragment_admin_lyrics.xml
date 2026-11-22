@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@android:color/transparent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="20dp">
+
+            <ImageButton
+                android:id="@+id/btnBackLyricsAdmin"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_previous"
+                app:tint="#FFFFFF" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toEndOf="@id/btnBackLyricsAdmin"
+                android:layout_marginStart="8dp"
+                android:layout_centerVertical="true"
+                android:text="Gestión de letras"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Genera letras para toda la biblioteca, procesa únicamente canciones nuevas o vuelve a revisar las que necesitan atención. El progreso y las banderas se guardan en el servidor."
+            android:textColor="#AAAAAA"
+            android:textSize="13sp"
+            android:layout_marginBottom="16dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardBackgroundColor="#202020"
+            app:cardCornerRadius="12dp"
+            app:strokeColor="#383838"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Estado de la biblioteca"
+                    android:textColor="#FFFFFF"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvLyricsAdminStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Consultando estado..."
+                    android:textColor="#CCCCCC"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnLyricsRefreshStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="Actualizar estado"
+                    android:textAllCaps="false"
+                    app:backgroundTint="#424242"
+                    app:cornerRadius="9dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:text="Procesamiento"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsAll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Procesar toda la biblioteca"
+            android:textAllCaps="false"
+            android:textColor="#000000"
+            app:backgroundTint="#1DB954"
+            app:cornerRadius="10dp"
+            app:icon="@drawable/ic_library"
+            app:iconTint="#000000" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsNew"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Procesar canciones nuevas"
+            android:textAllCaps="false"
+            app:backgroundTint="#1976D2"
+            app:cornerRadius="10dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsPending"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Reintentar pendientes y errores"
+            android:textAllCaps="false"
+            app:backgroundTint="#EF8C22"
+            app:cornerRadius="10dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsReview"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Volver a revisar letras marcadas"
+            android:textAllCaps="false"
+            app:backgroundTint="#7E57C2"
+            app:cornerRadius="10dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:text="Buscar una canción concreta"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/etLyricsAdminSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Título o artista"
+            android:singleLine="true"
+            android:inputType="text"
+            android:textColor="#FFFFFF"
+            android:textColorHint="#888888"
+            android:backgroundTint="#1DB954" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnLyricsSearch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Buscar canción"
+            android:textAllCaps="false"
+            app:backgroundTint="#424242"
+            app:cornerRadius="10dp" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            app:cardBackgroundColor="#202020"
+            app:cardCornerRadius="12dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Progreso del trabajo"
+                    android:textColor="#FFFFFF"
+                    android:textStyle="bold"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/tvLyricsAdminProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="No hay ningún trabajo activo."
+                    android:textColor="#CCCCCC"
+                    android:textSize="13sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnLyricsCancel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="Detener procesamiento"
+                    android:textAllCaps="false"
+                    app:backgroundTint="#B3261E"
+                    app:cornerRadius="9dp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+</ScrollView>
