@@ -124,7 +124,7 @@ class LyricsAdminFragment : Fragment() {
                     val current = job.currentSong?.get("title")?.takeIf { !it.isNullOrBlank() } ?: "Preparando..."
                     tvProgress.text = "Procesadas: ${job.processed}/${job.total}\n" +
                         "Correctas: ${job.succeeded} · Revisar: ${job.needsReview}\n" +
-                        "Sin letra: ${job.notFound} · Errores: ${job.failed}\n" +
+                        "Sin letra: ${job.notFound} · Instrumentales: ${job.instrumental} · Errores: ${job.failed}\n" +
                         "Actual: $current"
                     if (job.status != "running") {
                         tvProgress.append("\nEstado: ${job.status}")
