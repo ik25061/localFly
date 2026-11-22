@@ -162,7 +162,7 @@ class AIRecommendationManager(
             }
 
             if (seedSong != null) {
-                if (song.artist != null && song.artist == seedSong.artist) {
+                if (song.artist != null && song.artist.equals(seedSong.artist, ignoreCase = true)) {
                     sc += 40 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST)
                     firedFactors += com.example.localfly.ai.AIWeightsStore.FACTOR_SEED_ARTIST
                 }
