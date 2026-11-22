@@ -1325,7 +1325,8 @@ class PlaybackService : MediaSessionService() {
         // El estado inicial es optimista hasta que termina el primer ping. Si
         // el usuario pulsa Play inmediatamente al arrancar sin servidor, no
         // asumir online ni dejar que ExoPlayer intente una URL remota.
-        if (!ServerReachability.hasChecked) {
+        if (!ServerReachability.hasChecked &&
+            !(localPathsResolved && !ServerReachability.isOnline)) {
             serviceScope.launch {
                 ServerReachability.isServerReachable()
                 withContext(Dispatchers.Main) {
