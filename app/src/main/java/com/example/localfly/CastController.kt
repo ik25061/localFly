@@ -371,7 +371,7 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
                         }
                         // Receptor LocalFly: la pista VTT se dibuja en una capa
                         // de karaoke sincronizada con el reloj del reproductor.
-                        sendKaraokeMessage(remote, song)
+                        sendKaraokeMessage(song)
                     }
                 }
             }
@@ -384,8 +384,12 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
         if (withLyrics) applyLyricsStyle(remote)
     }
 
-    private fun sendKaraokeMessage(remote: RemoteMediaClient, song: CastSong) {
+    private fun sendKaraokeMessage(song: CastSong) {
         if (!CastOptionsProvider.isCustomReceiverEnabled) return
+
+        // Los mensajes de canales personalizados pertenecen a CastSession,
+        // no a RemoteMediaClient (que solo controla la reproducción multimedia).
+        val session = sessionManager.currentCastSession ?: return
         val payload = JSONObject().apply {
             put("type", "track")
             put("songId", song.id)
@@ -393,10 +397,14 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
             put("artist", song.artist)
             put("lyricsUrl", song.lyricsUrl ?: JSONObject.NULL)
         }
+
         runCatching {
-            remote.sendMessage(KARAOKE_NAMESPACE, payload.toString())
-        }.onFailure {
-            reportCastError("No se pudo enviar la letra al receptor karaoke", it.message ?: "error de canal")
+            session.sendMessage(KARAOKE_NAMESPACE, payload.toString())
+        }.onFailure { error: Throwable ->
+            reportCastError(
+                "No se pudo enviar la letra al receptor karaoke",
+                error.message ?: "error de canal"
+            )
         }
     }
 
