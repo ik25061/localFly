@@ -93,11 +93,12 @@ class KaraokeLyricsServer(
             val targetUri = runCatching { URI(target) }.getOrNull() ?: return false
             val baseUri = runCatching { URI(base) }.getOrNull() ?: return false
             val prefix = baseUri.path.orEmpty().trimEnd('/')
+            val targetPath = targetUri.path ?: return false
             val allowed = setOf(
                 "$prefix/audio/$songId",
                 "$prefix/podcast-audio/$songId"
             )
-            return targetUri.path in allowed
+            return targetPath in allowed
         }
 
         /** El proxy solo puede consultar el mismo origen configurado en LocalFly. */
