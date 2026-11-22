@@ -2,6 +2,10 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
+val castReceiverAppId = providers.gradleProperty("CAST_RECEIVER_APP_ID")
+    .orElse("CC1AD845")
+    .get()
+
 android {
     namespace = "com.example.localfly"
 
@@ -14,6 +18,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "CAST_RECEIVER_APP_ID", "\"$castReceiverAppId\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -37,6 +42,7 @@ android {
     // HABILITAR VIEW BINDING (necesario para HomeFragment)
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
 
     // Las pruebas unitarias JVM ejercitan el servidor HTTP local, que usa
