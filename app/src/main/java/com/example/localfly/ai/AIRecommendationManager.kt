@@ -148,8 +148,8 @@ class AIRecommendationManager(
             var sc = 0f
             val firedFactors = mutableListOf<String>()
             val normalizedArtist = song.artist?.trim()?.lowercase()
-            val isFavArtist = normalizedArtist in favArtistNames
-            val hasLikedOtherSongsFromThisArtist = normalizedArtist in likedArtists
+            val isFavArtist = normalizedArtist != null && normalizedArtist in favArtistNames
+            val hasLikedOtherSongsFromThisArtist = normalizedArtist != null && normalizedArtist in likedArtists
 
             if (isFavArtist) {
                 sc += 25 * weight(com.example.localfly.ai.AIWeightsStore.FACTOR_FAV_ARTIST)
