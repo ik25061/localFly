@@ -39,7 +39,7 @@ class AIRecommendationManager(
         val favArtistIds = sessionManager.getFavoriteArtists()
         val mixingEnabled = sessionManager.isPodcastMixingEnabled()
 
-        // ... resto de la lógica inicial ...
+        // Los podcasts se mezclan solo según la preferencia del usuario o el tipo de canción semilla.
         val includeMusic: Boolean
         val includePodcasts: Boolean
 
@@ -62,7 +62,7 @@ class AIRecommendationManager(
             .mapNotNull { it.songId }.toSet()
 
         // 1. Canciones que le gustan
-        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 100)
+        val likedResp = RetrofitClient.api.getLikedSongs(userId, limit = 500)
         val likedSongs = (if (likedResp.isSuccessful) likedResp.body()?.songs ?: emptyList() else emptyList())
             .filter { it.id !in dislikedIds }
 
@@ -105,7 +105,7 @@ class AIRecommendationManager(
             }
         } else emptyList()
 
-        var allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
+        val allSongs = (musicSongs + podcastEpisodes).filter { it.id !in dislikedIds }
 
         if (allSongs.isEmpty()) return@withContext emptyList()
 
