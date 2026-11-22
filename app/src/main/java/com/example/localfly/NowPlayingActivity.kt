@@ -1439,7 +1439,13 @@ class NowPlayingActivity : AppCompatActivity() {
         val current = options.indexOf(CastSettings.audioTarget(this))
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("¿Dónde quieres que suene el audio?")
-            .setMessage("Si el audio suena en el televisor, la letra se envía como subtítulos.")
+            .setMessage(
+                if (CastOptionsProvider.isCustomReceiverEnabled) {
+                    "El televisor mostrará la letra sincronizada en modo karaoke."
+                } else {
+                    "El receptor estándar recibe la letra como pista WebVTT. Para la pantalla karaoke completa, configura el receptor LocalFly."
+                }
+            )
             .setSingleChoiceItems(
                 options.map { it.label }.toTypedArray(),
                 current
