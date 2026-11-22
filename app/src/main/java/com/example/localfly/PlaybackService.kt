@@ -1166,7 +1166,7 @@ class PlaybackService : MediaSessionService() {
         val userId = ownerUserId?.takeIf { it.isNotBlank() } ?: "guest"
         val suffix = java.security.MessageDigest.getInstance("SHA-256")
             .digest(userId.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
         return getSharedPreferences("localfly_queue_$suffix", android.content.Context.MODE_PRIVATE)
     }
 
