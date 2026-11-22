@@ -262,7 +262,9 @@ data class LyricsResponse(
     val lyrics: String?,
     @SerializedName("syncedLines")
     val syncedLines: List<SyncedLyricLine>? = null,
-    val source: String? = null
+    val source: String? = null,
+    @SerializedName("translatedLyrics")
+    val translatedLyrics: String? = null
 )
 
 // --- LRCLIB (fuente pública directa, sin pasar por el servidor) ---
