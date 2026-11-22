@@ -38,6 +38,9 @@ class AdminPanelFragment : Fragment() {
         view.findViewById<MaterialButton>(R.id.btnHomeSectionOrder).setOnClickListener {
             open(HomeSectionOrderFragment())
         }
+        view.findViewById<MaterialButton>(R.id.btnLyricsAdmin).setOnClickListener {
+            open(LyricsAdminFragment())
+        }
     }
 
     private fun open(fragment: Fragment) {
