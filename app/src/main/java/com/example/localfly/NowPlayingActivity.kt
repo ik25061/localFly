@@ -1034,9 +1034,14 @@ class NowPlayingActivity : AppCompatActivity() {
                 val body = response.body()
                 val synced = body?.syncedLines
                 if (!synced.isNullOrEmpty()) {
+                    val translations = body?.translatedLyrics
+                        ?.lineSequence()?.map { it.trim() }?.toList().orEmpty()
                     val lines = synced
                         .sortedBy { it.time }
-                        .map { LyricLine((it.time * 1000).toLong(), it.text.trim()) }
+                        .mapIndexed { index, line ->
+                            val translation = translations.getOrNull(index)?.takeIf { it.isNotBlank() && !it.equals(line.text.trim(), ignoreCase = true) }
+                            LyricLine((line.time * 1000).toLong(), line.text.trim(), translation)
+                        }
                         .filter { it.content.isNotEmpty() }
                     if (lines.isNotEmpty()) return@withContext lines
                 }
