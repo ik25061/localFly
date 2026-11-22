@@ -349,9 +349,15 @@ class CastController(context: Context) : SessionManagerListener<CastSession> {
                             reportCastError("El receptor rechazó la carga del audio", "código=$code $message".trim())
                         }
                     } else {
-                        // Receptor propio: la pista VTT se dibuja en una capa de
-                        // karaoke, no depende de que el reproductor estándar de
-                        // Google muestre subtítulos sobre una pista solo de audio.
+                        if (!CastOptionsProvider.isCustomReceiverEnabled &&
+                            !song.lyricsUrl.isNullOrBlank()) {
+                            // Fallback para el receptor estándar de Google:
+                            // activar explícitamente la pista WebVTT.
+                            remote.setActiveMediaTracks(longArrayOf(LYRICS_TRACK_ID))
+                            applyLyricsStyle(remote)
+                        }
+                        // Receptor LocalFly: la pista VTT se dibuja en una capa
+                        // de karaoke sincronizada con el reloj del reproductor.
                         sendKaraokeMessage(remote, song)
                     }
                 }
