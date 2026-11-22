@@ -33,6 +33,7 @@ object GenreAIEngine {
     private const val SCORE_KEY = 5
     private const val SCORE_KEYWORD = 8
     private const val SCORE_COVER = 3
+    private const val SCORE_MOOD = 7
 
     /**
      * Analiza toda la biblioteca (vía API) y devuelve las [limit] canciones que
@@ -49,15 +50,18 @@ object GenreAIEngine {
         } catch (e: Exception) {
             null
         }
-        val allSongs = if (libResp?.isSuccessful == true) libResp!!.body()?.songs ?: emptyList() else emptyList()
+        val dislikedIds = com.example.localfly.network.SongAdminStore.getDislikedSongs().mapNotNull { it.songId }.toSet()
+        val allSongs = (if (libResp?.isSuccessful == true) libResp!!.body()?.songs ?: emptyList() else emptyList())
+            .filter { it.id !in dislikedIds }
         if (allSongs.isEmpty()) return@withContext emptyList()
 
         val seedIds = genre.songIds.toSet()
         val seeds = allSongs.filter { it.id in seedIds }
-        val seedArtists = seeds.mapNotNull { it.artist }.toSet()
-        val seedAlbums = seeds.mapNotNull { it.album }.toSet()
+        val seedArtists = seeds.mapNotNull { it.artist }.map(::normalizeText).toSet()
+        val seedAlbums = seeds.mapNotNull { it.album }.map(::normalizeText).toSet()
         val seedYears = seeds.mapNotNull { it.year }.toSet()
-        val seedKeys = seeds.mapNotNull { it.key }.toSet()
+        val seedKeys = seeds.mapNotNull { it.key }.map(::keyRoot).toSet()
+        val seedMoods = seeds.flatMap { it.moods.orEmpty() }.map { normalizeText(it.name) }.toSet()
         val bpmValues = seeds.mapNotNull { it.bpm }
         val seedBpmAvg: Double? = if (bpmValues.isEmpty()) null else bpmValues.sumOf { it } / bpmValues.size.toDouble()
         val genreTokens = tokenize("${genre.name} ${genre.description ?: ""}")
@@ -74,11 +78,11 @@ object GenreAIEngine {
             val reasons = mutableListOf<String>()
 
             // 1) Similitud con las canciones que ya pertenecen al género.
-            if (seedArtists.isNotEmpty() && song.artist != null && song.artist in seedArtists) {
+            if (seedArtists.isNotEmpty() && song.artist != null && normalizeText(song.artist) in seedArtists) {
                 score += SCORE_ARTIST
                 reasons.add("Mismo artista: ${song.artist}")
             }
-            if (seedAlbums.isNotEmpty() && song.album != null && song.album in seedAlbums) {
+            if (seedAlbums.isNotEmpty() && song.album != null && normalizeText(song.album) in seedAlbums) {
                 score += SCORE_ALBUM
                 reasons.add("Mismo álbum: ${song.album}")
             }
@@ -93,13 +97,29 @@ object GenreAIEngine {
                 }
             }
             val bpm = song.bpm
-            if (seedBpmAvg != null && bpm != null && Math.abs(bpm - seedBpmAvg) <= 8.0) {
-                score += SCORE_BPM
-                reasons.add("BPM similar (${"%.0f".format(bpm)})")
+            if (seedBpmAvg != null && bpm != null) {
+                val raw = Math.abs(bpm - seedBpmAvg)
+                val distance = minOf(raw, Math.abs(bpm * 2 - seedBpmAvg), Math.abs(bpm - seedBpmAvg * 2))
+                if (distance <= 8.0) {
+                    score += SCORE_BPM
+                    reasons.add("BPM similar (${bpm.toInt()})")
+                }
             }
-            if (seedKeys.isNotEmpty() && song.key != null && song.key in seedKeys) {
-                score += SCORE_KEY
-                reasons.add("Misma tonalidad: ${song.key}")
+            if (seedKeys.isNotEmpty() && song.key != null) {
+                val candidateRoot = keyRoot(song.key)
+                val compatible = seedKeys.any { seedRoot ->
+                    val distance = keyDistance(seedRoot, candidateRoot)
+                    distance == 0 || distance == 5 || distance == 7
+                }
+                if (compatible) {
+                    score += SCORE_KEY
+                    reasons.add("Tonalidad compatible: ${song.key}")
+                }
+            }
+            val songMoods = song.moods.orEmpty().map { normalizeText(it.name) }.toSet()
+            if (seedMoods.isNotEmpty() && songMoods.any { it in seedMoods }) {
+                score += SCORE_MOOD
+                reasons.add("Estado de ánimo similar")
             }
 
             // 2) Coincidencia de palabras clave del nombre del género.
@@ -117,7 +137,39 @@ object GenreAIEngine {
             }
         }
 
-        results.sortedByDescending { it.score }.take(limit)
+        val ranked = results.sortedWith(compareByDescending<GenreSuggestion> { it.score }.thenBy { it.song.id })
+        val diversified = mutableListOf<GenreSuggestion>()
+        val artistCounts = mutableMapOf<String, Int>()
+        for (item in ranked) {
+            val artist = normalizeText(item.song.artist).ifBlank { item.song.id }
+            if ((artistCounts[artist] ?: 0) >= 2) continue
+            diversified += item
+            artistCounts[artist] = (artistCounts[artist] ?: 0) + 1
+            if (diversified.size >= limit) break
+        }
+        if (diversified.size < limit) {
+            val used = diversified.map { it.song.id }.toSet()
+            diversified.addAll(ranked.filter { it.song.id !in used }.take(limit - diversified.size))
+        }
+        diversified.take(limit)
+    }
+
+    private fun normalizeText(value: String?): String =
+        Normalizer.normalize(value.orEmpty().lowercase(), Normalizer.Form.NFD)
+            .replace("\\p{InCombiningDiacriticalMarks}+".toRegex(), "")
+            .trim()
+
+    private fun keyRoot(value: String): String =
+        normalizeText(value).replace(" ", "").takeWhile { it.isLetter() || it == '#' || it == 'b' }
+
+    private fun keyDistance(a: String, b: String): Int? {
+        val notes = listOf("c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b")
+        val enharmonic = mapOf("db" to "c#", "eb" to "d#", "gb" to "f#", "ab" to "g#", "bb" to "a#")
+        val x = notes.indexOf(enharmonic[a] ?: a)
+        val y = notes.indexOf(enharmonic[b] ?: b)
+        if (x < 0 || y < 0) return null
+        val distance = kotlin.math.abs(x - y)
+        return minOf(distance, 12 - distance)
     }
 
     /** Normaliza texto: minúsculas, sin acentos y solo caracteres alfanuméricos. */
