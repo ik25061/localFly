@@ -1213,6 +1213,11 @@ class PlaybackService : MediaSessionService() {
                 )
 
                 val restored = withContext(Dispatchers.IO) {
+                    val serverOnline = if (ServerReachability.hasChecked) {
+                        ServerReachability.isOnline
+                    } else {
+                        ServerReachability.isServerReachable()
+                    }
                     val prefs = queuePrefs(requestedOwner)
                     val savedOwner = prefs.getString("owner_user_id", null)
                     if (savedOwner != requestedOwner) {
@@ -1236,7 +1241,7 @@ class PlaybackService : MediaSessionService() {
                             // "actual", porque ExoPlayer intentaría abrir la red.
                             val alive = songs.filter {
                                 !SongAdminStore.isDeleted(it.id) &&
-                                    (ServerReachability.isOnline || downloadHelper.isDownloaded(it.id))
+                                    (serverOnline || downloadHelper.isDownloaded(it.id))
                             }
                             if (alive.isEmpty()) {
                                 null
@@ -1293,6 +1298,27 @@ class PlaybackService : MediaSessionService() {
     ) {
         val requestToken = ++queueRequestToken
         val requestOwner = sessionManager.getUserId()
+
+        // El estado inicial es optimista hasta que termina el primer ping. Si
+        // el usuario pulsa Play inmediatamente al arrancar sin servidor, no
+        // asumir online ni dejar que ExoPlayer intente una URL remota.
+        if (!ServerReachability.hasChecked) {
+            serviceScope.launch {
+                ServerReachability.isServerReachable()
+                withContext(Dispatchers.Main) {
+                    if (requestToken != queueRequestToken ||
+                        requestOwner != sessionManager.getUserId()) return@withContext
+                    setQueueAndPlay(
+                        songs,
+                        startIndex,
+                        localPaths,
+                        reviewSession,
+                        localPathsResolved
+                    )
+                }
+            }
+            return
+        }
 
         // Resolver el índice y comprobar los archivos en IO. Hacer cientos de
         // File.exists()/length() y parsear el JSON de descargas desde main era
